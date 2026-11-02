@@ -17,6 +17,7 @@
       ]
     },
     "dev": {
+      "passThroughEnv": ["PORT", "BANGER_DEV_URL"],
       "cache": false,
       "persistent": true,
       "dependsOn": [
@@ -43,6 +44,7 @@
       ]
     },
     "@banger/desktop#dev": {
+      "passThroughEnv": ["PORT", "BANGER_DEV_URL"],
       "cache": false,
       "persistent": true,
       "dependsOn": [

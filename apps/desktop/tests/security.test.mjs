@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { isAppUrl, serveApp } from "../dist/static-app.js";
+import { getDevelopmentUrl, isAppUrl, serveApp } from "../dist/static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "../dist/project-files.js";
 
 test("project validation preserves Unicode while bounding size and filenames", () => {
@@ -25,6 +25,17 @@ test("trusted origin matching rejects other schemes, hosts, and credentials", ()
   }
   assert.equal(isAppUrl("http://127.0.0.1:3000/", "http://127.0.0.1:3000"), true);
   assert.equal(isAppUrl("http://127.0.0.1:3001/", "http://127.0.0.1:3000"), false);
+});
+
+test("development accepts a selected loopback port only in unpackaged apps", () => {
+  const url = getDevelopmentUrl("http://127.0.0.1:3107", false);
+  assert.equal(url, "http://127.0.0.1:3107");
+  assert.equal(isAppUrl(`${url}/`, url), true);
+  assert.equal(isAppUrl("http://127.0.0.1:3000/", url), false);
+  assert.equal(getDevelopmentUrl(url, true), undefined);
+  for (const value of [undefined, "https://127.0.0.1:3107", "http://example.com:3107", "http://127.0.0.1:3107/path", "http://user@127.0.0.1:3107", "http://127.0.0.1:3107?x", "http://127.0.0.1:0", "http://127.0.0.1:65536"]) {
+    assert.equal(getDevelopmentUrl(value, false), undefined, value);
+  }
 });
 
 test("static protocol serves export assets and rejects traversal and writes", async () => {

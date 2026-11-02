@@ -11,6 +11,15 @@ const contentTypes: Record<string, string> = {
 
 export const APP_URL = "banger://app/";
 
+export function getDevelopmentUrl(value: string | undefined, isPackaged: boolean): string | undefined {
+  if (isPackaged || !value || !/^http:\/\/127\.0\.0\.1:\d+$/.test(value)) return undefined;
+  const port = Number(value.slice(value.lastIndexOf(":") + 1));
+  if (port < 1 || port > 65535) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch { return undefined; }
+}
+
 export function isAppUrl(value: string, developmentUrl?: string): boolean {
   try {
     const url = new URL(value);

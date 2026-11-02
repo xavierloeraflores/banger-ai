@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, protocol, session, safeStorage, ty
 import { access, open, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { APP_URL, isAppUrl, serveApp } from "./static-app.js";
+import { APP_URL, getDevelopmentUrl, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
 import { parseChatRequest, selectModel, runBangerAgent, publicAIError } from "@banger/agent";
 import { createAISettingsStore } from "./ai-settings.js";
@@ -11,8 +11,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
 } }]);
 
-const developmentUrl = !app.isPackaged && process.env.BANGER_DEV_URL === "http://127.0.0.1:3000"
-  ? process.env.BANGER_DEV_URL : undefined;
+const developmentUrl = getDevelopmentUrl(process.env.BANGER_DEV_URL, app.isPackaged);
 const windows = new Set<BrowserWindow>();
 const pendingDialogs = new Set<number>();
 const pendingChats = new Map<number, AbortController>();

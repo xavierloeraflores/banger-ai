@@ -6,9 +6,9 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "turbo run dev",
-    "dev:www": "turbo run dev --filter=@banger/www",
-    "dev:desktop": "turbo run dev --filter=@banger/desktop --filter=@banger/www",
+    "dev": "node scripts/dev.mjs",
+    "dev:www": "node scripts/dev.mjs --filter=@banger/www",
+    "dev:desktop": "node scripts/dev.mjs --filter=@banger/desktop --filter=@banger/www",
     "build": "turbo run build",
     "fullbuild": "cross-env NODE_ENV=production turbo run build",
     "lint": "turbo run lint",
