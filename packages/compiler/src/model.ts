@@ -1,9 +1,12 @@
-export type SoundName = 'drums/kick' | 'drums/snare' | 'drums/hat';
-export type InstrumentName = 'synth/bass' | 'synth/pluck';
+export type SoundName = 'drums/kick' | 'drums/snare' | 'drums/hat' | 'drums/clap' | 'drums/tom' | 'drums/open-hat';
+export type InstrumentName = 'synth/bass' | 'synth/pluck' | 'synth/lead' | 'synth/pad' | 'synth/bell' | 'synth/organ';
 export type Step = null | { kind: 'hit' } | { kind: 'note'; midi: number };
 /** A note in a one-bar piano roll. Start and duration are quarter-note beats. */
 export interface PianoNote { midi: number; start: number; duration: number; velocity: number }
 export interface ReverbEffect { kind: 'reverb'; mix: number }
+export interface DelayEffect { kind: 'delay'; mix: number; time: number; feedback: number }
+export interface FilterEffect { kind: 'filter'; cutoff: number; resonance: number }
+export type MusicEffect = ReverbEffect | DelayEffect | FilterEffect;
 export interface MusicTrack {
   name: string;
   source: { kind: 'sound'; name: SoundName } | { kind: 'instrument'; name: InstrumentName };
@@ -11,7 +14,8 @@ export interface MusicTrack {
   /** When present, steps must be empty. An empty roll is a silent instrument. */
   pianoRoll?: PianoNote[];
   gain: number;
-  effects?: ReverbEffect[];
+  pan?: number;
+  effects?: MusicEffect[];
 }
 export interface MusicProgram {
   tempo: number;
@@ -19,8 +23,8 @@ export interface MusicProgram {
   tracks: MusicTrack[];
 }
 export const MUSIC_LIMITS = Object.freeze({ minTempo: 20, maxTempo: 300, tracks: 16, steps: 64, notes: 128, totalNotes: 256, sourceLength: 65536 });
-export const SOUND_NAMES: readonly SoundName[] = ['drums/kick', 'drums/snare', 'drums/hat'];
-export const INSTRUMENT_NAMES: readonly InstrumentName[] = ['synth/bass', 'synth/pluck'];
+export const SOUND_NAMES: readonly SoundName[] = ['drums/kick', 'drums/snare', 'drums/hat', 'drums/clap', 'drums/tom', 'drums/open-hat'];
+export const INSTRUMENT_NAMES: readonly InstrumentName[] = ['synth/bass', 'synth/pluck', 'synth/lead', 'synth/pad', 'synth/bell', 'synth/organ'];
 export const isTrackName = (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z_][A-Za-z_0-9]{0,63}$/.test(name);
 
 export function validateMusicProgram(value: unknown): asserts value is MusicProgram {
@@ -55,10 +59,15 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
         step.kind !== 'note' || !Number.isInteger(step.midi) || step.midi < 0 || step.midi > 127)
         fail('Use hits with sounds and MIDI notes from 0 to 127 with instruments');
     }
+    if (track.pan !== undefined && (!Number.isFinite(track.pan) || track.pan < -1 || track.pan > 1)) fail('Pan must be between -1 and 1');
     if (track.effects !== undefined) {
-      if (!Array.isArray(track.effects) || track.effects.length > 1) fail('A track supports at most one reverb');
-      for (const effect of track.effects)
-        if (!effect || effect.kind !== 'reverb' || !Number.isFinite(effect.mix) || effect.mix < 0 || effect.mix > 1) fail('Reverb mix must be between 0 and 1');
+      if (!Array.isArray(track.effects) || track.effects.length > 3) fail('A track supports at most three effects');
+      const kinds = new Set<string>();
+      for (const effect of track.effects) {
+        validateEffect(effect);
+        if (kinds.has(effect.kind)) fail(`Duplicate effect '${effect.kind}'`);
+        kinds.add(effect.kind);
+      }
     }
   }
 }
@@ -69,6 +78,7 @@ export function copyMusicProgram(program: MusicProgram): MusicProgram {
     tempo: program.tempo, meter: { numerator: 4, denominator: 4 },
     tracks: program.tracks.map(track => ({
       name: track.name, source: { ...track.source }, gain: track.gain,
+      ...(track.pan === undefined ? {} : { pan: track.pan }),
       ...(track.pianoRoll === undefined ? {} : { pianoRoll: track.pianoRoll.map(note => ({ ...note })) }),
       steps: track.steps.map(step => step === null ? null : { ...step }),
       ...(track.effects === undefined ? {} : { effects: track.effects.map(effect => ({ ...effect })) }),
@@ -93,4 +103,21 @@ export function pianoNotes(track: MusicTrack): PianoNote[] {
   return track.steps.flatMap((step, index) => step?.kind === 'note'
     ? [{ midi: step.midi, start: index * 4 / track.steps.length,
         duration: Math.min(4 / track.steps.length, 4 - index * 4 / track.steps.length), velocity: 1 }] : []);
+}
+
+export function validateEffect(effect: MusicEffect): void {
+  const range = (value: number, min: number, max: number, label: string) => {
+    if (!Number.isFinite(value) || value < min || value > max) throw new RangeError(`${label} must be between ${min} and ${max}`);
+  };
+  if (!effect || !['reverb', 'delay', 'filter'].includes(effect.kind)) throw new RangeError('Unknown effect');
+  if (effect.kind === 'filter') {
+    range(effect.cutoff, 20, 20000, 'Filter cutoff');
+    range(effect.resonance, 0, 20, 'Filter resonance');
+  } else {
+    range(effect.mix, 0, 1, 'Effect mix');
+    if (effect.kind === 'delay') {
+      range(effect.time, .01, 2, 'Delay time');
+      range(effect.feedback, 0, .85, 'Delay feedback');
+    }
+  }
 }

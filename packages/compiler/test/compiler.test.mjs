@@ -49,7 +49,7 @@ test('rejects invalid tracks and limits work before audio scheduling', () => {
     'track a { instrument "synth/pluck"; notes "Cb-1"; }', 'track a { sound "drums/kick"; rhythm "x"; gain 2; }',
     'track a { sound "drums/kick"; sound "drums/hat"; rhythm "x"; }',
     'track a { sound "drums/kick"; rhythm "x"; effect reverb { mix 2; } }',
-    'track a { sound "drums/kick"; rhythm "x"; effect delay {} }',
+    'track a { sound "drums/kick"; rhythm "x"; effect chorus {} }',
     'track a { sound "drums/kick"; rhythm "x"; effect reverb {} effect reverb {} }',
     'tempo 19;', 'tempo 301;', ' '.repeat(65537), `tempo ${'('.repeat(100)}120${')'.repeat(100)};`,
     Array.from({ length: 17 }, (_, i) => `track t${i} { sound "drums/hat"; rhythm "x"; }`).join('\n')];
@@ -134,4 +134,35 @@ test('bounds piano voices across tracks and round trips a full program', () => {
   assert.throws(() => compileMusic(track('one') + track('two') + track('three')), /256 piano notes/);
   program.tracks.push({ ...program.tracks[0], name: 'three' });
   assert.throws(() => serializeMusic(program), /256 piano notes/);
+});
+
+
+test('new sound palette, panning and ordered effects round trip without losing parameters', async () => {
+  const { SOUND_NAMES, INSTRUMENT_NAMES } = await import('../dist/index.js');
+  for (const [kind, names] of [['sound', SOUND_NAMES], ['instrument', INSTRUMENT_NAMES]]) {
+    for (const name of names) {
+      const source = `track a { ${kind} "${name}"; ${kind === 'sound' ? 'rhythm "x ."' : 'notes "C4 ."'};
+        pan -.5; effect filter { cutoff 1200; resonance 3; }
+        effect delay { time .375; feedback .45; mix .3; } effect reverb { mix .2; } }`;
+      const program = compileMusic(source);
+      assert.deepEqual(compileMusic(serializeMusic(program)), program);
+      assert.deepEqual(program.tracks[0].effects.map(e => e.kind), ['filter', 'delay', 'reverb']);
+      const copy = copyMusicProgram(program); copy.tracks[0].effects[1].feedback = .1;
+      assert.equal(program.tracks[0].effects[1].feedback, .45);
+      assert.equal(copy.tracks[0].pan, -.5);
+    }
+  }
+});
+
+test('effect and pan boundaries reject invalid source and untrusted program objects', () => {
+  for (const property of ['pan -1.01;', 'pan 1.01;', 'effect delay { time 0; }', 'effect delay { time 2.1; }',
+    'effect delay { feedback .86; }', 'effect delay { mix 2; }', 'effect filter { cutoff 19; }',
+    'effect filter { cutoff 20001; }', 'effect filter { resonance -1; }', 'effect filter { resonance 21; }',
+    'effect filter { unknown 1; }', 'effect delay { mix .2; mix .3; }', 'effect filter {} effect filter {}'])
+    assert.throws(() => compileMusic(`track a { sound "drums/clap"; rhythm "x"; ${property} }`), CompileError);
+  const program = compileMusic('track a { instrument "synth/pad"; notes "C4"; pan 1; effect delay {} effect filter {} }');
+  for (const mutate of [p => p.tracks[0].pan = NaN, p => p.tracks[0].effects[0].feedback = 1,
+    p => p.tracks[0].effects[1].cutoff = Infinity, p => p.tracks[0].effects.push({ ...p.tracks[0].effects[0] })]) {
+    const copy = copyMusicProgram(program); mutate(copy); assert.throws(() => serializeMusic(copy), RangeError);
+  }
 });
