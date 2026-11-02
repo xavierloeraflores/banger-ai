@@ -20,7 +20,7 @@ const source = `class Sidechain extends AudioWorkletProcessor {
    const seconds=at(reduction>this.reduction?'attack':'release',i), coefficient=seconds<=0?0:Math.exp(-1/(sampleRate*seconds));
    this.reduction=coefficient*this.reduction+(1-coefficient)*reduction;
    const gain=10**(-this.reduction/20);
-   for(let ch=0;ch<out.length;ch++) out[ch][i]=(input[ch]?.[i]||input[0]?.[i]||0)*gain;
+   for(let ch=0;ch<out.length;ch++) out[ch][i]=(input[ch]?.[i]??input[0]?.[i]??0)*gain;
   } return true;
  }
 } registerProcessor('banger-sidechain',Sidechain);`;

@@ -1,4 +1,4 @@
-import { resolveArrangement, sampleAutomation, type MusicProgram, type MusicEffect, type AutomationCurve } from '@banger/compiler';
+import { resolveArrangement, sampleAutomation, type MusicProgram, type MusicEffect, type AutomationCurve, type ResolvedClip } from '@banger/compiler';
 import { hasSidechainWorklet } from './sidechain.js';
 import { createImpulse } from './sounds.js';
 export interface MeterLevel { peak: number; rms: number }
@@ -18,7 +18,7 @@ export function scheduleCurve(param: AudioParam, curve: AutomationCurve, offset:
 export function effectTail(effects: MusicEffect[] = [], automation: AutomationCurve[] = []): number {
   const maximum = (target: string, initial: number) => Math.max(initial, ...automation.filter(curve => curve.target === target).flatMap(curve => curve.points.map(point => point.value)));
   effects = effects.map(effect => effect.kind === 'delay' ? { ...effect, mix: maximum('delay.mix', effect.mix), time: maximum('delay.time', effect.time), feedback: maximum('delay.feedback', effect.feedback) } : effect.kind === 'reverb' ? { ...effect, mix: maximum('reverb.mix', effect.mix) } : effect);
-  return effects.reduce((tail, effect) => tail + (effect.kind === 'reverb' && effect.mix > 0 ? 1.2 : effect.kind === 'delay' && effect.mix > 0 ? Math.min(30, effect.time * (effect.feedback === 0 ? 1 : Math.ceil(Math.log(.0001) / Math.log(effect.feedback)))) : 0), 0);
+  return effects.reduce((tail, effect) => tail + (effect.kind === 'reverb' && effect.mix > 0 ? 1.2 : effect.kind === 'delay' && effect.mix > 0 ? (effect.time * (effect.feedback === 0 ? 1 : Math.ceil(Math.log(.0001) / Math.log(effect.feedback)))) : 0), 0);
 }
 export class MixerGraph {
   readonly tracks = new Map<string, Strip>();
@@ -27,10 +27,18 @@ export class MixerGraph {
   readonly tail: number;
   private readonly masterMeter?: AnalyserNode;
   private readonly nodes: AudioNode[] = [];
+  private readonly meterSamples = new WeakMap<AnalyserNode, Float32Array<ArrayBuffer>>();
   private readonly controls: ConstantSourceNode[] = [];
   private readonly keys: { input: AudioNode; source: string; port?: number }[] = [];
   private readonly impulse: AudioBuffer;
+  private readonly clips: ResolvedClip[];
+  private readonly clipsByBar = new Map<number, ResolvedClip[]>();
   constructor(private readonly context: BaseAudioContext, readonly program: MusicProgram, solo?: string) {
+    if (!hasSidechainWorklet(context) && [...program.tracks, ...program.buses ?? []].some(strip => strip.effects?.some(effect => effect.kind === 'compressor' && effect.sidechain))) throw new Error('Sidechain requires AudioWorklet. Call await prepareAudio(context) before constructing AudioRenderer on a secure origin.');
+    this.clips = resolveArrangement(program);
+    for (const clip of this.clips) for (let bar = Math.floor(clip.startBeat / 4); bar < Math.ceil((clip.startBeat + clip.durationBeats) / 4); bar++) {
+      const clips = this.clipsByBar.get(bar) ?? []; clips.push(clip); this.clipsByBar.set(bar, clips);
+    }
     this.impulse = createImpulse(context);
     this.master = this.keep(context.createGain()); this.master.gain.value = .6;
     // A fixed linear master keeps stem gain predictable; compression is explicit in the mixer.
@@ -52,7 +60,7 @@ export class MixerGraph {
     }
     for (const key of this.keys) this.tracks.get(key.source)!.input.connect(key.input, 0, key.port ?? 0);
     const busTail = (name: string): number => { const bus = program.buses!.find(bus => bus.name === name)!; return effectTail(bus.effects, bus.automation) + Math.max(0, ...(bus.sends ?? []).map(send => busTail(send.bus))); };
-    this.tail = .7 + Math.max(0, ...program.tracks.map(track => effectTail(track.effects, track.automation) + Math.max(track.output ? busTail(track.output) : 0, ...(track.sends ?? []).map(send => busTail(send.bus)))));
+    this.tail = Math.max(.7, ...program.tracks.filter(track => track.source.kind === 'sound').map(track => .65 * 2 ** (-Math.min(0, ...(track.automation ?? []).filter(curve => curve.target === 'pitch').flatMap(curve => curve.points.map(point => point.value))) / 12))) + Math.max(0, ...program.tracks.map(track => effectTail(track.effects, track.automation) + Math.max(track.output ? busTail(track.output) : 0, ...(track.sends ?? []).map(send => busTail(send.bus)))));
   }
   private keep<T extends AudioNode>(node: T): T { this.nodes.push(node); return node; }
   private meter(output: AudioNode): AnalyserNode | undefined {
@@ -60,7 +68,7 @@ export class MixerGraph {
     const meter = this.keep(this.context.createAnalyser()); meter.fftSize = 1024; output.connect(meter); return meter;
   }
   private strip(gain: number, pan = 0, effects: MusicEffect[] = []): Strip {
-    const context = this.context, input = this.keep(context.createGain()); input.gain.value = gain;
+    const context = this.context, input = this.keep(context.createGain()); input.gain.value = gain; input.channelCount = 2; input.channelCountMode = 'explicit';
     const parameters = new Map<string, AudioParam[]>();
     const bind = (name: string, parameter: AudioParam) => parameters.set(name, [...parameters.get(name) ?? [], parameter]);
     bind('gain', input.gain);
@@ -82,14 +90,7 @@ export class MixerGraph {
           }
           output.connect(compressor); output = compressor; this.keys.push({ input: compressor, source: effect.sidechain, port: 1 });
         } else if (effect.sidechain) {
-          // The key is actual post-fader audio. Rectify, map level to compression gain,
-          // smooth it, then drive the target gain AudioParam at audio rate.
-          const detector = this.keep(context.createWaveShaper()), smooth = this.keep(context.createBiquadFilter()), duck = this.keep(context.createGain());
-          const curve = new Float32Array(4097), threshold = 10 ** (effect.threshold / 20);
-          for (let i = 0; i < curve.length; i++) { const amplitude = Math.abs(i * 2 / (curve.length - 1) - 1); curve[i] = amplitude <= threshold ? 0 : (threshold / amplitude) ** (1 - 1 / effect.ratio) - 1; }
-          detector.curve = curve; smooth.type = 'lowpass'; smooth.frequency.value = 1 / (2 * Math.PI * Math.max(.001, (effect.attack + effect.release) / 2)); smooth.Q.value = .5;
-          duck.gain.value = 1; detector.connect(smooth).connect(duck.gain); output.connect(duck); output = duck;
-          this.keys.push({ input: detector, source: effect.sidechain });
+          throw new Error('Sidechain requires AudioWorklet. Call await prepareAudio(context) before constructing AudioRenderer on a secure origin.');
         } else {
           const compressor = this.keep(context.createDynamicsCompressor());
           compressor.threshold.value = effect.threshold; compressor.ratio.value = effect.ratio; compressor.attack.value = effect.attack; compressor.release.value = effect.release; compressor.knee.value = effect.knee;
@@ -126,7 +127,7 @@ export class MixerGraph {
   }
   automate(start: number, fromBeat: number, toBeat: number): void {
     const seconds = 60 / this.program.tempo;
-    for (const clip of resolveArrangement(this.program)) {
+    for (const clip of toBeat - fromBeat <= 4 ? this.clipsByBar.get(Math.floor(fromBeat / 4)) ?? [] : this.clips) {
       if (clip.startBeat >= toBeat || clip.startBeat + clip.durationBeats <= fromBeat) continue;
       const track = this.program.tracks.find(track => track.name === clip.track)!;
       for (const curve of track.automation ?? []) for (const parameter of this.tracks.get(track.name)!.parameters.get(curve.target) ?? [])
@@ -137,7 +138,7 @@ export class MixerGraph {
   get meters(): MeterSnapshot {
     const read = (meter?: AnalyserNode): MeterLevel => {
       if (!meter) return { peak: 0, rms: 0 };
-      const samples = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(samples); let peak = 0, square = 0;
+      let samples = this.meterSamples.get(meter); if (!samples) { samples = new Float32Array(meter.fftSize); this.meterSamples.set(meter, samples); } meter.getFloatTimeDomainData(samples); let peak = 0, square = 0;
       for (const sample of samples) { peak = Math.max(peak, Math.abs(sample)); square += sample * sample; }
       return { peak, rms: Math.sqrt(square / samples.length) };
     };

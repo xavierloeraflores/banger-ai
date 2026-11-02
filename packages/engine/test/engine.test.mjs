@@ -303,7 +303,7 @@ test('delay tails are bounded and zero mixes avoid effect node allocation', () =
   const context = new Context(), renderer = new AudioRenderer(context);
   const bar = renderer.renderBar(compileMusic(`track a { sound "drums/open-hat"; rhythm "x";
     effect delay { time 2; feedback .85; mix 1; } effect reverb { mix 0; } }`), 0);
-  assert.ok(bar.cleanupAt <= 32.7);
+  assert.ok(bar.cleanupAt <= 116.7);
   assert.equal(context.nodes.filter(n => n.kind === 'convolver').length, 0);
   renderer.dispose();
 });
@@ -360,4 +360,24 @@ test('automated zero-mix delays allocate effects and retain maximum automated ta
   ];
   const context = new Context(), renderer = new AudioRenderer(context), bar = renderer.renderBar(program, 0);
   assert.ok(context.nodes.some(node => node.kind === 'delay')); assert.ok(bar.cleanupAt > 25); renderer.dispose();
+});
+
+
+test('cached schedule handles 1024 bars without rereading source patterns on subsequent bars', () => {
+  const program = song(); program.tracks[0].steps = Array.from({ length: 64 }, () => ({ kind: 'hit' }));
+  program.sections = [{ name: 'long', bars: 64, tracks: [{ track: 'kick' }] }]; program.timeline = [{ section: 'long', repeats: 16 }];
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const first = renderer.renderBar(program, 0);
+  Object.defineProperty(program.tracks[0], 'steps', { get() { throw new Error('Pattern reread after cached schedule'); } });
+  const started = performance.now();
+  for (let bar = 1; bar < 100; bar++) renderer.renderBar(program, bar * 2, -Infinity, bar).dispose();
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 1000, `Cached scheduling took ${elapsed}ms`); first.dispose(); renderer.dispose();
+});
+
+test('silent sections retain their timeline labels in transport state', async t => {
+  environment(t); const player = new BangerPlayer(), program = song();
+  program.sections = [{ name: 'silence', bars: 1, tracks: [] }, { name: 'beat', bars: 1, tracks: [{ track: 'kick' }] }];
+  program.timeline = [{ section: 'silence' }, { section: 'beat' }];
+  await player.start(program); assert.equal(player.state.section, 'silence'); assert.equal(player.state.songBar, 1); await player.dispose();
 });

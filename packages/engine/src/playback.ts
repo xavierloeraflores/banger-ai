@@ -1,4 +1,4 @@
-import { copyMusicProgram, programDurationBeats, resolveArrangement, type MusicProgram } from '@banger/compiler';
+import { copyMusicProgram, programDurationBeats, type MusicProgram } from '@banger/compiler';
 import { AudioRenderer, type RenderedBar } from './audio.js';
 import { AudioClock } from './clock.js';
 import { prepareAudio } from './sidechain.js';
@@ -16,6 +16,16 @@ export class BangerPlayer {
   private disposed = false;
   private generation = 0;
   private closing?: Promise<void>;
+  private readonly positions = new WeakMap<MusicProgram, { beats: number; sections: (string | undefined)[] }>();
+  private position(program: MusicProgram) {
+    let position = this.positions.get(program);
+    if (!position) {
+      const beats = programDurationBeats(program), sections: (string | undefined)[] = [];
+      for (const entry of program.timeline ?? []) { const section = program.sections!.find(section => section.name === entry.section)!; for (let bar = 0; bar < section.bars * (entry.repeats ?? 1); bar++) sections.push(section.name); }
+      position = { beats, sections }; this.positions.set(program, position);
+    }
+    return position;
+  }
 
   get meters(): MeterSnapshot { return this.renderer?.meters ?? silentMeters(); }
 
@@ -28,8 +38,8 @@ export class BangerPlayer {
     const start = current?.start ?? (latest ? latest.start + elapsedBars * barDuration(latest.program) : now);
     const phase = program ? Math.max(0, Math.min(1 - Number.EPSILON, (now - start) / barDuration(program))) : 0;
     const index = current?.index ?? (latest ? latest.index + elapsedBars : 0);
-    const songBeat = program ? Math.max(0, index - 1) * 4 % programDurationBeats(program) : 0;
-    const section = program ? resolveArrangement(program).find(clip => clip.startBeat <= songBeat && clip.startBeat + clip.durationBeats > songBeat)?.section : undefined;
+    const songBeat = program ? Math.max(0, index - 1) * 4 % this.position(program).beats : 0;
+    const section = program ? this.position(program).sections[songBeat / 4] : undefined;
     return {
       ...(program ? { songBar: songBeat / 4 + 1, section } : {}),
       playing: this.running,
