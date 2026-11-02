@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FACTORY_PATCHES, INIT_SYNTH, SYNTH_RANGES, type MusicTrack, type SynthConfig, type SynthParameter, type SynthPatch } from "@banger/compiler";
 import { renderWav } from "@banger/engine";
-import { Button, Select } from "@banger/shadcn";
+import { Button, Input, Select } from "@banger/shadcn";
 import "./sound-design.css";
 
 const waves = [["sine", "Sine", "∿"], ["triangle", "Triangle", "△"], ["sawtooth", "Sawtooth", "⩘"], ["square", "Square", "⊓"]] as const;
@@ -15,6 +15,7 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
   const [status, setStatus] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const context = useRef<AudioContext | null>(null);
+  const patchName = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   const modular = track.modular !== undefined;
   const config = track.modular?.config ?? track.synth ?? INIT_SYNTH;
@@ -60,10 +61,11 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
       setStatus("Preview playing.");
     } catch (error) { if (request === generation.current) { setStatus(error instanceof Error ? error.message : "Preview failed."); setPreviewing(false); } }
   }
-  function loadPatch(patch: SynthPatch) { stopPreview(); onChange({ ...track, modular: structuredClone(patch) }); setStatus(`Loaded ${patch.name}.`); }
+  function loadPatch(patch: SynthPatch) { stopPreview(); if (patchName.current) patchName.current.value = patch.name; onChange({ ...track, modular: structuredClone(patch) }); setStatus(`Loaded ${patch.name}.`); }
   function savePatch() {
     if (!track.modular) return;
-    const name = window.prompt("Patch name", track.modular.name)?.trim(); if (!name) return;
+    const name = patchName.current?.value.trim() ?? "";
+    if (!name) { setStatus("Enter a patch name before saving."); patchName.current?.focus(); return; }
     if (name.length > 64) { setStatus("Use a patch name with at most 64 characters."); return; }
     const saved = { name, config: { ...track.modular.config } }, library = track.patchLibrary ?? [];
     if (library.length >= 32 && !library.some(patch => patch.name === name)) { setStatus("This track already has 32 saved patches."); return; }
@@ -80,6 +82,7 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
     {modular && <div className="sound-modular">
       <div className="sound-header"><Select value="" aria-label={`${track.name} factory patch`} onChange={event => { const patch = FACTORY_PATCHES.find(patch => patch.name === event.target.value); if (patch) loadPatch(patch); }}><option value="">Factory…</option>{FACTORY_PATCHES.map(patch => <option key={patch.name}>{patch.name}</option>)}</Select>
         {(track.patchLibrary?.length ?? 0) > 0 && <Select value="" aria-label={`${track.name} saved patch`} onChange={event => { const patch = track.patchLibrary?.find(patch => patch.name === event.target.value); if (patch) loadPatch(patch); }}><option value="">Saved patches…</option>{track.patchLibrary!.map(patch => <option key={patch.name}>{patch.name}</option>)}</Select>}
+        <label className="sound-patch-field">Patch name<Input key={track.modular?.name ?? "empty"} ref={patchName} defaultValue={track.modular?.name ?? ""} aria-label={`${track.name} patch name`} maxLength={64} disabled={!track.modular} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); savePatch(); } }} /></label>
         <Button disabled={!track.modular} onClick={savePatch}>Save patch</Button><Button disabled={!track.modular} onClick={() => { stopPreview(); onChange({ ...track, modular: null }); setStatus("Patch cleared. This track is silent."); }}>Clear patch</Button></div>
       {!track.modular ? <div className="sound-empty"><p>No patch loaded. This track is silent.</p><Button onClick={() => loadPatch(FACTORY_PATCHES[0]!)}>Start patching</Button></div> : <p className="sound-patch-name">{track.modular.name}</p>}
       <details open={!track.modular}><summary>Factory patches</summary><div className="sound-factory">{FACTORY_PATCHES.map(patch => <Button key={patch.name} variant="secondary" onClick={() => loadPatch(patch)}>{patch.name}</Button>)}</div></details>
