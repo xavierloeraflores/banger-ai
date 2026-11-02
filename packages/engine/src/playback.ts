@@ -1,8 +1,10 @@
-import { copyMusicProgram, type MusicProgram } from '@banger/compiler';
+import { copyMusicProgram, programDurationBeats, resolveArrangement, type MusicProgram } from '@banger/compiler';
 import { AudioRenderer, type RenderedBar } from './audio.js';
 import { AudioClock } from './clock.js';
+import { prepareAudio } from './sidechain.js';
+import { silentMeters, type MeterSnapshot } from './graph.js';
 import { barDuration } from './events.js';
-export interface PlaybackState { playing: boolean; bar: number; step: number; phase: number; tempo: number | null; hasPendingUpdate: boolean }
+export interface PlaybackState { playing: boolean; bar: number; step: number; phase: number; tempo: number | null; hasPendingUpdate: boolean; songBar?: number; section?: string }
 interface ScheduledBar { program: MusicProgram; start: number; end: number; index: number; audio: RenderedBar }
 export class BangerPlayer {
   private context?: AudioContext;
@@ -15,6 +17,8 @@ export class BangerPlayer {
   private generation = 0;
   private closing?: Promise<void>;
 
+  get meters(): MeterSnapshot { return this.renderer?.meters ?? silentMeters(); }
+
   get state(): PlaybackState {
     const now = this.context?.currentTime ?? 0;
     const current = this.bars.findLast(bar => bar.start <= now && bar.end > now);
@@ -23,7 +27,11 @@ export class BangerPlayer {
     const elapsedBars = latest && now >= latest.end ? Math.floor((now - latest.start) / barDuration(latest.program)) : 0;
     const start = current?.start ?? (latest ? latest.start + elapsedBars * barDuration(latest.program) : now);
     const phase = program ? Math.max(0, Math.min(1 - Number.EPSILON, (now - start) / barDuration(program))) : 0;
+    const index = current?.index ?? (latest ? latest.index + elapsedBars : 0);
+    const songBeat = program ? Math.max(0, index - 1) * 4 % programDurationBeats(program) : 0;
+    const section = program ? resolveArrangement(program).find(clip => clip.startBeat <= songBeat && clip.startBeat + clip.durationBeats > songBeat)?.section : undefined;
     return {
+      ...(program ? { songBar: songBeat / 4 + 1, section } : {}),
       playing: this.running,
       bar: current?.index ?? (latest ? latest.index + elapsedBars : 0),
       step: Math.floor(phase * 16),
@@ -42,6 +50,7 @@ export class BangerPlayer {
       this.context = new AudioContext();
     }
     await this.context.resume();
+    await prepareAudio(this.context);
     if (generation !== this.generation || this.disposed) return;
     if (this.context.state !== 'running') throw new Error('Audio could not start. Press Play to retry.');
     this.renderer ??= new AudioRenderer(this.context);
@@ -77,7 +86,7 @@ export class BangerPlayer {
   }
   private schedule(program: MusicProgram, start: number, index: number): ScheduledBar {
     return { program, start, end: start + barDuration(program), index,
-      audio: this.renderer!.renderBar(program, start, this.context!.currentTime) };
+      audio: this.renderer!.renderBar(program, start, this.context!.currentTime, index - 1) };
   }
   private tick(): void {
     if (!this.running || this.context?.state !== 'running') return;
