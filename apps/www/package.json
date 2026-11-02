@@ -13,6 +13,7 @@
   "dependencies": {
     "@banger/agent": "workspace:*",
     "@banger/compiler": "workspace:*",
+    "@banger/elevenlabs": "workspace:*",
     "@banger/engine": "workspace:*",
     "@banger/shadcn": "workspace:*",
     "@vercel/blob": "^2.8.2",

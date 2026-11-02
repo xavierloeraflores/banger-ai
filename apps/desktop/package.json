@@ -35,6 +35,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",
     "@banger/agent": "workspace:*",
+    "@banger/elevenlabs": "workspace:*",
     "@banger/harness": "workspace:*",
     "jose": "^6.2.14"
   }

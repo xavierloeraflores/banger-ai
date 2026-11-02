@@ -26,6 +26,9 @@ importers:
       '@banger/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@banger/elevenlabs':
+        specifier: workspace:*
+        version: link:../../packages/elevenlabs
       '@banger/harness':
         specifier: workspace:*
         version: link:../../packages/harness
@@ -90,6 +93,9 @@ importers:
       '@banger/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@banger/elevenlabs':
+        specifier: workspace:*
+        version: link:../../packages/elevenlabs
       '@banger/harness':
         specifier: workspace:*
         version: link:../../packages/harness
@@ -124,6 +130,9 @@ importers:
       '@banger/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
+      '@banger/elevenlabs':
+        specifier: workspace:*
+        version: link:../../packages/elevenlabs
       '@banger/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -219,6 +228,31 @@ importers:
       '@banger/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      eslint:
+        specifier: ^9.39.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/elevenlabs:
+    dependencies:
+      '@elevenlabs/elevenlabs-js':
+        specifier: ^2.75.0
+        version: 2.75.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@banger/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@banger/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^22.19.0
+        version: 22.20.5
       eslint:
         specifier: ^9.39.0
         version: 9.39.5
@@ -434,6 +468,10 @@ packages:
   '@electron/get@5.1.0':
     resolution: {integrity: sha512-3kSBtG8ObcTVfXanm5vVJ6UnBLEVmVsRk1M+vGqCuMBV+XLCbJYuWQful+yIy0GQDsSlK0kHEriEHn7SPk4EnA==}
     engines: {node: '>=22.12.0'}
+
+  '@elevenlabs/elevenlabs-js@2.75.0':
+    resolution: {integrity: sha512-sCEddZAQS+JdAvD+jnqXund75mygRkHzgigqbWsQpcJozwe15FOtymS2+28YMOY06Pmja9l8EUE1LlXAtlW0Nw==}
+    engines: {node: '>=18.0.0'}
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
@@ -1564,6 +1602,9 @@ packages:
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
+  command-exists@1.2.9:
+    resolution: {integrity: sha512-LTQ/SGc+s0Xc0Fu5WaKnR0YiygZkm9eKFvyS+fRsU7/ZWFF8ykFM6Pc9aCVf1+xasOOZpO3BAVgVrKvsqKHV7w==}
+
   compressible@2.0.18:
     resolution: {integrity: sha512-AF3r7P5dWxL8MxyITRMlORQNaOA2IkAFaTr4k7BUumjPtRpGDTZpl0Pb1XCO6JeDCBdp126Cgs9sMxqSjgYyRg==}
     engines: {node: '>= 0.6'}
@@ -2368,6 +2409,15 @@ packages:
     resolution: {integrity: sha512-kXs9Go0cah0qHVV2v389IXQLdLCeE1xfFtjOAF+iobu0OIoG1pje8At2vMHyaPMiPMnG/LWP50twML21eMcAag==}
     engines: {node: '>= 0.4'}
 
+  node-fetch@2.7.0:
+    resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
+    engines: {node: 4.x || >=6.0.0}
+    peerDependencies:
+      encoding: ^0.1.0
+    peerDependenciesMeta:
+      encoding:
+        optional: true
+
   node-releases@2.0.63:
     resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
     engines: {node: '>=18'}
@@ -2805,6 +2855,9 @@ packages:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
 
+  tr46@0.0.3:
+    resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
+
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
     engines: {node: '>=18.12'}
@@ -2899,6 +2952,12 @@ packages:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
 
+  webidl-conversions@3.0.1:
+    resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
+
+  whatwg-url@5.0.0:
+    resolution: {integrity: sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==}
+
   which-boxed-primitive@1.1.1:
     resolution: {integrity: sha512-TbX3mj8n0odCBFVlY8AxkqcHASw3L60jIuF8jFP78az3C2YhmGvqbHBpAjTRH2/xqYunrJ9g1jSyjCjpoWzIAA==}
     engines: {node: '>= 0.4'}
@@ -2931,6 +2990,18 @@ packages:
   wrap-ansi@8.1.0:
     resolution: {integrity: sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==}
     engines: {node: '>=12'}
+
+  ws@8.22.1:
+    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
 
   xdg-app-paths@5.1.0:
     resolution: {integrity: sha512-RAQ3WkPf4KTU1A8RtFx3gWywzVKe00tfOPFfl2NDGqbIFENQO4kqAJp7mhQjNj/33W5x5hiWWUdyfPq/5SU3QA==}
@@ -3127,6 +3198,16 @@ snapshots:
       undici: 7.30.1
     transitivePeerDependencies:
       - supports-color
+
+  '@elevenlabs/elevenlabs-js@2.75.0':
+    dependencies:
+      command-exists: 1.2.9
+      node-fetch: 2.7.0
+      ws: 8.22.1
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - utf-8-validate
 
   '@emnapi/runtime@1.11.3':
     dependencies:
@@ -4025,6 +4106,8 @@ snapshots:
       color-name: 1.1.4
 
   color-name@1.1.4: {}
+
+  command-exists@1.2.9: {}
 
   compressible@2.0.18:
     dependencies:
@@ -4999,6 +5082,10 @@ snapshots:
       object.entries: 1.1.9
       semver: 6.3.1
 
+  node-fetch@2.7.0:
+    dependencies:
+      whatwg-url: 5.0.0
+
   node-releases@2.0.63: {}
 
   npm-run-path@4.0.1:
@@ -5523,6 +5610,8 @@ snapshots:
     dependencies:
       is-number: 7.0.0
 
+  tr46@0.0.3: {}
+
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:
       typescript: 5.9.3
@@ -5660,6 +5749,13 @@ snapshots:
 
   vary@1.1.2: {}
 
+  webidl-conversions@3.0.1: {}
+
+  whatwg-url@5.0.0:
+    dependencies:
+      tr46: 0.0.3
+      webidl-conversions: 3.0.1
+
   which-boxed-primitive@1.1.1:
     dependencies:
       is-bigint: 1.1.0
@@ -5716,6 +5812,8 @@ snapshots:
       ansi-styles: 6.2.3
       string-width: 5.1.2
       strip-ansi: 7.2.0
+
+  ws@8.22.1: {}
 
   xdg-app-paths@5.1.0:
     dependencies:
