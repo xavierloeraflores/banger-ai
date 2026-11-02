@@ -20,6 +20,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [targetFile, setTargetFile] = useState<string | null>(null);
   const [local, setLocal] = useState(false);
   const [connection, setConnection] = useState("Choose a provider in BYOK");
   const [saving, setSaving] = useState(false);
@@ -28,6 +29,18 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
   const transcript = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const busy = pendingPrompt !== null;
+  const latestFiles = new Map<string, BangerFile>();
+  for (const turn of turns) for (const file of turn.reply.files) {
+    latestFiles.delete(file.name);
+    latestFiles.set(file.name, file);
+  }
+  const selectedTarget = targetFile && latestFiles.has(targetFile) ? targetFile : null;
+  const availableFiles = [...latestFiles.values()].slice(-4);
+  // An older card remains editable even after newer proposals fill the context window.
+  if (selectedTarget && !availableFiles.some(file => file.name === selectedTarget)) {
+    availableFiles.shift();
+    availableFiles.push(latestFiles.get(selectedTarget)!);
+  }
 
   useEffect(() => {
     let active = true;
@@ -36,7 +49,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         if (!active) return;
         const provider = AI_PROVIDERS.find(item => item.id === settings.activeProvider);
         setLocal(Boolean(settings.localSelected));
-        setConnection(settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · ${settings.providers[provider.id]?.model || "Choose a model in BYOK"}` : "Choose a provider in BYOK");
+        setConnection(settings.chatgpt?.selected ? `ChatGPT · ${settings.chatgpt.accounts.find(account => account.id === settings.chatgpt?.activeAccountId)?.model ?? "Choose a model"}` : settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · ${settings.providers[provider.id]?.model || "Choose a model in BYOK"}` : "Choose a provider in BYOK");
       }).catch(() => { if (active) setConnection("AI settings unavailable"); });
     };
     refresh();
@@ -62,12 +75,13 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
       { role: "user", content: turn.prompt },
       { role: "assistant", content: turn.reply.text.slice(0, 4000) },
     ]);
-    const previousFiles = recent.flatMap(turn => turn.reply.files).slice(-4);
+    const previousFiles = availableFiles;
     try {
-      const reply = await sendChat({ messages: [...messages, { role: "user", content: text }], currentFile: { name: fileName, source }, previousFiles }, controller.signal);
+      const reply = await sendChat({ messages: [...messages, { role: "user", content: text }], currentFile: { name: fileName, source }, previousFiles, targetFile: selectedTarget ?? fileName, targetVersion: selectedTarget ? "generated" : "editor" }, controller.signal);
       if (request.current !== controller) return;
       setTurns(previous => [...previous, { prompt: text, reply, revision: snapshotRevision }]);
       setPrompt("");
+      if (reply.files.length) setTargetFile(reply.files[0]!.name);
     } catch (cause) {
       if (controller.signal.aborted) setNotice("Generation stopped. Your project is unchanged.");
       else setError(cause instanceof Error ? cause.message : "Could not generate a reply. Try again.");
@@ -112,7 +126,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
     <div className="producer-panel-heading">
       <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Describe your next banger</h2></div>
       <div className="ai-chat-heading-actions"><span className="producer-tag">{connection}</span>
-        <Button variant="ghost" disabled={busy || !turns.length} onClick={() => { setTurns([]); setPrompt(""); setError(null); setNotice(""); }}>New chat</Button>
+        <Button variant="ghost" disabled={busy || !turns.length} onClick={() => { setTurns([]); setTargetFile(null); setPrompt(""); setError(null); setNotice(""); }}>New chat</Button>
         <IconButton className="ai-chat-close" variant="ghost" aria-label="Close AI chat" onClick={() => dialog.current?.close()}>×</IconButton>
       </div>
     </div>
@@ -125,10 +139,11 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         <p className="ai-chat-user"><span className="producer-sr-only">You: </span>{turn.prompt}</p>
         <p className="ai-chat-answer"><span className="producer-sr-only">Banger: </span>{turn.reply.text}</p>
         <div className="ai-chat-files">{turn.reply.files.map(file => <article className="ai-chat-file" key={file.name}>
-          <div className="ai-chat-file-heading"><strong>{file.name}</strong><span>Compiled</span></div>
+          <div className="ai-chat-file-heading"><strong>{file.name}</strong><span>{file.operation === "edit" ? "Revision compiled" : "Compiled"}</span></div>
           <details><summary>Preview source</summary><pre>{file.source}</pre></details>
           <div className="ai-chat-file-actions">
             <Button variant="primary" disabled={fileBusy || saving} onClick={() => onLoad(file, turn.revision)}>Load in studio</Button>
+            <Button disabled={busy} onClick={() => { setTargetFile(file.name); input.current?.focus(); }}>Edit this file</Button>
             <Button disabled={fileBusy || saving} onClick={() => void save(file)}>Save file</Button>
           </div>
         </article>)}</div>
@@ -136,6 +151,12 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
       </div>)}
       {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">Composing and checking your files…</p></div>}
     </div>
+    <label className="ai-chat-target">Editing
+      <select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
+        <option value="">{fileName} · current editor</option>
+        {availableFiles.map(file => <option key={file.name} value={file.name}>{file.name} · latest proposal</option>)}
+      </select>
+    </label>
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
       <label className="producer-sr-only" htmlFor="ai-chat-prompt">Message Banger AI</label>
       <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={4000} value={prompt} disabled={busy}

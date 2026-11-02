@@ -15,7 +15,7 @@ function checkedReply(value: unknown): ChatReply {
   if (!reply || typeof reply.text !== "string" || reply.text.length > 5000 || typeof reply.model !== "string" || reply.model.length > 200 ||
       !Array.isArray(reply.files) || reply.files.length > 4) throw new Error("The AI returned an invalid reply. Try again.");
   for (const file of reply.files) {
-    if (!file || typeof file.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,75}\.banger$/.test(file.name) ||
+    if (!file || typeof file.name !== "string" || (file.name.length > 100 || !file.name.endsWith(".banger") || /[\/\\\x00-\x1f\x7f]/.test(file.name)) ||
         typeof file.source !== "string" || file.source.length > 65536) throw new Error("The AI returned an invalid file. Try again.");
     compileMusic(file.source);
   }

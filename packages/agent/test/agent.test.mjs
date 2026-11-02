@@ -125,3 +125,95 @@ test("local inference authenticates on loopback and returns compiler-validated t
     for (const port of [0, -1, 65536, 1.5]) assert.throws(() => selectLocalModel(port, "token"));
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+const editCall = (id, name, edits) => ({ type: 'tool-call', toolCallId: id, toolName: 'edit_banger_file', input: JSON.stringify({ name, edits }) });
+
+test('follow-up edits the previous file without renaming or losing unrelated source', async () => {
+  const original = `${source}\n// preserve my arrangement\ntrack bass { instrument "synth/bass"; notes "C2 . G2 ."; gain .3; }`;
+  const model = new MockLanguageModelV4({ doGenerate: [
+    response([editCall('edit', 'previous.banger', [{ oldText: 'tempo 120;', newText: 'tempo 95;' }])], 'tool-calls'),
+    response([{ type: 'text', text: 'Slowed your previous loop to 95 BPM.' }]),
+  ] });
+  const result = await runBangerAgent({ ...request, targetFile: 'previous.banger', previousFiles: [{ name: 'previous.banger', source: original }] }, { model, name: 'test' });
+  assert.equal(result.files.length, 1);
+  assert.equal(result.files[0].name, 'previous.banger');
+  assert.equal(result.files[0].operation, 'edit');
+  assert.equal(result.files[0].source, original.replace('tempo 120;', 'tempo 95;'));
+});
+
+test('revisions use current editor source, repair invalid edits, and reject ambiguous replacements', async () => {
+  const latest = source.replace('120', '140');
+  const model = new MockLanguageModelV4({ doGenerate: [
+    response([editCall('stale', 'loop.banger', [{ oldText: 'tempo 120;', newText: 'tempo 90;' }])], 'tool-calls'),
+    response([editCall('invalid', 'loop.banger', [{ oldText: 'tempo 140;', newText: 'tempo 900;' }])], 'tool-calls'),
+    response([editCall('fixed', 'loop.banger', [{ oldText: 'tempo 140;', newText: 'tempo 90;' }])], 'tool-calls'),
+    response([{ type: 'text', text: 'Revised.' }]),
+  ] });
+  const result = await runBangerAgent({ ...request, currentFile: { name: 'loop.banger', source: latest }, previousFiles: [request.currentFile] }, { model, name: 'test' });
+  assert.equal(result.files[0].source, latest.replace('140', '90'));
+  assert.ok(JSON.stringify(model.doGenerateCalls[1].prompt).includes('match exactly once'));
+  assert.ok(JSON.stringify(model.doGenerateCalls[2].prompt).includes('"ok":false'));
+});
+
+test('unknown files and attempts to recreate existing files cannot replace them', async () => {
+  const model = new MockLanguageModelV4({ doGenerate: [
+    response([call('replace', 'loop.banger', source), editCall('unknown', 'absent.banger', [{ oldText: '120', newText: '90' }]), editCall('ambiguous', 'loop.banger', [{ oldText: 'x', newText: '.' }])], 'tool-calls'),
+    response([{ type: 'text', text: 'No changes.' }]),
+  ] });
+  const result = await runBangerAgent(request, { model, name: 'test' });
+  assert.equal(result.files.length, 0);
+  assert.ok(JSON.stringify(model.doGenerateCalls[1].prompt).includes('Use edit_banger_file'));
+  assert.ok(JSON.stringify(model.doGenerateCalls[1].prompt).includes('Unknown file'));
+});
+
+test('successive revisions of the same filename use the selected latest proposal', async () => {
+  const proposal = source.replace('120', '90');
+  const model = new MockLanguageModelV4({ doGenerate: [
+    response([editCall('edit', 'loop.banger', [{ oldText: 'tempo 90;', newText: 'tempo 80;' }])], 'tool-calls'),
+    response([{ type: 'text', text: 'Slower again.' }]),
+  ] });
+  const result = await runBangerAgent({ ...request, targetFile: 'loop.banger', targetVersion: 'generated', previousFiles: [{ name: 'loop.banger', source: proposal }] }, { model, name: 'test' });
+  assert.equal(result.files[0].source, proposal.replace('90', '80'));
+});
+
+test('agent generation accepts the expanded musical vocabulary', () => {
+  const file = validateGeneratedFile('bells.banger', `track bells { instrument "synth/bell"; notes "C4 E4 G4 ."; pan -.3; effect filter { cutoff 2500; resonance 1; } effect delay { time .375; feedback .4; mix .25; } effect reverb { mix .2; } }`);
+  const track = compileMusic(file.source).tracks[0];
+  assert.equal(track.source.name, 'synth/bell');
+  assert.equal(track.pan, -.3);
+  assert.deepEqual(track.effects.map(effect => effect.kind), ['filter', 'delay', 'reverb']);
+});
+
+
+test('two follow-up requests retain both revisions and editor selection preserves manual source', async () => {
+  const original = `${source}\n// untouched arrangement\ntrack bass { instrument "synth/bass"; notes "C2 . G2 ."; gain .3; }`;
+  const revise = async (input, oldText, newText) => runBangerAgent(input, {
+    name: 'test',
+    model: new MockLanguageModelV4({ doGenerate: [
+      response([editCall('edit', 'loop.banger', [{ oldText, newText }])], 'tool-calls'),
+      response([{ type: 'text', text: 'Revised.' }]),
+    ] }),
+  });
+  const first = await revise({ ...request, currentFile: { name: 'loop.banger', source: original } }, 'tempo 120;', 'tempo 95;');
+  const second = await revise({ ...request, currentFile: { name: 'loop.banger', source: original }, previousFiles: first.files, targetFile: 'loop.banger', targetVersion: 'generated' }, 'gain 0.6;', 'gain 0.4;');
+  assert.equal(second.files[0].source, original.replace('tempo 120;', 'tempo 95;').replace('gain 0.6;', 'gain 0.4;'));
+  const manual = `${second.files[0].source}\n// my manual edit\n`;
+  const third = await revise({ ...request, currentFile: { name: 'loop.banger', source: manual }, previousFiles: second.files, targetFile: 'loop.banger', targetVersion: 'editor' }, 'tempo 95;', 'tempo 90;');
+  assert.equal(third.files[0].source, manual.replace('tempo 95;', 'tempo 90;'));
+});
+
+test('missing selected proposals fail before generation rather than silently editing the current file', async () => {
+  const model = new MockLanguageModelV4({ doGenerate: response([{ type: 'text', text: 'unused' }]) });
+  await assert.rejects(runBangerAgent({ ...request, targetFile: 'loop.banger', targetVersion: 'generated' }, { model, name: 'test' }), /selected proposal/);
+  assert.equal(model.doGenerateCalls.length, 0);
+});
+
+test('a failed replacement batch leaves the latest source unchanged for repair', async () => {
+  const model = new MockLanguageModelV4({ doGenerate: [
+    response([editCall('failed', 'loop.banger', [{ oldText: 'tempo 120;', newText: 'tempo 95;' }, { oldText: 'missing text', newText: '' }])], 'tool-calls'),
+    response([editCall('repair', 'loop.banger', [{ oldText: 'tempo 120;', newText: 'tempo 90;' }])], 'tool-calls'),
+    response([{ type: 'text', text: 'Revised.' }]),
+  ] });
+  const result = await runBangerAgent(request, { model, name: 'test' });
+  assert.equal(result.files[0].source, source.replace('tempo 120;', 'tempo 90;'));
+});

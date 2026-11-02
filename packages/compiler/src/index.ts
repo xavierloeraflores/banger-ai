@@ -3,7 +3,7 @@ import { validateMusicProgram, type MusicProgram } from './model.js';
 export { compileMusic } from './parser.js';
 export { CompileError, type Position } from './lexer.js';
 export { copyMusicProgram, pianoNotes, validateMusicProgram, MUSIC_LIMITS, SOUND_NAMES, INSTRUMENT_NAMES } from './model.js';
-export type { MusicProgram, MusicTrack, PianoNote, Step, SoundName, InstrumentName, ReverbEffect } from './model.js';
+export type { MusicProgram, MusicTrack, PianoNote, Step, SoundName, InstrumentName, ReverbEffect, DelayEffect, FilterEffect, MusicEffect } from './model.js';
 
 export function serializeMusic(program: MusicProgram): string {
   validateMusicProgram(program);
@@ -17,7 +17,12 @@ export function serializeMusic(program: MusicProgram): string {
         ? [`  ${track.source.kind === 'sound' ? 'rhythm' : 'notes'} ${JSON.stringify(pattern)};`]
         : ['  piano {', ...track.pianoRoll.map(note => `    note ${JSON.stringify(pitch(note.midi))} start ${note.start} duration ${note.duration} velocity ${note.velocity};`), '  }']),
       `  gain ${track.gain};`);
-    for (const effect of track.effects ?? []) lines.push(`  effect reverb { mix ${effect.mix}; }`);
+    if (track.pan !== undefined) lines.push(`  pan ${track.pan};`);
+    for (const effect of track.effects ?? []) {
+      if (effect.kind === 'reverb') lines.push(`  effect reverb { mix ${effect.mix}; }`);
+      else if (effect.kind === 'delay') lines.push(`  effect delay { mix ${effect.mix}; time ${effect.time}; feedback ${effect.feedback}; }`);
+      else lines.push(`  effect filter { cutoff ${effect.cutoff}; resonance ${effect.resonance}; }`);
+    }
     lines.push('}');
   }
   return `${lines.join('\n')}\n`;

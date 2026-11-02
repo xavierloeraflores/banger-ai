@@ -11,7 +11,7 @@ class Param {
   exponentialRampToValueAtTime(value, time) { assert.ok(value > 0); this.events.push({ value, time }); }
 }
 class Node {
-  gain = new Param(); frequency = new Param(); connections = []; starts = []; stops = [];
+  gain = new Param(); frequency = new Param(); detune = new Param(); delayTime = new Param(); Q = new Param(); pan = new Param(); connections = []; starts = []; stops = [];
   constructor(context, kind) { this.context = context; this.kind = kind; context.nodes.push(this); }
   connect(node) { this.connections.push(node); return node; }
   disconnect() { this.connections = []; }
@@ -26,6 +26,9 @@ class Context {
   async close() { this.closeCalls++; this.state = 'closed'; }
   createGain() { return new Node(this, 'gain'); }
   createDynamicsCompressor() { return new Node(this, 'compressor'); }
+  createBiquadFilter() { return new Node(this, 'filter'); }
+  createDelay() { return new Node(this, 'delay'); }
+  createStereoPanner() { return new Node(this, 'panner'); }
   createConvolver() { return new Node(this, 'convolver'); }
   createBufferSource() { return new Node(this, 'buffer'); }
   createOscillator() { return new Node(this, 'oscillator'); }
@@ -241,4 +244,77 @@ test('piano edits are copied, scheduled at the next bar and stopped together', a
   near(context.sources[3].frequency.value, 440 * 2 ** ((60 - 69) / 12));
   player.stop(); assert.ok(context.sources.every(s => !s.connections.length));
   await player.dispose();
+});
+
+
+test('every instrument renders its own voicing and releases overlapping piano notes', async () => {
+  const { INSTRUMENT_NAMES } = await import('@banger/compiler');
+  const signatures = new Set();
+  for (const name of INSTRUMENT_NAMES) {
+    const context = new Context(), renderer = new AudioRenderer(context);
+    const program = compileMusic(`track a { instrument "${name}"; piano {
+      note "A4" start 0 duration 4 velocity .8;
+      note "C5" start 1 duration 2 velocity .4;
+    } }`);
+    const bar = renderer.renderBar(program, 1);
+    assert.ok(context.sources.every(source => source.stops[0] <= bar.cleanupAt));
+    signatures.add(JSON.stringify(context.sources.filter(s => s.starts[0] === 1).map(s => [s.type, s.frequency.value, s.detune.value])));
+    bar.dispose(); renderer.dispose();
+    assert.ok(context.nodes.every(node => node.connections.length === 0));
+  }
+  assert.equal(signatures.size, INSTRUMENT_NAMES.length);
+});
+
+test('all drum sounds render finite, distinct samples with quiet boundaries', async () => {
+  const { SOUND_NAMES } = await import('@banger/compiler');
+  const samples = [];
+  for (const name of SOUND_NAMES) {
+    const context = new Context(), renderer = new AudioRenderer(context);
+    renderer.renderBar(compileMusic(`track a { sound "${name}"; rhythm "x"; }`), 0);
+    const data = context.sources[0].buffer.getChannelData(0);
+    assert.ok(data.every(Number.isFinite)); assert.ok(data.some(value => Math.abs(value) > .01));
+    assert.equal(Math.abs(data[0]), 0); assert.equal(Math.abs(data.at(-1)), 0);
+    samples.push(Array.from(data.slice(10, 30))); renderer.dispose();
+  }
+  assert.equal(new Set(samples.map(s => JSON.stringify(s))).size, SOUND_NAMES.length);
+});
+
+test('ordered filter, feedback delay, reverb and stereo pan connect and clean up', () => {
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const bar = renderer.renderBar(compileMusic(`track a { instrument "synth/pad"; notes "C4"; pan -.75;
+    effect filter { cutoff 1200; resonance 3; }
+    effect delay { time .375; feedback .45; mix .3; }
+    effect reverb { mix .2; }
+  }`), 0);
+  const node = kind => context.nodes.find(n => n.kind === kind);
+  assert.equal(node('filter').frequency.value, 1200); assert.equal(node('filter').Q.value, 3);
+  assert.equal(node('delay').delayTime.value, .375); assert.equal(node('panner').pan.value, -.75);
+  assert.ok(node('filter').connections.includes(node('delay')));
+  const feedback = node('delay').connections.find(n => n.connections.includes(node('delay')));
+  assert.equal(feedback.gain.value, .45);
+  assert.ok(feedback.gain.events.some(e => e.value === 0 && e.time < bar.cleanupAt));
+  assert.ok(bar.cleanupAt > 4);
+  bar.dispose(); renderer.dispose(); assert.ok(context.nodes.every(n => !n.connections.length));
+});
+
+test('delay tails are bounded and zero mixes avoid effect node allocation', () => {
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const bar = renderer.renderBar(compileMusic(`track a { sound "drums/open-hat"; rhythm "x";
+    effect delay { time 2; feedback .85; mix 1; } effect reverb { mix 0; } }`), 0);
+  assert.ok(bar.cleanupAt <= 10.7);
+  assert.equal(context.nodes.filter(n => n.kind === 'convolver').length, 0);
+  renderer.dispose();
+});
+
+
+test('player stop disconnects feedback graphs and cancels all layered voices', async t => {
+  environment(t); const player = new BangerPlayer();
+  await player.start(compileMusic(`track a { instrument "synth/organ"; notes "C4 E4";
+    effect delay { feedback .85; } effect filter {} pan .5; }`));
+  const context = Context.instances[0];
+  assert.equal(context.sources.length, 6);
+  player.stop();
+  assert.ok(context.sources.every(s => s.stops.length >= 2 && !s.connections.length));
+  assert.ok(context.nodes.filter(n => ['delay', 'filter', 'panner'].includes(n.kind)).every(n => !n.connections.length));
+  await player.dispose(); assert.ok(context.nodes.every(n => !n.connections.length));
 });

@@ -7,13 +7,17 @@ import {
   serializeMusic,
   type MusicProgram,
   type MusicTrack,
+  type SoundName,
+  type InstrumentName,
 } from "@banger/compiler";
 import { Button, IconButton, Input, Panel, Range, Select, StepButton } from "@banger/shadcn";
 import { openProject, saveProject } from "@/lib/project-files";
+import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
 import { usePlayer } from "./use-player";
 import { ByokSettings } from "./byok-menu";
 import { AIModelSelect } from "./ai-model-select";
+import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
@@ -29,8 +33,15 @@ const sounds = [
   ["drums/kick", "Kick"],
   ["drums/snare", "Snare"],
   ["drums/hat", "Hi-hat"],
+  ["drums/clap", "Clap"],
+  ["drums/tom", "Tom"],
+  ["drums/open-hat", "Open hi-hat"],
   ["synth/bass", "Bass"],
   ["synth/pluck", "Pluck"],
+  ["synth/lead", "Lead"],
+  ["synth/pad", "Pad"],
+  ["synth/bell", "Bell"],
+  ["synth/organ", "Organ"],
 ] as const;
 const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const noteName = (midi: number) => `${notes[midi % 12]}${Math.floor(midi / 12) - 1}`;
@@ -218,8 +229,8 @@ export function Producer() {
     const selected = sounds.find(([value]) => value === name);
     if (!selected) return;
     const nextSource: MusicTrack["source"] = instrument
-      ? { kind: "instrument", name: name as "synth/bass" | "synth/pluck" }
-      : { kind: "sound", name: name as "drums/kick" | "drums/snare" | "drums/hat" };
+      ? { kind: "instrument", name: name as InstrumentName }
+      : { kind: "sound", name: name as SoundName };
     if (track.pianoRoll !== undefined && !instrument) {
       if (!window.confirm("Switch this piano roll to drums? Note lengths, pitches, and velocities will be replaced by a 16-step rhythm.")) return;
       const { pianoRoll, ...rest } = track;
@@ -335,6 +346,7 @@ export function Producer() {
                       <span className="producer-track-length">{track.pianoRoll ? `${track.pianoRoll.length} notes` : `${track.steps.length} steps`}</span>
                       <IconButton variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>×</IconButton>
                     </div>
+                    <TrackEffects track={track} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} />
                     {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}`} track={track} disabled={draft || fileBusy} visible={view === "sequencer"} playing={playback.state.playing} phase={playback.state.phase} onChange={next => editTrack(index, next)} />}
                   </div>
                 ))}
@@ -360,6 +372,7 @@ export function Producer() {
         <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
           {view === "byok" && <ByokSettings />}
         </div>
+        <DesktopProjectWorkspace onLoad={file => { if (!window.confirm("Load this workspace file in the studio and replace the current studio editor?")) return; loadGeneratedFile(file, sourceRevision); }} />
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
       </div>
       <footer className="producer-footer"><span>banger / music in plain text</span><span role="status">{notice ?? "One bar. Start somewhere."}</span></footer>

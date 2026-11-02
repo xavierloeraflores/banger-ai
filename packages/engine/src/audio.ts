@@ -1,5 +1,6 @@
 import type { MusicProgram, MusicTrack } from '@banger/compiler';
 import { barDuration, eventsForBar } from './events.js';
+import { instruments } from './instruments.js';
 import { createDrums, createImpulse } from './sounds.js';
 export interface RenderedBar { cleanupAt: number; dispose(): void }
 export class AudioRenderer {
@@ -22,21 +23,49 @@ export class AudioRenderer {
     const events = eventsForBar(program, start);
     const context = this.context, nodes: AudioNode[] = [], sources = new Set<AudioScheduledSourceNode>();
     const inputs = new Map<MusicTrack, GainNode>();
-    let tail = .5;
+    let tail = .7;
     for (const track of program.tracks) {
       const input = context.createGain();
       input.gain.value = track.gain;
       inputs.set(track, input); nodes.push(input);
-      const effect = track.effects?.[0];
-      if (effect && effect.mix > 0) {
-        const convolver = context.createConvolver(), dry = context.createGain(), wet = context.createGain();
-        convolver.buffer = this.impulse;
-        dry.gain.value = 1 - effect.mix; wet.gain.value = effect.mix;
-        input.connect(dry).connect(this.master);
-        input.connect(convolver).connect(wet).connect(this.master);
-        nodes.push(convolver, dry, wet);
-        tail = 1.7;
-      } else input.connect(this.master);
+      let output: AudioNode = input;
+      let trackTail = .7;
+      for (const effect of track.effects ?? []) {
+        if (effect.kind === 'filter') {
+          const filter = context.createBiquadFilter();
+          filter.type = 'lowpass'; filter.frequency.value = Math.min(effect.cutoff, context.sampleRate / 2);
+          filter.Q.value = effect.resonance;
+          output.connect(filter); output = filter; nodes.push(filter);
+        } else if (effect.mix > 0) {
+          const dry = context.createGain(), wet = context.createGain(), sum = context.createGain();
+          dry.gain.value = 1 - effect.mix; wet.gain.value = effect.mix;
+          output.connect(dry).connect(sum);
+          if (effect.kind === 'reverb') {
+            const convolver = context.createConvolver(); convolver.buffer = this.impulse;
+            output.connect(convolver).connect(wet).connect(sum);
+            nodes.push(convolver); trackTail += 1.2;
+          } else {
+            const delay = context.createDelay(2), feedback = context.createGain();
+            delay.delayTime.value = effect.time; feedback.gain.value = effect.feedback;
+            output.connect(delay).connect(wet).connect(sum);
+            delay.connect(feedback).connect(delay);
+            // Fade long feedback tails to silence before reclaiming the graph.
+            const delayTail = Math.min(8, effect.time * (effect.feedback === 0 ? 1 : Math.ceil(Math.log(.001) / Math.log(effect.feedback))));
+            const end = start + barDuration(program) + trackTail + delayTail;
+            wet.gain.setValueAtTime(effect.mix, Math.max(start, end - .05));
+            wet.gain.linearRampToValueAtTime(0, end);
+            feedback.gain.setValueAtTime(0, end);
+            trackTail += delayTail; nodes.push(delay, feedback);
+          }
+          output = sum; nodes.push(dry, wet, sum);
+        }
+      }
+      if (track.pan !== undefined) {
+        const panner = context.createStereoPanner(); panner.pan.value = track.pan;
+        output.connect(panner); output = panner; nodes.push(panner);
+      }
+      output.connect(this.master);
+      tail = Math.max(tail, trackTail);
     }
     let cancelled = false;
     const rendered: RenderedBar = {
@@ -55,34 +84,37 @@ export class AudioRenderer {
       for (const event of events) {
         if (event.time < skipBefore || event.track.gain === 0 || event.velocity === 0) continue;
         const input = inputs.get(event.track)!;
-        let source: AudioScheduledSourceNode;
-        let envelope: GainNode | undefined;
+        const register = (source: AudioScheduledSourceNode, envelope?: GainNode) => {
+          sources.add(source);
+          source.onended = () => { source.disconnect(); envelope?.disconnect(); sources.delete(source); };
+          source.start(event.time);
+        };
         if (event.track.source.kind === 'sound') {
           const sample = context.createBufferSource();
           sample.buffer = this.drums[event.track.source.name];
-          sample.connect(input); source = sample;
+          sample.connect(input); register(sample);
         } else if (event.step.kind === 'note') {
-          const oscillator = context.createOscillator();
-          const bass = event.track.source.name === 'synth/bass';
-          oscillator.type = bass ? 'triangle' : 'sine';
-          oscillator.frequency.value = 440 * 2 ** ((event.step.midi - 69) / 12);
-          envelope = context.createGain(); nodes.push(envelope);
-          const duration = event.sustained ? event.duration : Math.min(event.duration * .85, bass ? .6 : .35);
-          const attack = Math.min(.008, duration / 4);
-          envelope.gain.setValueAtTime(0, event.time);
-          const peak = (bass ? .45 : .55) * event.velocity;
-          envelope.gain.linearRampToValueAtTime(peak, event.time + attack);
-          if (event.sustained) {
-            envelope.gain.linearRampToValueAtTime(peak * .7, event.time + Math.min(.08, duration / 2));
-            envelope.gain.setValueAtTime(peak * .7, event.time + duration);
-          } else envelope.gain.exponentialRampToValueAtTime(.025, event.time + duration);
-          envelope.gain.linearRampToValueAtTime(0, event.time + duration + .05);
-          oscillator.connect(envelope).connect(input); source = oscillator;
-          source.start(event.time); source.stop(event.time + duration + .05);
-        } else continue;
-        sources.add(source);
-        source.onended = () => { source.disconnect(); envelope?.disconnect(); sources.delete(source); };
-        if (event.track.source.kind === 'sound') source.start(event.time);
+          const instrument = instruments[event.track.source.name];
+          const duration = event.sustained ? event.duration : Math.min(event.duration * .85, instrument.gate);
+          for (const voice of instrument.voices) {
+            const oscillator = context.createOscillator();
+            oscillator.type = voice.type;
+            oscillator.frequency.value = Math.min(context.sampleRate / 2, 440 * 2 ** ((event.step.midi - 69) / 12) * voice.ratio);
+            oscillator.detune.value = voice.detune;
+            const envelope = context.createGain(); nodes.push(envelope);
+            const attack = Math.min(instrument.attack, duration / 4);
+            const peak = instrument.peak * voice.level * event.velocity;
+            envelope.gain.setValueAtTime(0, event.time);
+            envelope.gain.linearRampToValueAtTime(peak, event.time + attack);
+            if (event.sustained) {
+              envelope.gain.linearRampToValueAtTime(peak * instrument.sustain, event.time + Math.max(attack, Math.min(.08, duration / 2)));
+              envelope.gain.setValueAtTime(peak * instrument.sustain, event.time + duration);
+            } else envelope.gain.exponentialRampToValueAtTime(Math.min(.025, peak * .1), event.time + duration);
+            envelope.gain.linearRampToValueAtTime(0, event.time + duration + instrument.release);
+            oscillator.connect(envelope).connect(input);
+            register(oscillator, envelope); oscillator.stop(event.time + duration + instrument.release);
+          }
+        }
       }
     } catch (error) { rendered.dispose(); throw error; }
     return rendered;

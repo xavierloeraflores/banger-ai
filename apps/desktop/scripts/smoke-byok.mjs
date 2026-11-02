@@ -40,7 +40,7 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-source')?.value");
   await click("BYOK");
   await waitFor("document.querySelector('#studio-tab-byok')?.getAttribute('aria-selected') === 'true' && !document.querySelector('.byok-form fieldset').disabled");
-  assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), desktop ? 6 : 5);
+  assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), desktop ? 7 : 5);
   const providers = ["Vercel AI Gateway", "Anthropic", "OpenAI", "Meta Muse", "Grok"];
   for (const name of providers) {
     await evaluate(`([...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === ${JSON.stringify(name)})).click()`);
