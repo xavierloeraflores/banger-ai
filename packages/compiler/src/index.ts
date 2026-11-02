@@ -3,6 +3,7 @@ import { validateMusicProgram, type MusicProgram, type MusicTrack, type MusicBus
 export { compileMusic } from './parser.js';
 export { CompileError, type Position } from './lexer.js';
 export * from './model.js';
+export { BANGER_LANGUAGE_GUIDE } from './language.js';
 
 export function serializeMusic(program: MusicProgram): string {
   validateMusicProgram(program);
