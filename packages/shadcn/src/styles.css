@@ -1,0 +1,224 @@
+:root {
+  --banger-background: #141513;
+  --banger-panel: #1e201d;
+  --banger-panel-raised: #292c27;
+  --banger-border: #7b8073;
+  --banger-text: #f1f0e7;
+  --banger-muted: #b1b5a8;
+  --banger-accent: #d3f85b;
+  --banger-danger: #ffb0a5;
+  --banger-radius: 8px;
+  --banger-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.banger-button,
+.banger-panel,
+.banger-input,
+.banger-select,
+.banger-step,
+.banger-range,
+.banger-field {
+  box-sizing: border-box;
+  color-scheme: dark;
+  font-family: var(--banger-font);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.banger-button,
+.banger-input,
+.banger-select,
+.banger-step {
+  min-height: 44px;
+  border: 1px solid var(--banger-border);
+  border-radius: var(--banger-radius);
+  color: var(--banger-text);
+  background: var(--banger-panel-raised);
+}
+
+.banger-button,
+.banger-step {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.banger-button--primary {
+  background: var(--banger-accent);
+  border-color: var(--banger-accent);
+  color: #202616;
+}
+
+.banger-button--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.banger-button--danger {
+  color: var(--banger-danger);
+  border-color: #9f655e;
+  background: #382624;
+}
+
+.banger-icon-button {
+  width: 44px;
+  min-width: 44px;
+  padding: 0.625rem;
+  flex-shrink: 0;
+}
+
+.banger-icon-button > svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.banger-button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.banger-button:active:not(:disabled),
+.banger-step:active:not(:disabled) {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+@media (hover: hover) {
+  .banger-button:hover:not(:disabled),
+  .banger-step:hover:not(:disabled) {
+    border-color: var(--banger-text);
+    background-image: linear-gradient(#ffffff0d, #ffffff0d);
+  }
+}
+
+.banger-panel {
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid #3a3e35;
+  border-radius: 12px;
+  background: var(--banger-panel);
+  color: var(--banger-text);
+}
+
+.banger-input,
+.banger-select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  background-color: var(--banger-background);
+}
+
+.banger-input::placeholder {
+  color: var(--banger-muted);
+  opacity: 1;
+}
+
+.banger-input[aria-invalid="true"],
+.banger-select[aria-invalid="true"] {
+  border-color: var(--banger-danger);
+}
+
+.banger-select {
+  cursor: pointer;
+}
+
+.banger-step {
+  --banger-step-accent: var(--banger-accent);
+  min-width: 44px;
+  padding: 0.5rem;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  background: var(--banger-panel);
+  color: var(--banger-muted);
+}
+
+.banger-step[data-active="true"] {
+  color: var(--banger-text);
+  border-color: var(--banger-step-accent);
+  background: color-mix(in srgb, var(--banger-step-accent) 24%, var(--banger-background));
+  box-shadow: inset 0 3px 0 var(--banger-step-accent);
+}
+
+.banger-step[data-current="true"] {
+  outline: 2px solid var(--banger-text);
+  outline-offset: 2px;
+}
+
+.banger-step[data-current="true"]::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: calc(50% - 3px);
+  width: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--banger-text);
+}
+
+.banger-range {
+  display: block;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--banger-accent);
+  cursor: pointer;
+}
+
+.banger-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--banger-text);
+}
+
+.banger-field__label {
+  color: var(--banger-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.banger-button:focus-visible,
+.banger-input:focus-visible,
+.banger-select:focus-visible,
+.banger-step:focus-visible,
+.banger-range:focus-visible {
+  outline: 3px solid var(--banger-accent);
+  outline-offset: 4px;
+}
+
+.banger-button:disabled,
+.banger-input:disabled,
+.banger-select:disabled,
+.banger-step:disabled,
+.banger-range:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banger-button,
+  .banger-step {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .banger-step[data-active="true"] {
+    border: 3px solid Highlight;
+  }
+
+  .banger-step[data-current="true"]::after {
+    background: CanvasText;
+  }
+}
