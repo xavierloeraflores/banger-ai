@@ -1,6 +1,6 @@
 {
   "name": "@banger/api", "version": "0.0.0", "private": true, "type": "module",
   "scripts": { "dev": "next dev --port 3001", "build": "next build", "start": "next start --port 3001", "lint": "eslint .", "typecheck": "next typegen && tsc --noEmit", "test": "tsx --test test/*.test.ts", "migrate": "node scripts/migrate.mjs", "sandbox:bundle": "node scripts/bundle-sandbox.mjs" },
-  "dependencies": { "@banger/harness": "workspace:*", "@banger/agent": "workspace:*", "@banger/compiler": "workspace:*", "@vercel/blob": "^2.3.0", "@vercel/sandbox": "latest", "pg": "^8.16.3", "jose": "^6.2.14", "zod": "^4.6.7", "next": "16.4.3", "react": "^19.3.1", "react-dom": "^19.3.1" },
+  "dependencies": { "@banger/harness": "workspace:*", "@banger/agent": "workspace:*", "@banger/compiler": "workspace:*", "@vercel/blob": "^2.3.0", "@vercel/sandbox": "^3.9.1", "pg": "^8.16.3", "jose": "^6.2.14", "zod": "^4.6.7", "next": "16.4.3", "react": "^19.3.1", "react-dom": "^19.3.1" },
   "devDependencies": { "@banger/eslint-config": "workspace:*", "@banger/typescript-config": "workspace:*", "@types/node": "^22.19.0", "@types/pg": "^8.15.6", "@types/react": "^19.2.0", "eslint": "^9.39.0", "typescript": "^5.9.3", "tsx": "^4.20.0", "esbuild": "^0.25.0" }
 }

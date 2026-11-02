@@ -1,0 +1,35 @@
+import {test, after} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {db} from '../src/server/db';
+import {createProject} from '../src/server/projects';
+import {enqueue,claim,checkpoint} from '../src/server/jobs';
+import {boundedAudio} from '../src/server/elevenlabs';
+const source=await readFile(new URL('../../../examples/night-drive.banger',import.meta.url),'utf8');
+test('bounded audio reader rejects oversized provider results',async()=>{
+  const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(new Uint8Array(12));controller.close();}});
+  await assert.rejects(boundedAudio(stream,10),/exceeds/);
+});
+test('durable job idempotency, exclusive claims and fenced checkpoints', {skip:!process.env.DATABASE_URL},async()=>{
+  const store={async write(){},async text(){return source;}};
+  const user=`test-${randomUUID()}`;
+  const project=await createProject(user,'Jobs',[{path:'song.banger',source}],store);
+  const key=randomUUID(),input={baseRevision:1,prompt:'Make drums softer',activeFile:'song.banger'};
+  const first=await enqueue(user,project.projectId,'agent',key,input);
+  const again=await enqueue(user,project.projectId,'agent',key,input);
+  assert.equal(first.id,again.id);
+  await assert.rejects(enqueue(user,project.projectId,'agent',key,{...input,prompt:'Other task'}),/different task/);
+  const claims=await Promise.all([claim(first.id),claim(first.id)]);
+  assert.equal(claims.filter(Boolean).length,1);
+  const job=claims.find(Boolean)!;
+  await checkpoint(job,'editing',25,{started:true});
+  await assert.rejects(checkpoint(job,'completed',100,{},'completed'),/lease expired/);
+  await db().query("UPDATE jobs SET available_at=now() WHERE id=$1",[job.id]);
+  const resumed=await claim(job.id);
+  assert.equal(resumed?.checkpoint.started,true);
+  assert.notEqual(resumed?.lease_token,job.lease_token);
+  await checkpoint(resumed!,'completed',100,{},'completed');
+  assert.equal(await claim(job.id),undefined);
+});
+after(async()=>{await db().end();});
