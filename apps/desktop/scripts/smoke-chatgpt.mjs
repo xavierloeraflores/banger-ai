@@ -1,6 +1,6 @@
-import { app, BrowserWindow, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, safeStorage, shell, dialog } from 'electron';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -11,7 +11,7 @@ app.on('before-quit', event => event.preventDefault());
 const timeout = setTimeout(() => { console.error('ChatGPT UI smoke timed out'); app.exit(1); }, 55000);
 const opened = [];
 shell.openExternal = async url => { opened.push(url); };
-let calls = 0;
+let calls = 0, projectCalls = 0;
 const source = 'tempo 101; meter 4/4; track kick { sound "drums/clap"; rhythm "x . x ."; gain .5; }';
 globalThis.fetch = async (input, init) => {
   const url = String(input);
@@ -30,8 +30,9 @@ globalThis.fetch = async (input, init) => {
   assert.equal(init.body.includes('fake-ui-access'), false);
   const namespace = body.tools.find(tool => tool.type === 'namespace');
   assert.equal(namespace.name, 'banger');
-  calls++;
-  const output = calls === 1 ? [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', namespace: 'banger', name: 'create_banger_file', arguments: JSON.stringify({ name: 'chatgpt-loop.banger', source }), status: 'completed' }]
+  const project = namespace.tools.some(tool => tool.name === 'edit_file');
+  if (project) projectCalls++; else calls++;
+  const output = project && projectCalls === 1 ? [{ type: 'function_call', id: 'fc_project', call_id: 'call_project', namespace: 'banger', name: 'edit_file', arguments: JSON.stringify({ path: 'song.banger', search: 'tempo 101;', replacement: 'tempo 88;' }), status: 'completed' }] : !project && calls === 1 ? [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', namespace: 'banger', name: 'create_banger_file', arguments: JSON.stringify({ name: 'chatgpt-loop.banger', source }), status: 'completed' }]
     : [{ type: 'message', id: 'msg_1', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Your clap loop is ready.', annotations: [] }] }];
   return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { id: `resp_${calls}`, status: 'completed', created_at: 1, model: 'other-chatgpt', output, usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 } } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
 };
@@ -90,6 +91,18 @@ async function run(window) {
     assert.equal(await evaluate("JSON.stringify(window.bangerChatGPT).includes('fake-ui-access')"), false);
     assert.equal(await evaluate("JSON.stringify(document.body.textContent).includes('fake-ui-access')"), false);
     await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+    const projectDir = join(directory, 'songs');
+    await mkdir(projectDir);
+    await writeFile(join(projectDir, 'song.banger'), source);
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [projectDir] });
+    await click('Open project folder');
+    await wait("document.querySelector('#workspace-source')?.value.includes('tempo 101')");
+    await evaluate(`(() => { const input = document.getElementById('workspace-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Slow this song to 88 BPM'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await click('Run project task');
+    await wait("document.querySelector('#workspace-source')?.value.includes('tempo 88')");
+    await wait("document.querySelector('.project-workspace-notice')?.textContent.includes('clap loop')");
+    assert.equal(projectCalls, 2);
+    assert.match(await readFile(join(projectDir, 'song.banger'), 'utf8'), /tempo 88;/);
     await click('BYOK');
     await wait("document.querySelector('#chatgpt-title')");
     await writeFile(join(tmpdir(), 'banger-chatgpt-settings.png'), (await window.webContents.capturePage()).toPNG());
@@ -98,7 +111,7 @@ async function run(window) {
     const decrypted = (await safeStorage.decryptStringAsync(await readFile(join(directory, 'chatgpt-accounts.enc')))).result;
     assert.equal(decrypted.includes('fake-ui-access'), false);
     assert.equal(decrypted.includes('fake-ui-refresh'), false);
-    console.log('ChatGPT UI smoke passed: real browser launch/cancel IPC, encrypted fake-account selection, models, plan indicator, usage link, namespaced agent generation, and sign-out. No real account or paid request used.');
+    console.log('ChatGPT UI smoke passed: real browser launch/cancel IPC, encrypted fake-account selection, models, plan indicator, usage link, namespaced chat and project-harness generation, and sign-out. No real account or paid request used.');
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true }); app.exit(process.exitCode ?? 0); }
 }

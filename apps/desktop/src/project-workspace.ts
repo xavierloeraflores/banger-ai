@@ -12,6 +12,7 @@ type State = { workspace: ProjectWorkspace; session?: ProjectSession; controller
 export function installWorkspaceHandlers(options: {
   senderWindow(event: IpcMainInvokeEvent): BrowserWindow;
   selectModel(): Promise<SelectedModel>;
+  modelError?(error: unknown): string;
 }) {
   const states = new Map<number, State>();
   const opening = new Set<number>();
@@ -77,10 +78,10 @@ export function installWorkspaceHandlers(options: {
       controller.signal.throwIfAborted();
       // Keep task history, but refresh provider credentials and model selection each run.
       if (!current.session) current.session = new ProjectSession({ workspace: current.workspace, selected, onEvent: event => send(window, event) });
-      else Object.assign(current.session.selected, selected);
+      else Object.assign(current.session.selected, { timeoutMs: undefined, ...selected });
       return { ok: true, reply: await current.session.run(prompt, { signal: controller.signal, activeFile }) };
     } catch (error) {
-      return { ok: false, error: controller.signal.aborted ? "Project task stopped. Completed saves are kept." : safeError(error, "Project task failed. Check the selected model and connection.") };
+      return { ok: false, error: controller.signal.aborted ? "Project task stopped. Completed saves are kept." : (options.modelError?.(error) ?? "Project task failed. Check the selected model and connection.") };
     } finally { delete current.controller; }
   });
   return { cancelAll: () => { for (const current of states.values()) current.controller?.abort(); } };

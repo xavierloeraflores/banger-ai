@@ -6,7 +6,7 @@ import { APP_URL, getDevelopmentUrl, isAppUrl, serveApp } from "./static-app.js"
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
 import { parseChatRequest, selectModel, selectLocalModel, runBangerAgent, publicAIError } from "@banger/agent";
 import { createAISettingsStore } from "./ai-settings.js";
-import { createChatGPTAuth } from "./chatgpt-auth.js";
+import { createChatGPTAuth, ChatGPTError, publicChatGPTError } from "./chatgpt-auth.js";
 import { createLocalModel } from "./local-model.js";
 
 import { installWorkspaceHandlers } from "./project-workspace.js";
@@ -299,8 +299,7 @@ void app.whenReady().then(() => {
       }
       if ((await chatgpt.status()).selected) {
         try { return { ok: true, reply: await runBangerAgent(input, await chatgpt.model(), controller.signal) }; }
-        catch { return { ok: false, error: controller.signal.aborted ? "Generation stopped." :
-          "ChatGPT could not complete the request. Check your account, model, and usage in AI settings, then try again." }; }
+        catch (error) { return { ok: false, error: controller.signal.aborted ? "Generation stopped." : publicChatGPTError(error) }; }
       }
       const credentials = await aiSettings.credentials();
       if (!credentials) return { ok: false, error: "Add a provider key and model in BYOK to start chatting." };
@@ -311,7 +310,10 @@ void app.whenReady().then(() => {
       return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };
     } finally { pendingChats.delete(window.id); }
   });
-  const projectWorkspace = installWorkspaceHandlers({ senderWindow, selectModel: async () => {
+  const projectWorkspace = installWorkspaceHandlers({ senderWindow,
+    modelError: error => error instanceof ChatGPTError || (error instanceof Error && error.cause instanceof ChatGPTError)
+      ? publicChatGPTError(error) : publicAIError(error),
+    selectModel: async () => {
     await settingsQueue;
     if ((await localModel.status()).selected) {
       const { port, token } = localModel.connection();
