@@ -50,6 +50,7 @@ async function run(window) {
     await delay(80);
     await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:point.x, y:point.y+50, button:'left', buttons:0, clickCount:1 });
     window.webContents.debugger.detach();
+    console.log('Native drag:', await evaluate("document.querySelector('.producer-step').getAttribute('aria-label')"));
     await waitFor("document.querySelector('.producer-step').getAttribute('aria-label').includes('velocity 50%') && document.querySelector('#producer-source').value.includes('@0.5')", 'saved drag velocity');
     assert.equal((await program()).tracks[0].steps[0].velocity, .5, 'Drag changes step velocity without disabling the step.');
     await click('kick, step 1 probability 100%');
@@ -80,6 +81,31 @@ async function run(window) {
     await waitFor("[...document.querySelectorAll('button')].find(el => el.textContent.trim() === 'Fill').getAttribute('aria-pressed') === 'true'", 'held fill');
     await evaluate("(() => { const el = [...document.querySelectorAll('button')].find(el => el.textContent.trim() === 'Fill'); el.dispatchEvent(new KeyboardEvent('keyup', {key:' ',bubbles:true})); })()");
     await click('Stop playback');
+    // Exercise sound edits through the native app before saving the combined project.
+    await click('Edit kick');
+    const soundScope = "document.querySelector('#track-editor-0 .sound-design')";
+    await text('Off', soundScope);
+    await set('kick Cutoff', 900);
+    await set('kick parameter lock step', '1', 'HTMLSelectElement');
+    await set('kick Cutoff', 320);
+    assert.equal((await program()).tracks[0].synth.cutoff, 900);
+    assert.equal((await program()).tracks[0].patterns[0].steps[1].locks.cutoff, 320);
+    assert.ok(await evaluate("document.querySelectorAll('.producer-step-velocity')[1].textContent.includes('◆')"));
+    await text('Preview', soundScope);
+    await waitFor("document.querySelector('#track-editor-0 .sound-status').textContent.includes('Preview playing')", 'synth preview');
+    await text('On', soundScope);
+    await text('Modular', soundScope);
+    await text('Start patching', soundScope);
+    await set('kick factory patch', 'FM Bell', 'HTMLSelectElement');
+    await set('kick patch name', 'Native bell');
+    await text('Save patch', soundScope);
+    assert.equal((await program()).tracks[0].patchLibrary[0].name, 'Native bell');
+    await text('Preview note', soundScope);
+    await waitFor("document.querySelector('#track-editor-0 .sound-status').textContent.includes('Preview playing')", 'modular preview');
+    await text('Clear patch', soundScope);
+    assert.equal((await program()).tracks[0].modular, null);
+    await set('kick saved patch', 'Native bell', 'HTMLSelectElement');
+    assert.equal((await program()).tracks[0].modular.name, 'Native bell');
     const saved = await source(), projectPath = join(directory, 'performance.banger');
     dialog.showSaveDialog = async () => ({ canceled:false, filePath:projectPath }); await text('Save .banger');
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')", 'native save');
@@ -100,7 +126,7 @@ async function run(window) {
     const heights = await evaluate("[...document.querySelectorAll('.producer-track')].map(row => row.getBoundingClientRect().height)");
     console.log('Collapsed track heights:', heights);
     await writeFile('/tmp/banger-features-sequencer.png', (await window.webContents.capturePage()).toPNG());
-    console.log('Sequencer smoke passed: pointer velocity, probability/condition badges, pattern copy/paste and bar-boundary launch, tap tempo, click, master, held fill, real playback, native save/reopen and mix/stem WAV export.');
+    console.log('Feature smoke passed: pointer velocity, probability/conditions, pattern copy/paste/launch, tap/click/master/fill, synth controls and step locks, modular preview/save/load/clear, real playback, native combined project save/reopen and mix/stem WAV export.');
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { clearTimeout(timeout); window.destroy(); await rm(directory, { recursive:true, force:true }); app.exit(process.exitCode ?? 0); }
 }

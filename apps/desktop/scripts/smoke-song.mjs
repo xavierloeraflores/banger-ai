@@ -28,11 +28,16 @@ async function run(window) {
   const text = async (label, scope = 'document') => { await evaluate(`(() => { const el = [...${scope}.querySelectorAll('button')].find(el => el.textContent.trim() === ${JSON.stringify(label)}); if (!el || el.matches(':disabled')) throw new Error('Unavailable button: ${label}'); el.click(); })()`); await delay(35); };
   const set = async (label, value, tag = 'HTMLInputElement', blur = false) => {
     if (blur) {
-      await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector(label))}); let ancestor = el.parentElement; while (ancestor) { if (ancestor.tagName === "DETAILS") ancestor.open = true; ancestor = ancestor.parentElement; } el.scrollIntoView({block:"center"}); })()`);
+      window.show(); window.focus(); window.webContents.focus();
+      await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector(label))}); let ancestor = el.parentElement; while (ancestor) { if (ancestor.tagName === "DETAILS") ancestor.open = true; ancestor = ancestor.parentElement; } el.scrollIntoView({block:"center"}); el.focus(); el.select(); })()`);
       await delay(60);
+      await window.webContents.insertText(String(value));
+      await delay(60);
+      await evaluate(`document.querySelector(${JSON.stringify(selector(label))}).blur()`);
+      await delay(60);
+      return;
     }
-    await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector(label))}); if (!el || el.matches(':disabled')) throw new Error('Unavailable input: ${label}'); ${blur ? 'el.focus(); if (document.activeElement !== el) throw new Error("Input could not receive focus");' : ''} Object.getOwnPropertyDescriptor(${tag}.prototype, 'value').set.call(el, ${JSON.stringify(String(value))}); el.dispatchEvent(new Event(${JSON.stringify(tag === 'HTMLSelectElement' ? 'change' : 'input')}, { bubbles: true })); })()`); await delay(35);
-    if (blur) { await evaluate(`document.querySelector(${JSON.stringify(selector(label))}).blur()`); await delay(35); }
+    await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector(label))}); if (!el || el.matches(':disabled')) throw new Error('Unavailable input: ${label}'); Object.getOwnPropertyDescriptor(${tag}.prototype, 'value').set.call(el, ${JSON.stringify(String(value))}); el.dispatchEvent(new Event(${JSON.stringify(tag === 'HTMLSelectElement' ? 'change' : 'input')}, { bubbles: true })); })()`); await delay(35);
   };
   const draft = async value => { await text('Raw .banger'); await evaluate(`(() => { const el = document.querySelector('#producer-source'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles:true })); })()`); await delay(35); };
   const apply = async value => { await draft(value); await waitFor("!document.querySelector('.producer-editor-actions button').disabled", 'source compiles'); await text('Apply source'); await text('Sequencer'); };

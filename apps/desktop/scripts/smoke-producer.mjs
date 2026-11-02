@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { smokePiano } from "./smoke-piano.mjs";
 import { dialog } from "electron";
+import { compileMusic } from "../../../packages/compiler/dist/index.js";
 
 const mixedLengthSource = `tempo 137;
 meter 4/4;
@@ -80,12 +81,12 @@ export async function smokeProducer(window, directory) {
 
   await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-  assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 3);
+  assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 5);
   assert.equal(await evaluate("document.querySelectorAll('[role=tabpanel]:not([hidden])').length"), 1);
   await evaluate("document.querySelector('#studio-tab-sequencer').focus()");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Right" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Right" });
-  await waitFor("document.activeElement.id === 'studio-tab-source' && !document.querySelector('#studio-panel-source').hidden", "keyboard tab navigation");
+  await waitFor("document.activeElement.id === 'studio-tab-mixer' && !document.querySelector('#studio-panel-mixer').hidden", "keyboard tab navigation");
   await clickText("Sequencer");
   const initial = await evaluate(gridSnapshot);
   assert.deepEqual(initial.map(track => track.name), ["kick", "snare", "hats", "bass", "keys", "pad", "lead", "bell"]);
@@ -118,10 +119,12 @@ export async function smokeProducer(window, directory) {
   await click('[aria-label="Mute snare"]');
   await waitFor(`document.querySelector('[aria-label="Mute snare"]')?.getAttribute('aria-pressed') === 'false'`, "snare unmuted");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-track-gain input')].map(input => input.value)"), originalLevels, "Mute toggles must preserve every volume slider.");
-  assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource, "Mute toggles must preserve saved track gains.");
+  const afterMute = compileMusic(await evaluate("document.querySelector('#producer-source').value"));
+  assert.deepEqual(afterMute.tracks.map(track => track.gain), compileMusic(originalSource).tracks.map(track => track.gain), "Mute toggles must preserve saved track gains.");
+  assert.ok(afterMute.tracks.every(track => !track.muted), "Unmuting must also update saved mixer state.");
   assert.equal(initial[0].steps[1], "false");
-  await click('.producer-track:first-child .producer-step:nth-child(2)');
-  await waitFor(`document.querySelector('.producer-track:first-child .producer-step:nth-child(2)')?.getAttribute('aria-pressed') === 'true' && document.querySelector('#producer-source')?.value !== ${JSON.stringify(originalSource)}`, "step edit and serialization");
+  await click('.producer-track:first-child .producer-step-cell:nth-child(2) .producer-step');
+  await waitFor(`document.querySelector('.producer-track:first-child .producer-step-cell:nth-child(2) .producer-step')?.getAttribute('aria-pressed') === 'true' && document.querySelector('#producer-source')?.value !== ${JSON.stringify(originalSource)}`, "step edit and serialization");
   assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
 
   await click(".producer-play");

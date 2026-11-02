@@ -37,6 +37,6 @@ export function AudioExport({ program, fileName, disabled }: { program: MusicPro
       <Button variant="secondary" onClick={() => void render(false)}>Export WAV</Button>
       <Select aria-label="Stem track" value={program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name ?? ""} onChange={e => setStem(e.target.value)}>{program.tracks.map(track => <option key={track.name}>{track.name}</option>)}</Select>
       <Button variant="secondary" disabled={!program.tracks.length} onClick={() => void render(true)}>Export stem</Button>
-    </div><p>Exports the complete applied arrangement and original gains. Mute and solo affect listening only.</p>
+    </div><p>Exports the active song chain or selected pattern with saved mixer and sound settings. The metronome is excluded.</p>
   </fieldset><p role="status" className="studio-export-status">{status}</p></details>;
 }
