@@ -89,6 +89,10 @@ importers:
         version: 5.9.3
 
   packages/engine:
+    dependencies:
+      '@banger/compiler':
+        specifier: workspace:*
+        version: link:../compiler
     devDependencies:
       '@banger/eslint-config':
         specifier: workspace:*

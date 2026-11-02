@@ -1,0 +1,203 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { compileMusic, createDefaultProgram } from '@banger/compiler';
+import { AudioRenderer, BangerPlayer, eventsForBar, barDuration } from '../dist/index.js';
+
+class Param {
+  value = 0;
+  events = [];
+  setValueAtTime(value, time) { this.events.push({ value, time }); }
+  linearRampToValueAtTime(value, time) { this.events.push({ value, time }); }
+  exponentialRampToValueAtTime(value, time) { assert.ok(value > 0); this.events.push({ value, time }); }
+}
+class Node {
+  gain = new Param(); frequency = new Param(); connections = []; starts = []; stops = [];
+  constructor(context, kind) { this.context = context; this.kind = kind; context.nodes.push(this); }
+  connect(node) { this.connections.push(node); return node; }
+  disconnect() { this.connections = []; }
+  start(time) { assert.ok(Number.isFinite(time)); this.starts.push(time); }
+  stop(time) { this.stops.push(time); }
+}
+class Context {
+  static instances = [];
+  state = 'suspended'; currentTime = 0; sampleRate = 8000; nodes = []; closeCalls = 0;
+  constructor() { this.destination = new Node(this, 'destination'); Context.instances.push(this); }
+  async resume() { this.state = 'running'; }
+  async close() { this.closeCalls++; this.state = 'closed'; }
+  createGain() { return new Node(this, 'gain'); }
+  createDynamicsCompressor() { return new Node(this, 'compressor'); }
+  createConvolver() { return new Node(this, 'convolver'); }
+  createBufferSource() { return new Node(this, 'buffer'); }
+  createOscillator() { return new Node(this, 'oscillator'); }
+  createBuffer(channels, length, sampleRate) {
+    const data = Array.from({ length: channels }, () => new Float32Array(length));
+    return { numberOfChannels: channels, duration: length / sampleRate, getChannelData: channel => data[channel] };
+  }
+  get sources() { return this.nodes.filter(node => node.kind === 'buffer' || node.kind === 'oscillator'); }
+}
+function environment(t) {
+  Context.instances = [];
+  const old = globalThis.AudioContext;
+  globalThis.AudioContext = Context;
+  t.after(() => { if (old === undefined) delete globalThis.AudioContext; else globalThis.AudioContext = old; });
+  const callbacks = new Set();
+  t.mock.method(globalThis, 'setInterval', (callback, ms) => { assert.equal(ms, 25); callbacks.add(callback); return callback; });
+  t.mock.method(globalThis, 'clearInterval', id => callbacks.delete(id));
+  return { tick: () => { for (const callback of callbacks) callback(); }, callbacks };
+}
+const song = () => compileMusic('tempo 120; track kick { sound "drums/kick"; rhythm "x x x x"; gain .8; }');
+const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+test('event timing divides each track across one bar', () => {
+  const program = createDefaultProgram();
+  assert.equal(barDuration(program), 2);
+  const events = eventsForBar(program, 10);
+  assert.equal(events.length, 14);
+  assert.ok(events.every(event => event.time >= 10 && event.time < 12 && event.duration === .125));
+  assert.ok(events.every((event, i) => !i || event.time >= events[i - 1].time));
+  assert.throws(() => eventsForBar(program, Infinity), RangeError);
+  assert.throws(() => eventsForBar(program, -1), RangeError);
+});
+
+test('does not create Web Audio until start and exposes sixteenth-note state', async t => {
+  const env = environment(t), player = new BangerPlayer();
+  assert.equal(Context.instances.length, 0);
+  assert.deepEqual(player.state, { playing: false, bar: 0, step: 0, phase: 0, tempo: null, hasPendingUpdate: false });
+  await player.start(song());
+  const context = Context.instances[0];
+  assert.equal(context.sources.length, 4);
+  context.sources.forEach((source, i) => near(source.starts[0], .05 + i * .5));
+  context.currentTime = .55;
+  assert.equal(player.state.step, 4); near(player.state.phase, .25); assert.equal(player.state.bar, 1);
+  assert.equal(env.callbacks.size, 1);
+  player.stop();
+  assert.equal(env.callbacks.size, 0);
+  assert.ok(context.sources.every(source => source.stops.length && !source.connections.length));
+  assert.equal(player.state.playing, false);
+  await player.dispose();
+});
+
+test('queues copied edits for the next bar and changes tempo at its boundary', async t => {
+  const env = environment(t), player = new BangerPlayer();
+  await player.start(song());
+  const context = Context.instances[0]; context.currentTime = .5;
+  const next = song(); next.tempo = 240; next.tracks[0].gain = .3;
+  player.update(next); next.tempo = 60;
+  assert.equal(player.state.hasPendingUpdate, true); assert.equal(player.state.tempo, 120);
+  context.currentTime = 1.96; env.tick();
+  assert.equal(context.sources.length, 8);
+  near(context.sources[5].starts[0], 2.3);
+  assert.equal(player.state.hasPendingUpdate, true);
+  context.currentTime = 2.06;
+  assert.equal(player.state.tempo, 240); assert.equal(player.state.bar, 2); assert.equal(player.state.hasPendingUpdate, false);
+  await player.dispose();
+});
+
+test('late edits cancel audio already scheduled for the upcoming bar', async t => {
+  const env = environment(t), player = new BangerPlayer();
+  await player.start(song());
+  const context = Context.instances[0]; context.currentTime = 1.96; env.tick();
+  const previousFuture = context.sources.slice(4);
+  const next = song(); next.tracks[0].steps = [{ kind: 'hit' }]; player.update(next);
+  assert.ok(previousFuture.every(source => source.stops.length === 1 && !source.connections.length));
+  assert.equal(context.sources.length, 9); near(context.sources[8].starts[0], 2.05);
+  await player.dispose();
+});
+
+test('skips missed events after a long timer stall without replay bursts', async t => {
+  const env = environment(t), player = new BangerPlayer();
+  await player.start(song()); const context = Context.instances[0];
+  context.currentTime = 3600.7; env.tick();
+  const fresh = context.sources.slice(4);
+  assert.equal(fresh.length, 2);
+  assert.ok(fresh.every(source => source.starts[0] >= context.currentTime));
+  assert.equal(player.state.bar, 1801);
+  env.tick(); assert.equal(context.sources.length, 6);
+  await player.dispose();
+});
+
+test('suspended audio does not accumulate bars, and resume skips stale events', async t => {
+  const env = environment(t), player = new BangerPlayer();
+  await player.start(song()); const context = Context.instances[0];
+  context.state = 'suspended'; context.currentTime = 90;
+  for (let i = 0; i < 20; i++) env.tick();
+  assert.equal(context.sources.length, 4);
+  context.state = 'running'; env.tick();
+  assert.ok(context.sources.slice(4).every(source => source.starts[0] >= 90));
+  await player.dispose();
+});
+
+test('invalid updates and starts preserve current playback', async t => {
+  environment(t); const player = new BangerPlayer(); await player.start(song());
+  const bad = song(); bad.tempo = 0;
+  assert.throws(() => player.update(bad), RangeError);
+  await assert.rejects(player.start(bad), RangeError);
+  assert.equal(player.state.playing, true); assert.equal(player.state.hasPendingUpdate, false);
+  await player.dispose();
+});
+
+test('stop during pending resume cannot restart playback', async t => {
+  const env = environment(t); let resume;
+  t.mock.method(Context.prototype, 'resume', function () { this.state = 'running'; return new Promise(resolve => { resume = resolve; }); });
+  const player = new BangerPlayer(), starting = player.start(song());
+  player.stop(); resume(); await starting;
+  assert.equal(player.state.playing, false); assert.equal(env.callbacks.size, 0);
+  assert.equal(Context.instances[0].sources.length, 0);
+  await player.dispose();
+});
+
+test('dispose is idempotent and prevents restart', async t => {
+  environment(t); const player = new BangerPlayer(); await player.start(song());
+  await Promise.all([player.dispose(), player.dispose()]);
+  const context = Context.instances[0]; assert.equal(context.closeCalls, 1);
+  assert.ok(context.nodes.every(node => !node.connections.length));
+  await assert.rejects(player.start(song()), /disposed/);
+  assert.throws(() => player.update(song()), /disposed/);
+});
+
+test('renderer produces finite drum samples and pitched envelopes and cleans nodes', () => {
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const program = createDefaultProgram();
+  program.tracks.push({ name: 'lead', source: { kind: 'instrument', name: 'synth/pluck' }, steps: [{ kind: 'note', midi: 69 }], gain: .4, effects: [{ kind: 'reverb', mix: .2 }] });
+  const rendered = renderer.renderBar(program, .05);
+  const buffers = context.sources.filter(source => source.kind === 'buffer');
+  for (const source of buffers) {
+    const data = source.buffer.getChannelData(0);
+    assert.ok(data.every(Number.isFinite)); assert.ok(data.some(value => Math.abs(value) > .01));
+    assert.equal(Math.abs(data[0]), 0); assert.equal(Math.abs(data.at(-1)), 0);
+  }
+  assert.ok(context.sources.some(source => source.kind === 'oscillator' && source.frequency.value === 440));
+  assert.ok(context.nodes.some(node => node.kind === 'convolver'));
+  rendered.dispose(); rendered.dispose(); renderer.dispose(); renderer.dispose();
+  assert.ok(context.nodes.every(node => !node.connections.length));
+});
+
+test('muted tracks allocate no voices and past events are excluded', () => {
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const program = song(); program.tracks[0].gain = 0;
+  renderer.renderBar(program, 0); assert.equal(context.sources.length, 0);
+  program.tracks[0].gain = .5; renderer.renderBar(program, 0, .75);
+  assert.deepEqual(context.sources.map(source => source.starts[0]), [1, 1.5]);
+  renderer.dispose();
+});
+
+test('dispose during pending resume leaves no scheduled audio', async t => {
+  const env = environment(t); let resume;
+  t.mock.method(Context.prototype, 'resume', function () { this.state = 'running'; return new Promise(resolve => { resume = resolve; }); });
+  const player = new BangerPlayer(), starting = player.start(song());
+  await player.dispose(); resume(); await starting;
+  assert.equal(env.callbacks.size, 0); assert.equal(Context.instances[0].sources.length, 0);
+  assert.equal(Context.instances[0].state, 'closed');
+});
+
+test('overlapping starts keep only the newest playback request', async t => {
+  const env = environment(t), resumes = [];
+  t.mock.method(Context.prototype, 'resume', function () { this.state = 'running'; return new Promise(resolve => resumes.push(resolve)); });
+  const player = new BangerPlayer(), first = player.start(song());
+  const faster = song(); faster.tempo = 240;
+  const second = player.start(faster);
+  resumes[1](); await second; resumes[0](); await first;
+  assert.equal(player.state.tempo, 240); assert.equal(env.callbacks.size, 1);
+  assert.equal(Context.instances.length, 1); assert.equal(Context.instances[0].sources.length, 4);
+  await player.dispose();
+});
