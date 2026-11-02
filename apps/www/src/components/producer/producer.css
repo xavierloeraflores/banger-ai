@@ -33,7 +33,7 @@ body { margin: 0; background: #141514; }
 .producer-play-controls { display: flex; gap: 6px; }
 .producer-play { min-width: 94px; }
 .producer-play > span { margin-right: 6px; font-size: 12px; }
-.producer-tempo { display: flex; align-items: center; gap: 9px; padding-left: 26px; border-left: 1px solid var(--producer-border); }
+.producer-tempo { display: flex; align-items: center; gap: 9px; }
 .producer-tempo input { width: 68px; font-size: 20px; font-variant-numeric: tabular-nums; padding: 6px; }
 .producer-tempo > span, .producer-meter > span { color: var(--producer-dim); font-size: 10px; }
 .producer-meter { display: flex; flex-direction: column; gap: 2px; }
@@ -42,9 +42,11 @@ body { margin: 0; background: #141514; }
 .producer-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #6c7065; }
 .producer-live-dot.is-playing { background: var(--producer-lime); box-shadow: 0 0 12px #d6fa5440; }
 .producer-transport-state { min-width: 110px; color: var(--producer-dim); font-size: 11px; }
-.producer-workspace { display: grid; gap: 20px; padding-bottom: 24px; }
+.producer-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; padding-bottom: 24px; }
 .producer .producer-sequencer, .producer .producer-editor { border: 1px solid var(--producer-border); border-radius: 10px; background: var(--producer-panel); padding: 0; overflow: hidden; }
 .producer-panel-heading, .producer-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 25px 26px; }
+.producer-sequencer > .producer-panel-heading { flex-wrap: wrap; }
+.producer-sequence-controls { display: flex; align-items: center; gap: 16px; }
 .producer-eyebrow { color: var(--producer-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 6px; }
 .producer h1 { margin: 0; font-size: clamp(21px, 2.2vw, 28px); font-weight: 500; letter-spacing: -.7px; }
 .producer h2 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
@@ -103,7 +105,6 @@ body { margin: 0; background: #141514; }
   .producer-project { order: 3; width: 100%; }
   .producer-file-actions { gap: 4px; }
   .producer-transport { gap: 16px; flex-wrap: wrap; padding: 20px 0; }
-  .producer-tempo { padding-left: 12px; }
   .producer-transport-state { display: none; }
   .producer-position { font-size: 20px; }
   .producer-panel-heading, .producer-editor-heading { padding: 20px 16px; }
@@ -122,7 +123,7 @@ body { margin: 0; background: #141514; }
   .producer-transport { gap: 12px; }
   .producer-meter { display: none; }
   .producer-position { font-size: 18px; }
-  .producer-tempo { gap: 5px; padding-left: 0; border: 0; }
+  .producer-tempo { gap: 5px; }
   .producer-tempo input { width: 62px; }
   .producer-footer { flex-direction: column; gap: 6px; }
   .producer-footer > :last-child { text-align: left; max-width: 100%; }
