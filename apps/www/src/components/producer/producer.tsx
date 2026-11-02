@@ -12,9 +12,11 @@ import {
   type SoundName,
   type InstrumentName,
 } from "@banger/compiler";
-import { Button, IconButton, Input, Panel, Range, Select, StepButton } from "@banger/shadcn";
+import { Button, IconButton, Input, Panel, Range, Select } from "@banger/shadcn";
 import { openProject, saveProject } from "@/lib/project-files";
 import { SongArrangement } from "./song-arrangement";
+import { SequencerStep } from "./sequencer-step";
+import { TransportControls } from "./transport-controls";
 import { PatternControls } from "./pattern-controls";
 import { AutomationEditor } from "./automation-editor";
 import { TrackRouting, LevelMeter } from "./mixer-routing";
@@ -266,8 +268,8 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         return { steps };
       }
       return { steps: phrase.steps.map(step => !step ? null : instrument
-        ? { kind: "note" as const, midi: step.kind === "note" ? step.midi : pitch[index] ?? 36 }
-        : { kind: "hit" as const }), ...(phrase.pianoRoll === undefined ? {} : { pianoRoll: phrase.pianoRoll }) };
+        ? { ...step, kind: "note" as const, midi: step.kind === "note" ? step.midi : pitch[index] ?? 36 }
+        : { ...step, kind: "hit" as const }), ...(phrase.pianoRoll === undefined ? {} : { pianoRoll: phrase.pianoRoll }) };
     };
     const next = { ...track, source: nextSource, ...convert(track), patterns: track.patterns?.map(pattern => {
       const nextPattern = { ...pattern, ...convert(pattern) }; if (!instrument) delete nextPattern.pianoRoll; return nextPattern;
@@ -301,6 +303,9 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
           <span>{playback.state.playing ? `${String(Math.max(1, playback.state.bar)).padStart(2, "0")}.${String(playback.state.step + 1).padStart(2, "0")}` : "01.01"}</span>
         </div>
         <span className="producer-transport-state">{playback.state.hasPendingUpdate ? "Changes next bar" : playback.state.playing ? "Playing" : "Ready to play"}</span>
+        <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill}
+          onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
+          onLaunch={(name, next = program) => { const launch = { ...next, chainEnabled: false }; if (name) launch.activePattern = name; else delete launch.activePattern; if (edit(launch)) setPatterns(Object.fromEntries(next.tracks.map((track, index) => [index, track.patterns?.some(pattern => pattern.name === name) ? name : ""]))); }} />
         <LevelMeter name="Master" level={playback.meters.master.peak} />
       </section>
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
@@ -345,7 +350,8 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
               <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / SELECTED PHRASE</span><span>M / S</span></div>
               <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
                 {program.tracks.map((track, index) => {
-                  const selectedPattern = track.patterns?.some(pattern => pattern.name === patterns[index]) ? patterns[index] : undefined;
+                  const requestedPattern = patterns[index] ?? program.activePattern;
+                  const selectedPattern = track.patterns?.some(pattern => pattern.name === requestedPattern) ? requestedPattern : undefined;
                   const phrase = resolvePattern(track, selectedPattern);
                   const previewNotes = phrase.pianoRoll ?? [];
                   const lowestPitch = Math.min(60, ...previewNotes.map(note => note.midi));
@@ -373,11 +379,10 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
                       </svg>
                       <span>{phraseTrack.pianoRoll.length} notes · {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</span>
                     </button> : <div className="producer-step-grid" style={{ "--track-steps": phraseTrack.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
-                      {phraseTrack.steps.map((step, stepIndex) => <StepButton key={stepIndex} active={step !== null} current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex} accent="var(--producer-lime)"
-                        data-current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex} className="producer-step" aria-label={`${track.name}, step ${stepIndex + 1}, ${step ? step.kind === "note" ? noteName(step.midi) : "hit" : "rest"}`} aria-pressed={step !== null}
-                        onClick={() => editPhrase({ ...phraseTrack, steps: phraseTrack.steps.map((item, i) => i !== stepIndex ? item : item ? null : track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }) })}>
-                        <span className="producer-step-index" aria-hidden="true">{stepIndex + 1}</span><span className="producer-step-tone">{step?.kind === "note" ? noteName(step.midi) : step ? "●" : ""}</span>
-                      </StepButton>)}
+                      {phraseTrack.steps.map((step, stepIndex) => <SequencerStep key={stepIndex} step={step} index={stepIndex} name={track.name}
+                        current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex}
+                        newStep={track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }}
+                        onChange={next => editPhrase({ ...phraseTrack, steps: phraseTrack.steps.map((item, i) => i === stepIndex ? next : item) })} />)}
                     </div>}
                     <div className="producer-track-mix">
                       <Button className="producer-track-mute" variant={!!track.muted ? "primary" : "ghost"} aria-pressed={!!track.muted} aria-label={`Mute ${track.name}`} title={!!track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => editTrack(index, { ...track, muted: !track.muted })}>M</Button>
@@ -425,7 +430,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
               </fieldset>
             </div>
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
-            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>Click steps to toggle · Click a track to edit</span></div>
+            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>Click to toggle · Drag for velocity · % for probability · C for conditions</span></div>
             <div className="producer-song-tools">
               <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} />
             </div>

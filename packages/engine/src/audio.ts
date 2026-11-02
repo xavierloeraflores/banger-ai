@@ -32,7 +32,7 @@ export class AudioRenderer {
   renderBar(program: MusicProgram, start: number, skipBefore = -Infinity, barIndex = 0, fill = false): RenderedBar {
     if (!Number.isFinite(start) || start < 0 || !Number.isInteger(barIndex) || barIndex < 0) throw new RangeError('Invalid bar start or index');
     const schedule = this.schedule(program), beat = barIndex * 4 % schedule.beats;
-    const events = schedule.bars[beat / 4].filter(event => eventOccurs(event, Math.floor(barIndex * 4 / schedule.beats) * Math.ceil(schedule.beats / event.phraseBeats), fill)).map(event => ({ ...event, time: start + (event.beat - beat) * 60 / program.tempo }));
+    const events = schedule.bars[beat / 4].filter(event => eventOccurs(event, Math.floor(barIndex * 4 / schedule.beats) * event.passesPerSong, fill)).map(event => ({ ...event, time: start + (event.beat - beat) * 60 / program.tempo }));
     return this.render(program, events, start, beat, beat + 4, barDuration(program), skipBefore, true);
   }
   renderSong(program: MusicProgram, start = 0): RenderedBar { if (!Number.isFinite(start) || start < 0) throw new RangeError('Invalid song start'); const schedule = this.schedule(program); return this.render(program, schedule.events.filter(event => eventOccurs(event)).map(event => ({ ...event, time: start + event.time })), start, 0, schedule.beats, songDuration(program), -Infinity); }

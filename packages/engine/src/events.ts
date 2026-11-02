@@ -1,5 +1,5 @@
 import { validateMusicProgram, resolveArrangement, resolvePattern, programDurationBeats, patternDurationBeats, applyGroove, type MusicProgram, type MusicTrack, type Step } from '@banger/compiler';
-export interface MusicEvent { track: MusicTrack; step: NonNullable<Step>; time: number; duration: number; velocity: number; sustained: boolean; beat: number; clipStartBeat: number; clipDurationBeats: number; pattern?: string; section?: string; pass: number; index: number; phraseBeats: number }
+export interface MusicEvent { track: MusicTrack; step: NonNullable<Step>; time: number; duration: number; velocity: number; sustained: boolean; beat: number; clipStartBeat: number; clipDurationBeats: number; pattern?: string; section?: string; pass: number; index: number; passesPerSong: number }
 export const barDuration = (program: MusicProgram): number => 240 / program.tempo;
 export const songDuration = (program: MusicProgram): number => programDurationBeats(program) * 60 / program.tempo;
 export interface EventOptions { fill?: boolean; cycle?: number; includeConditional?: boolean }
@@ -16,7 +16,10 @@ export function eventsForSong(program: MusicProgram, start = 0, options: EventOp
   validateMusicProgram(program);
   if (!Number.isFinite(start) || start < 0) throw new RangeError('Song start must be finite and nonnegative');
   const events: MusicEvent[] = [], seconds = 60 / program.tempo;
+  const passes = new Map<string, number>();
   for (const clip of resolveArrangement(program)) {
+    const key = `${clip.track}/${clip.pattern ?? ''}`, pass = passes.get(key) ?? 0;
+    passes.set(key, pass + 1);
     const track = program.tracks.find(track => track.name === clip.track)!;
     const pattern = resolvePattern(track, clip.pattern), length = patternDurationBeats(pattern);
     const add = (step: NonNullable<Step>, beat: number, duration: number, velocity: number, sustained: boolean, index: number) => {
@@ -25,16 +28,17 @@ export function eventsForSong(program: MusicProgram, start = 0, options: EventOp
       events.push({ track, step, time: start + (clip.startBeat + local) * seconds,
         duration: Math.min(duration, clip.durationBeats - local) * seconds, velocity, sustained,
         beat: clip.startBeat + local, clipStartBeat: clip.startBeat, clipDurationBeats: clip.durationBeats,
-        pattern: clip.pattern, section: clip.section, pass: Math.floor(clip.startBeat / length), index, phraseBeats: length });
+        pattern: clip.pattern, section: clip.section, pass, index, passesPerSong: 0 });
     };
     if (pattern.pianoRoll) pattern.pianoRoll.forEach((note, i) => add({ kind: 'note', midi: note.midi }, note.start, note.duration, note.velocity, true, i));
     else pattern.steps.forEach((step, i) => { if (step) add(step, i * length / pattern.steps.length, length / pattern.steps.length, step.velocity ?? 1, false, i); });
   }
-  return events.filter(event => options.includeConditional || eventOccurs(event, options.cycle ?? 0, options.fill ?? false)).sort((a, b) => a.time - b.time);
+  for (const event of events) event.passesPerSong = passes.get(`${event.track.name}/${event.pattern ?? ''}`)!;
+  return events.filter(event => options.includeConditional || eventOccurs(event, (options.cycle ?? 0) * event.passesPerSong, options.fill ?? false)).sort((a, b) => a.time - b.time);
 }
 export function eventsForBar(program: MusicProgram, start = 0, barIndex = 0): MusicEvent[] {
   if (!Number.isInteger(barIndex) || barIndex < 0) throw new RangeError('Bar index must be a nonnegative integer');
   const beat = (barIndex * 4) % programDurationBeats(program), seconds = 60 / program.tempo;
-  return eventsForSong(program, start, { includeConditional: true }).filter(event => event.beat >= beat && event.beat < beat + 4 && eventOccurs(event, Math.floor(barIndex * 4 / programDurationBeats(program)) * Math.ceil(programDurationBeats(program) / event.phraseBeats)))
+  return eventsForSong(program, start, { includeConditional: true }).filter(event => event.beat >= beat && event.beat < beat + 4 && eventOccurs(event, Math.floor(barIndex * 4 / programDurationBeats(program)) * event.passesPerSong))
     .map(event => ({ ...event, time: event.time - beat * seconds }));
 }

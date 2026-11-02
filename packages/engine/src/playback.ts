@@ -53,8 +53,9 @@ export class BangerPlayer {
   }
   async start(program: MusicProgram): Promise<void> {
     if (this.disposed) throw new Error('This player has been disposed');
-    const song = copyMusicProgram(program);
+    const song = copyMusicProgram(program), fill = this.fill;
     this.stop();
+    this.fill = fill;
     const generation = this.generation;
     if (!this.context) {
       if (typeof globalThis.AudioContext !== 'function') throw new Error('Web Audio is not available in this browser');

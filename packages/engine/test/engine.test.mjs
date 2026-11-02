@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compileMusic, createDefaultProgram } from '@banger/compiler';
-import { AudioRenderer, BangerPlayer, eventsForBar, barDuration } from '../dist/index.js';
+import { AudioRenderer, BangerPlayer, eventsForBar, eventsForSong, barDuration } from '../dist/index.js';
 
 class Param {
   value = 0;
   events = [];
+  setTargetAtTime(value, time, constant) { this.events.push({ value, time, constant }); }
   setValueAtTime(value, time) { this.events.push({ value, time }); }
   linearRampToValueAtTime(value, time) { this.events.push({ value, time }); }
   exponentialRampToValueAtTime(value, time) { assert.ok(value > 0); this.events.push({ value, time }); }
@@ -380,4 +381,65 @@ test('silent sections retain their timeline labels in transport state', async t 
   program.sections = [{ name: 'silence', bars: 1, tracks: [] }, { name: 'beat', bars: 1, tracks: [{ track: 'kick' }] }];
   program.timeline = [{ section: 'silence' }, { section: 'beat' }];
   await player.start(program); assert.equal(player.state.section, 'silence'); assert.equal(player.state.songBar, 1); await player.dispose();
+});
+
+
+test('conditions count each named phrase independently, including late first use', () => {
+  const program = compileMusic(`track k { sound "drums/kick"; rhythm "x!first x!every-2 x!every-4 x!fill x!not-fill x?0"; pattern late { rhythm "x!first"; } }
+    section intro { bars 4; play k; } section outro { bars 2; play k late; } song { play intro; play outro; }`);
+  const events = eventsForSong(program);
+  assert.equal(events.filter(event => event.pattern === 'late').length, 1);
+  assert.equal(events.find(event => event.pattern === 'late').beat, 16);
+  assert.equal(events.filter(event => event.step.condition === 'first').length, 2);
+  assert.equal(events.filter(event => event.step.condition === 'every-2').length, 2);
+  assert.equal(events.filter(event => event.step.condition === 'every-4').length, 1);
+  assert.equal(events.filter(event => event.step.condition === 'fill').length, 0);
+  assert.equal(events.filter(event => event.step.probability === 0).length, 0);
+  assert.equal(eventsForSong(program, 0, { cycle: 1 }).filter(event => event.step.condition === 'first').length, 0);
+  const fill = eventsForSong(program, 0, { fill: true });
+  assert.equal(fill.filter(event => event.step.condition === 'fill').length, 4);
+  assert.equal(fill.filter(event => event.step.condition === 'not-fill').length, 0);
+});
+
+test('probability remains deterministic and bar events match song rendering', () => {
+  const program = compileMusic('track k { sound "drums/kick"; bars 2; rhythm "x?.5 x?.5 x?.5 x?.5 x?.5 x?.5 x?.5 x?.5"; }');
+  assert.deepEqual(eventsForSong(program), eventsForSong(program));
+  assert.deepEqual([...eventsForBar(program, 0, 0), ...eventsForBar(program, 2, 1)], eventsForSong(program));
+  assert.notDeepEqual(eventsForSong(program).map(event => event.index), eventsForSong(program, 0, { cycle: 1 }).map(event => event.index));
+});
+
+test('held Fill changes future notes within a bar without stopping started notes', async t => {
+  environment(t); const player = new BangerPlayer();
+  await player.start(compileMusic('track k { sound "drums/kick"; rhythm "x x!fill x!not-fill x!fill"; }'));
+  const context = Context.instances[0], started = context.sources[0], normal = context.sources[1];
+  context.currentTime = .3; player.setFill(true);
+  assert.equal(started.stops.length, 0);
+  assert.equal(normal.stops.length, 1);
+  assert.deepEqual(context.sources.slice(2).map(source => source.starts[0]), [.55, 1.55]);
+  context.currentTime = .8; player.setFill(false);
+  assert.equal(context.sources[2].stops.length, 0);
+  assert.equal(context.sources[3].stops.length, 1);
+  assert.equal(context.sources.at(-1).starts[0], 1.05);
+  await player.dispose();
+});
+
+test('master volume smooths live graphs and metronome stays out of export renders', async t => {
+  environment(t); const player = new BangerPlayer(), program = song(); program.masterGain = .5; program.metronome = true;
+  await player.start(program); const context = Context.instances[0];
+  const master = context.nodes.find(node => node.connections.includes(context.destination));
+  assert.equal(master.gain.value, .3);
+  assert.equal(context.sources.filter(node => node.kind === 'oscillator').length, 4);
+  context.currentTime = .2; player.update({ ...program, masterGain: .25 });
+  assert.deepEqual(master.gain.events.at(-1), { value: .15, time: .2, constant: .01 });
+  const offline = new Context(), renderer = new AudioRenderer(offline); renderer.renderSong(program);
+  assert.equal(offline.sources.filter(node => node.kind === 'oscillator').length, 0);
+  renderer.dispose(); await player.dispose();
+});
+
+
+test('holding Fill before Play is honored by the first bar', async t => {
+  environment(t); const player = new BangerPlayer(); player.setFill(true);
+  await player.start(compileMusic('track k { sound "drums/kick"; rhythm "x!fill"; }'));
+  assert.equal(Context.instances[0].sources.length, 1);
+  await player.dispose();
 });

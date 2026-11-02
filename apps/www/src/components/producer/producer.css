@@ -371,3 +371,19 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .studio-section > input { width: 100%; }
 .studio-inline > select { width: auto; min-width: 160px; }
 .piano-time-scroll { overflow-x: auto; max-width: 100%; }
+
+/* Step performance badges remain separate keyboard targets. */
+.producer-step-cell { position: relative; min-width: 0; padding-top: 15px; }
+.producer-step-cell .producer-step { width: 100%; touch-action: none; }
+.producer-step-cell .producer-step[data-active="true"] { color: #eef7dc; background: linear-gradient(to top, color-mix(in srgb, var(--producer-lime) 35%, #161a15) var(--step-velocity), #171b17 var(--step-velocity)); }
+.producer-step-badges { position: absolute; inset: 0 0 auto; display: flex; justify-content: space-between; gap: 1px; }
+.producer-step-badges button { background: #20251d; color: #e3f6cb; border: 0; border-radius: 2px; padding: 0 2px; font-size: 9px; line-height: 14px; cursor: pointer; }
+.producer-step-badges button:focus-visible { outline: 2px solid var(--producer-lime); }
+.producer-step-velocity { position: absolute; bottom: 1px; right: 3px; font-size: 8px; opacity: .75; }
+.producer-transport-extras { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.producer-transport-extras > label { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.producer-transport-extras input[type="range"] { width: 80px; }
+.producer-pattern-launcher { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.producer-transport { flex-wrap: wrap; }
+
+.producer-step-grid { grid-template-columns: repeat(var(--track-steps, 16), minmax(38px, 1fr)); }

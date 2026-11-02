@@ -123,5 +123,24 @@ export async function run() {
   const pitchedResult = await renderWav(pitched, { sampleRate: 16000 });
   assert(pitchedResult.duration > 11 && rms(pitchedResult.buffer, 2, 3) > .0001, 'Pitch-down drum tail truncated');
   report.stems = Object.keys(keyStems); report.memoryGuard = true; report.stereoSidechain = true; report.pitchTailSeconds = pitchedResult.tailSeconds;
+  const performanceSong = compileMusic('tempo 120; track k { sound "drums/kick"; rhythm "x"; }');
+  const full = await renderWav(performanceSong, options);
+  performanceSong.tracks[0].steps[0].velocity = .5;
+  const halfVelocity = await renderWav(performanceSong, options);
+  assert(Math.abs(rms(halfVelocity.buffer) / rms(full.buffer) - .5) < .00001, 'Step velocity does not scale audio');
+  performanceSong.masterGain = .5;
+  const halfMaster = await renderWav(performanceSong, options);
+  assert(Math.abs(rms(halfMaster.buffer) / rms(halfVelocity.buffer) - .5) < .00001, 'Master gain does not scale audio');
+  performanceSong.metronome = true;
+  const clickExport = await renderWav(performanceSong, options);
+  assert(new Uint8Array(clickExport.wav).every((value, index) => value === new Uint8Array(halfMaster.wav)[index]), 'Metronome leaked into export');
+  performanceSong.tracks[0].steps[0].condition = 'fill';
+  const noFill = await renderWav(performanceSong, options);
+  assert(rms(noFill.buffer) === 0, 'Fill-only note leaked into normal export');
+  const fillContext = new OfflineAudioContext(2, 56000, 16000), fillRenderer = new AudioRenderer(fillContext);
+  fillRenderer.renderBar(performanceSong, 0, -Infinity, 0, true);
+  const fillBuffer = await fillContext.startRendering(); fillRenderer.dispose();
+  assert(rms(fillBuffer) > .001, 'Fill and click failed in actual audio');
+  report.performance = { velocityRatio: rms(halfVelocity.buffer) / rms(full.buffer), masterRatio: rms(halfMaster.buffer) / rms(halfVelocity.buffer), fillRms: rms(fillBuffer), fillExportSilent: true, clickExcludedFromExport: true };
   return report;
 }
