@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Panel } from "@banger/shadcn";
+import { Button, IconButton, Panel } from "@banger/shadcn";
 import type { BangerFile, ChatMessage, ChatReply } from "@banger/agent/protocol";
 import { sendChat } from "@/lib/ai-chat";
 import { saveProject } from "@/lib/project-files";
@@ -12,6 +12,9 @@ type Props = { source: string; fileName: string; revision: number; fileBusy: boo
 const suggestions = ["Make a warm lo-fi beat at 85 BPM", "Create three different house loops", "Add a melody to this project"];
 
 export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) {
+  const [open, setOpen] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const launcher = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
@@ -41,7 +44,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
 
   useEffect(() => {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: "instant" });
-  }, [turns, pendingPrompt, error]);
+  }, [turns, pendingPrompt, error, open]);
 
   async function send() {
     const text = prompt.trim();
@@ -70,7 +73,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
       if (request.current === controller) {
         request.current = null;
         setPendingPrompt(null);
-        input.current?.focus();
+        if (dialog.current?.open) input.current?.focus();
       }
     }
   }
@@ -87,11 +90,28 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
     finally { savingRef.current = false; setSaving(false); }
   }
 
-  return <Panel className="producer-ai" aria-labelledby="ai-chat-title">
+  return <>
+    <IconButton ref={launcher} className="ai-chat-launcher" variant="primary" aria-label="Open AI chat"
+      aria-haspopup="dialog" aria-expanded={open} aria-controls="ai-chat-dialog"
+      onClick={() => { dialog.current?.showModal(); setOpen(true); if (!busy) input.current?.focus(); }}>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5A8.5 8.5 0 0 1 9.5 3h3a8.5 8.5 0 0 1 8.5 8.5Z" transform="translate(1 -1) scale(.95)" />
+        <path d="M7 10h8M7 14h5" />
+      </svg>
+    </IconButton>
+    <dialog ref={dialog} id="ai-chat-dialog" className="ai-chat-dialog" aria-labelledby="ai-chat-title"
+      onClose={() => { setOpen(false); launcher.current?.focus(); }}
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.current?.close();
+      }}>
+    <Panel className="producer-ai" aria-labelledby="ai-chat-title">
     <div className="producer-panel-heading">
       <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Describe your next banger</h2></div>
       <div className="ai-chat-heading-actions"><span className="producer-tag">{connection}</span>
         <Button variant="ghost" disabled={busy || !turns.length} onClick={() => { setTurns([]); setPrompt(""); setError(null); setNotice(""); }}>New chat</Button>
+        <IconButton className="ai-chat-close" variant="ghost" aria-label="Close AI chat" onClick={() => dialog.current?.close()}>×</IconButton>
       </div>
     </div>
     <div ref={transcript} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
@@ -127,5 +147,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>
-  </Panel>;
+    </Panel>
+    </dialog>
+  </>;
 }
