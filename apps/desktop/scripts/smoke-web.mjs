@@ -23,6 +23,9 @@ try {
   await window.loadURL(`http://127.0.0.1:${server.address().port}/`);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   assert.equal(await evaluate('typeof window.bangerProjects'), 'undefined');
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8'));
+  assert.equal(await evaluate("document.querySelector('#source-title').textContent"), 'night-drive.banger');
+  assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), '112');
   const source = await smokePiano(window);
   const downloaded = new Promise((resolve, reject) => {
     window.webContents.session.once('will-download', (_event, item) => {

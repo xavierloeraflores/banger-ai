@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   compileMusic,
-  createDefaultProgram,
   serializeMusic,
   programDurationBeats,
   resolvePattern,
@@ -65,14 +64,14 @@ function diagnose(cause: unknown) {
   return message(cause);
 }
 
-export function Producer() {
+export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [view, setView] = useState<StudioView>("sequencer");
-  const [program, setProgram] = useState<MusicProgram>(() => createDefaultProgram());
-  const [appliedSource, setAppliedSource] = useState(() => serializeMusic(program));
+  const [program, setProgram] = useState<MusicProgram>(() => compileMusic(initialFile.source));
+  const [appliedSource, setAppliedSource] = useState(initialFile.source);
   const [source, setSource] = useState(appliedSource);
   const [savedSource, setSavedSource] = useState(appliedSource);
-  const [fileName, setFileName] = useState("first-loop.banger");
+  const [fileName, setFileName] = useState(initialFile.name);
   const [tempoDraft, setTempoDraft] = useState(String(program.tempo));
   const [muted, setMuted] = useState<Set<number>>(() => new Set());
   const [solo, setSolo] = useState<Set<number>>(() => new Set());

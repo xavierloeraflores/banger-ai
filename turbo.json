@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": ["examples/night-drive.banger"],
   "globalEnv": [
     "NODE_ENV"
   ],
