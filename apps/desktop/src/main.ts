@@ -114,6 +114,16 @@ function createWindow() {
   windows.add(window);
   window.on("closed", () => windows.delete(window));
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-prevent-unload", (event) => {
+    const choice = dialog.showMessageBoxSync(window, {
+      type: "question", title: "Unsaved project",
+      message: "Discard unsaved changes?",
+      detail: "Your project has changes that have not been saved.",
+      buttons: ["Cancel", "Discard"], defaultId: 0, cancelId: 0,
+    });
+    // This event's default preserves the page. Only explicit discard permits unloading.
+    if (choice === 1) event.preventDefault();
+  });
   window.webContents.on("will-navigate", (event, url) => {
     if (!isAppUrl(url, developmentUrl)) event.preventDefault();
   });

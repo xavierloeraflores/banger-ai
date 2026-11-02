@@ -1,0 +1,157 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { setTimeout } from "node:timers/promises";
+import { dialog } from "electron";
+
+const mixedLengthSource = `tempo 137;
+meter 4/4;
+track smoke_kick { sound "drums/kick"; rhythm "x . x . . . x ."; gain 0.5; }
+track smoke_bass { instrument "synth/bass"; notes "C2 . G2"; gain 0.3; }
+`;
+const replacementSource = `tempo 91;
+meter 4/4;
+track replacement { sound "drums/hat"; rhythm "x . . ."; gain 0.2; }
+`;
+const applyButton = `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Apply source')`;
+const gridSnapshot = `[...document.querySelectorAll('.producer-track')].map(track => ({
+  name: track.querySelector('.producer-track-name').value,
+  steps: [...track.querySelectorAll('.producer-step')].map(step => step.getAttribute('aria-pressed')),
+}))`;
+
+export async function smokeProducer(window, directory) {
+  const evaluate = (script) => window.webContents.executeJavaScript(script, true);
+  async function waitFor(script, label, timeout = 5_000) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      if (await evaluate(script)) return;
+      await setTimeout(25);
+    }
+    const details = await evaluate(`({
+      diagnostics: document.querySelector('#producer-diagnostics')?.textContent,
+      alert: document.querySelector('[role="alert"]')?.textContent,
+      notice: document.querySelector('.producer-footer [role="status"]')?.textContent,
+      transport: document.querySelector('.producer-transport-state')?.textContent,
+    })`);
+    throw new Error(`${label} timed out: ${JSON.stringify(details)}`);
+  }
+  async function click(selector) {
+    await evaluate(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element || element.matches(':disabled')) throw new Error('Control is unavailable: ' + ${JSON.stringify(selector)});
+      element.click();
+    })()`);
+  }
+  async function clickText(text) {
+    await evaluate(`(() => {
+      const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === ${JSON.stringify(text)});
+      if (!button || button.matches(':disabled')) throw new Error('Button is unavailable: ' + ${JSON.stringify(text)});
+      button.click();
+    })()`);
+  }
+  async function editSource(source) {
+    await evaluate(`(() => {
+      const editor = document.querySelector('#producer-source');
+      if (!editor || editor.disabled) throw new Error('Source editor is unavailable.');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(editor, ${JSON.stringify(source)});
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+  }
+  async function applySource(source, tempo, names, lengths) {
+    await editSource(source);
+    await waitFor(`!${applyButton}?.disabled && document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'false'`, "valid draft");
+    await clickText("Apply source");
+    await waitFor(`document.querySelector('#producer-tempo')?.value === ${JSON.stringify(String(tempo))} && document.querySelector('.producer-source-status')?.textContent === 'In sync'`, "applied source");
+    const grid = await evaluate(gridSnapshot);
+    assert.deepEqual(grid.map(track => track.name), names);
+    assert.deepEqual(grid.map(track => track.steps.length), lengths);
+  }
+  async function saveAs(path, filename) {
+    let dialogCalls = 0;
+    dialog.showSaveDialog = async () => { dialogCalls += 1; return { canceled: false, filePath: path }; };
+    await clickText("Save .banger");
+    await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Saved ${filename}.`)}`, "native save");
+    assert.equal(dialogCalls, 1, "Save must use the native dialog once.");
+    assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Local project");
+  }
+
+  await waitFor("document.querySelectorAll('.producer-track').length === 4 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
+  await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  const initial = await evaluate(gridSnapshot);
+  assert.deepEqual(initial.map(track => track.name), ["kick", "snare", "hats", "bass"]);
+  assert.deepEqual(initial.map(track => track.steps.length), [16, 16, 16, 16]);
+  assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "120");
+  const originalSource = await evaluate("document.querySelector('#producer-source').value");
+  assert.equal(initial[0].steps[1], "false");
+  await click('.producer-track:first-child .producer-step:nth-child(2)');
+  await waitFor(`document.querySelector('.producer-track:first-child .producer-step:nth-child(2)')?.getAttribute('aria-pressed') === 'true' && document.querySelector('#producer-source')?.value !== ${JSON.stringify(originalSource)}`, "step edit and serialization");
+  assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
+
+  await click(".producer-play");
+  await waitFor("document.querySelector('.producer-transport-state')?.textContent === 'Playing' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length === 4", "audio playback");
+  const firstPosition = await evaluate("document.querySelector('.producer-position').getAttribute('aria-label')");
+  await waitFor(`document.querySelector('.producer-position')?.getAttribute('aria-label') !== ${JSON.stringify(firstPosition)}`, "advancing audio playhead");
+  const audioDeadline = Date.now() + 3_000;
+  while (!window.webContents.isCurrentlyAudible() && Date.now() < audioDeadline) await setTimeout(25);
+  assert.equal(window.webContents.isCurrentlyAudible(), true, "Real Web Audio output must become audible.");
+  await click('[aria-label="Stop playback"]');
+  await waitFor("document.querySelector('.producer-position')?.getAttribute('aria-label') === 'Stopped' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length === 0", "stopped playhead");
+
+  const beforeInvalid = await evaluate(gridSnapshot);
+  await editSource("tempo nope;");
+  await waitFor(`document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'true' && ${applyButton}?.disabled`, "invalid draft diagnostic");
+  assert.deepEqual(await evaluate(gridSnapshot), beforeInvalid, "Invalid source must preserve the applied sequence.");
+  assert.equal(await evaluate("document.querySelector('.producer-tracks').disabled"), true);
+  await applySource(mixedLengthSource, 137, ["smoke_kick", "smoke_bass"], [8, 3]);
+
+  const filename = "対話 🎵.banger";
+  const path = join(directory, filename);
+  await saveAs(path, filename);
+  assert.equal(await readFile(path, "utf8"), mixedLengthSource, "The UI must save its real source through IPC.");
+  const savedGrid = await evaluate(gridSnapshot);
+  // Save a different current project so reopening exercises replacement without a confirmation stub.
+  await applySource(replacementSource, 91, ["replacement"], [4]);
+  await saveAs(join(directory, "replacement.banger"), "replacement.banger");
+  let openCalls = 0;
+  dialog.showOpenDialog = async () => { openCalls += 1; return { canceled: false, filePaths: [path] }; };
+  await clickText("Open");
+  await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Opened ${filename}.`)}`, "native reopen");
+  assert.equal(openCalls, 1, "Open must use the native dialog once.");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), mixedLengthSource);
+  assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "137");
+  assert.deepEqual(await evaluate(gridSnapshot), savedGrid, "Reopening must compile the saved track names, lengths, and steps.");
+  assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
+  await click('.producer-track:first-child .producer-step:first-child');
+  await waitFor("document.querySelector('.producer-project .producer-dim')?.textContent === 'Unsaved'", "dirty close setup");
+  await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  const unsavedSource = await evaluate("document.querySelector('#producer-source').value");
+  let closeChoice = 0;
+  let closeDialogs = 0;
+  let unloadAttempts = 0;
+  window.webContents.on("will-prevent-unload", () => { unloadAttempts += 1; });
+  dialog.showMessageBoxSync = (owner, options) => {
+    assert.equal(owner, window);
+    assert.deepEqual(options.buttons, ["Cancel", "Discard"]);
+    assert.equal(options.defaultId, 0);
+    assert.equal(options.cancelId, 0);
+    closeDialogs += 1;
+    return closeChoice;
+  };
+  window.close();
+  const cancelDeadline = Date.now() + 3_000;
+  while (closeDialogs === 0 && !window.isDestroyed() && Date.now() < cancelDeadline) await setTimeout(25);
+  await setTimeout(100);
+  assert.equal(closeDialogs, 1, "A real close attempt must ask before discarding.");
+  assert.equal(unloadAttempts, 1);
+  assert.equal(window.isDestroyed(), false, "Cancel must preserve the dirty window.");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), unsavedSource);
+  closeChoice = 1;
+  window.close();
+  const discardDeadline = Date.now() + 3_000;
+  while (!window.isDestroyed() && Date.now() < discardDeadline) await setTimeout(25);
+  assert.equal(closeDialogs, 2);
+  assert.equal(unloadAttempts, 2);
+  assert.equal(window.isDestroyed(), true, "Explicit discard must close the dirty window.");
+  console.log("Unsaved-close smoke passed: actual beforeunload, Cancel preserves the project, explicit Discard closes the window.");
+  console.log("Producer smoke passed: hydrated 4×16 grid, step serialization, real audio and moving playhead, stop, invalid draft preservation, 8/3-step patterns, native save/reopen with restored tracks and tempo.");
+}

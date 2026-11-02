@@ -4,8 +4,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import "../dist/main.js";
+import { smokeProducer } from "./smoke-producer.mjs";
 
-const timeout = setTimeout(() => { console.error("Desktop smoke test timed out."); app.exit(1); }, 30_000);
+const timeout = setTimeout(() => { console.error("Desktop smoke test timed out."); app.exit(1); }, 45_000);
+// Keep the smoke process alive for assertions and cleanup after the final window closes.
+app.on("before-quit", (event) => event.preventDefault());
 app.on("browser-window-created", (_event, window) => {
   window.webContents.once("did-finish-load", () => { void run(window); });
 });
@@ -56,6 +59,7 @@ async function run(window) {
     await writeFile(path, new Uint8Array([0xff, 0xfe]));
     await assert.rejects(window.webContents.executeJavaScript("window.bangerProjects.openProject()"), /UTF-8/);
     await assert.rejects(window.webContents.executeJavaScript("window.bangerProjects.saveProject({}, 'song')"), /text/);
+    await smokeProducer(window, directory);
     console.log("Desktop smoke passed: static Next assets, secure sandbox, scoped bridge, native Unicode round trip, cancellation, invalid input.");
   } catch (error) {
     console.error(error);
