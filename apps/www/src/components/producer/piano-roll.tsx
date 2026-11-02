@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { MUSIC_LIMITS, pianoNotes, type MusicTrack, type PianoNote } from "@banger/compiler";
 import { Button, Input, Range, Select } from "@banger/shadcn";
 
@@ -89,10 +89,11 @@ export function PianoRoll({ track, disabled, visible, playing, phase, beats = 4,
         {notes.map((note, i) => <option key={i} value={i}>{i + 1}. {pitchName(note.midi)} at {Number(note.start.toFixed(3))}</option>)}
       </Select>
     </div>
+    <div className="piano-time-scroll"><div style={{ minWidth: beats * 64 + 52 }}>
     <div className="piano-ruler" aria-hidden="true"><span>BEAT</span><div>{Array.from({ length: beats }, (_, i) => i + 1).map(beat => <span key={beat}>{beat}</span>)}</div></div>
     <div className="piano-scroll" ref={scroll}>
       <div className="piano-keys" aria-hidden="true">{Array.from({ length: 128 }, (_, i) => <div key={i} data-black={Boolean(names[(127 - i) % 12]?.includes("#"))}>{pitchName(127 - i)}</div>)}</div>
-      <div className="piano-grid" ref={grid} role="group" aria-label={`${track.name} note grid`}>
+      <div className="piano-grid" style={{ "--piano-beat": `${100 / beats}%`, "--piano-snap": `${100 * snap / beats}%` } as CSSProperties} ref={grid} role="group" aria-label={`${track.name} note grid`}>
         {Array.from({ length: 128 }, (_, i) => {
           const midi = 127 - i;
           return <button type="button" className="piano-row" key={midi} data-midi={midi} data-black={Boolean(names[midi % 12]?.includes("#"))} aria-label={`Add ${pitchName(midi)} to ${track.name}`} disabled={disabled || notes.length >= MUSIC_LIMITS.notes}
@@ -133,6 +134,7 @@ export function PianoRoll({ track, disabled, visible, playing, phase, beats = 4,
         {playing && <div className="piano-playhead" style={{ left: `${phase * 100}%` }} aria-hidden="true" />}
       </div>
     </div>
+    </div></div>
     <div className="piano-inspector">
       {active && selected !== null ? <>
         <label>Pitch <Select aria-label={`${track.name} note pitch`} disabled={disabled} value={active.midi} onChange={e => change(selected, { ...active, midi: Number(e.target.value) })}>

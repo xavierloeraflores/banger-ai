@@ -96,6 +96,7 @@ export function Producer() {
     tracks: program.tracks.map((track, index) => ({
       ...track,
       gain: muted.has(index) || (solo.size > 0 && !solo.has(index)) ? 0 : track.gain,
+      automation: muted.has(index) || (solo.size > 0 && !solo.has(index)) ? track.automation?.filter(curve => curve.target !== "gain") : track.automation,
     })),
   }), [program, muted, solo]);
   const playback = usePlayer(audibleProgram);
@@ -261,7 +262,7 @@ export function Producer() {
     const nextSource: MusicTrack["source"] = instrument
       ? { kind: "instrument", name: name as InstrumentName }
       : { kind: "sound", name: name as SoundName };
-    if (!instrument && (track.pianoRoll !== undefined || track.patterns?.some(pattern => pattern.pianoRoll !== undefined)) && !window.confirm("Switch all this track's patterns to drums? Pitches, note lengths and velocities will become drum hits at the same onsets on a 64-step grid.")) return;
+    if (!instrument && (track.pianoRoll !== undefined || track.patterns?.some(pattern => pattern.pianoRoll !== undefined)) && !window.confirm("Switch all this track's patterns to drums? Pitches, note lengths and velocities will become drum hits with onsets rounded to a 64-step grid.")) return;
     const convert = (phrase: { steps: MusicTrack["steps"]; pianoRoll?: MusicTrack["pianoRoll"]; bars?: number }) => {
       if (phrase.pianoRoll !== undefined && !instrument) {
         const steps: MusicTrack["steps"] = Array.from({ length: 64 }, (_, step) => phrase.pianoRoll!.some(note => Math.floor(note.start / ((phrase.bars ?? 1) * 4) * 64) === step) ? { kind: "hit" } : null);
@@ -397,7 +398,10 @@ export function Producer() {
                       <span className="producer-track-length">{track.pianoRoll ? `${track.pianoRoll.length} notes` : `${track.steps.length} steps`}</span>
                       <IconButton variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>×</IconButton>
                     </div>
-                    <PatternControls track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })} onChange={next => editTrack(index, next)} />
+                    <PatternControls track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })}
+                      onRename={(oldName, name) => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.map(pattern => pattern.name === oldName ? { ...pattern, name } : pattern) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === oldName ? { ...binding, pattern: name } : binding) })) })}
+                      onRemove={name => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.filter(pattern => pattern.name !== name) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === name ? { track: track.name } : binding) })) })}
+                      onChange={next => editTrack(index, next)} />
                     <LevelMeter name={track.name} level={playback.meters.tracks[track.name]?.peak} />
                     <TrackRouting program={program} index={index} onChange={edit} />
                     <TrackEffects track={track} tracks={program.tracks.map(item => item.name)} disabled={draft || fileBusy} onChange={next => editTrack(index, { ...track, ...next })} />

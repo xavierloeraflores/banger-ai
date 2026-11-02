@@ -1,3 +1,4 @@
+import "./audio-worklet";
 import { useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
 import { renderWav } from "@banger/engine";
@@ -21,12 +22,12 @@ export function AudioExport({ program, fileName, disabled }: { program: MusicPro
       if (individual) {
         const selected = program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name;
         if (!selected) throw new Error("Choose a track to export.");
-        const audio = await renderWav(program, { sampleRate, tailSeconds: 2, stem: selected });
+        const audio = await renderWav(program, { sampleRate, stem: selected });
         download(audio.wav, `${name}-${selected}.wav`);
-        setStatus(`Exported ${selected} stem with routing and two seconds of effect tails.`);
+        setStatus(`Exported ${selected} stem with routing and ${audio.tailSeconds.toFixed(1)} seconds of effect tails.`);
       } else {
-        const audio = await renderWav(program, { sampleRate, tailSeconds: 2 });
-        download(audio.wav, `${name}.wav`); setStatus("Exported stereo WAV with two seconds of effect tails.");
+        const audio = await renderWav(program, { sampleRate });
+        download(audio.wav, `${name}.wav`); setStatus(`Exported stereo WAV with ${audio.tailSeconds.toFixed(1)} seconds of effect tails.`);
       }
     } catch (cause) { setStatus(cause instanceof Error ? cause.message : "Audio export failed."); }
     finally { setBusy(false); }

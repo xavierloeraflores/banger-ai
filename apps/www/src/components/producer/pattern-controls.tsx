@@ -1,7 +1,7 @@
 import type { MusicTrack } from "@banger/compiler";
 import { Button, Input, Range, Select } from "@banger/shadcn";
 
-export function PatternControls({ track, selected, onSelect, onChange }: { track: MusicTrack; selected: string; onSelect: (name: string) => void; onChange: (track: MusicTrack) => unknown }) {
+export function PatternControls({ track, selected, onSelect, onRename, onRemove, onChange }: { track: MusicTrack; selected: string; onSelect: (name: string) => void; onRename: (oldName: string, name: string) => unknown; onRemove: (name: string) => unknown; onChange: (track: MusicTrack) => unknown }) {
   const pattern = track.patterns?.find(item => item.name === selected);
   const phrase = pattern ?? track;
   const changeBars = (bars: number) => {
@@ -11,6 +11,11 @@ export function PatternControls({ track, selected, onSelect, onChange }: { track
   };
   return <div className="studio-pattern-controls">
     <label>Pattern <Select aria-label={`${track.name} pattern`} value={pattern?.name ?? ""} onChange={e => onSelect(e.target.value)}><option value="">Base pattern</option>{track.patterns?.map(item => <option key={item.name}>{item.name}</option>)}</Select></label>
+    {pattern && <><label>Name <Input key={pattern.name} aria-label={`${track.name} pattern name`} defaultValue={pattern.name} onBlur={event => {
+      if (event.target.value === pattern.name) return;
+      if (onRename(pattern.name, event.target.value)) onSelect(event.target.value); else event.target.value = pattern.name;
+    }} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+      <Button variant="ghost" onClick={() => { if (window.confirm("Delete this pattern? Sections using it will switch to the base pattern.") && onRemove(pattern.name)) onSelect(""); }}>Delete pattern</Button></>}
     <label>Phrase bars <Input aria-label={`${track.name} phrase bars`} type="number" min={Math.max(1, Math.ceil(Math.max(0, ...phrase.pianoRoll?.map(note => note.start + note.duration) ?? []) / 4))} max={64} value={phrase.bars ?? 1} onChange={e => changeBars(Number(e.target.value))} /></label>
     {phrase.pianoRoll === undefined && <label>Steps <Select aria-label={`${track.name} step count`} value={phrase.steps.length} onChange={e => {
       const length = Number(e.target.value);

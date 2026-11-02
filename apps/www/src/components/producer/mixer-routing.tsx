@@ -6,8 +6,8 @@ import { AutomationEditor } from "./automation-editor";
 export function LevelMeter({ name, level = 0 }: { name: string; level?: number }) {
   return <label className="studio-meter">{name}<meter aria-label={`${name} output meter`} min={0} max={1} value={Math.min(1, level)} /><output>{level > 0 ? `${Math.round(20 * Math.log10(level))} dB` : "−∞"}</output></label>;
 }
-export function Sends({ name, sends = [], buses, onChange }: { name: string; sends?: Send[]; buses: MusicBus[]; onChange: (sends: Send[]) => unknown }) {
-  return <div className="studio-sends">{buses.filter(bus => bus.name !== name).map(bus => {
+export function Sends({ name, sends = [], buses, isBus = false, onChange }: { name: string; sends?: Send[]; buses: MusicBus[]; isBus?: boolean; onChange: (sends: Send[]) => unknown }) {
+  return <div className="studio-sends">{buses.filter(bus => !isBus || bus.name !== name).map(bus => {
     const send = sends.find(item => item.bus === bus.name);
     return <label key={bus.name}>Send to {bus.name}<Range aria-label={`${name} send ${bus.name}`} min={0} max={1} step={.01} value={send?.gain ?? 0} onChange={e => { const gain = Number(e.target.value); onChange([...sends.filter(item => item.bus !== bus.name), ...(gain ? [{ bus: bus.name, gain }] : [])]); }} /><output>{Math.round((send?.gain ?? 0)*100)}%</output></label>;
   })}</div>;
@@ -24,7 +24,7 @@ export function BusMixer({ program, disabled, levels = {}, onChange }: { program
   return <details className="studio-buses"><summary>Mixer buses · {buses.length}</summary><fieldset disabled={disabled}>
     {buses.map((bus,index) => <section className="studio-bus" key={bus.name}><strong>{bus.name}</strong><LevelMeter name={bus.name} level={levels[bus.name]?.peak} /><label>Gain <Range aria-label={`${bus.name} gain`} min={0} max={1} step={.01} value={bus.gain} onChange={e => update(index, { ...bus, gain: Number(e.target.value) })} /></label>
       <TrackEffects track={bus} disabled={disabled} tracks={program.tracks.map(track => track.name)} onChange={next => update(index, { ...bus, ...next })} />
-      <Sends name={bus.name} buses={buses} sends={bus.sends} onChange={sends => update(index, { ...bus, sends })} />
+      <Sends isBus name={bus.name} buses={buses} sends={bus.sends} onChange={sends => update(index, { ...bus, sends })} />
       <AutomationEditor name={bus.name} bus curves={bus.automation} effects={bus.effects} beats={programDurationBeats(program)} onChange={automation => update(index, { ...bus, automation })} />
       <Button variant="ghost" onClick={() => onChange({ ...program, buses: buses.filter((_,i) => i !== index).map(item => ({ ...item, sends: item.sends?.filter(send => send.bus !== bus.name) })), tracks: program.tracks.map(track => { const next = { ...track, sends: track.sends?.filter(send => send.bus !== bus.name) }; if (next.output === bus.name) delete next.output; return next; }) })}>Remove {bus.name}</Button>
     </section>)}

@@ -30,7 +30,8 @@ export function AutomationEditor({ name, curves = [], beats, effects = [], bus =
       const plotted = curve.points.flatMap((point, i) => curve.interpolation === "step" && i ? [position({ beat: point.beat, value: curve.points[i-1]!.value }), position(point)] : [position(point)]).join(" ");
       return <section key={curve.target} className="studio-automation-lane">
         <div className="studio-inline"><strong>{curve.target}</strong><Select aria-label={`${name} ${curve.target} interpolation`} value={curve.interpolation ?? "linear"} onChange={e => update(index, { ...curve, interpolation: e.target.value as "linear" | "step" })}><option>linear</option><option>step</option></Select><Button variant="ghost" aria-label={`Remove ${name} ${curve.target} automation`} onClick={() => onChange(curves.filter((_, i) => i !== index))}>Remove lane</Button></div>
-        <svg viewBox="0 0 600 100" role="img" aria-label={`${name} ${curve.target} curve`} onClick={event => {
+        <p>0–{span} beats · {min} to {max}</p>
+        <svg viewBox="0 0 600 100" preserveAspectRatio="none" role="img" aria-label={`${name} ${curve.target} curve`} onClick={event => {
           if (curve.points.length >= 128 || event.currentTarget.closest("fieldset")?.disabled) return;
           const rect = event.currentTarget.getBoundingClientRect();
           const beat = Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * span * 4) / 4;
