@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("bangerProjects", Object.freeze({
 
 contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
   load: () => ipcRenderer.invoke("banger:ai-load"),
+  select: option => ipcRenderer.invoke("banger:ai-select", option),
   save: (provider, model, key) => ipcRenderer.invoke("banger:ai-save", provider, model, key),
   remove: provider => ipcRenderer.invoke("banger:ai-remove", provider),
 }));
@@ -15,4 +16,13 @@ contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
 contextBridge.exposeInMainWorld("bangerChat", Object.freeze({
   send: request => ipcRenderer.invoke("banger:chat", request),
   cancel: () => ipcRenderer.invoke("banger:chat-cancel"),
+}));
+
+contextBridge.exposeInMainWorld("bangerLocal", Object.freeze({
+  status: () => ipcRenderer.invoke("banger:local-status"),
+  download: () => ipcRenderer.invoke("banger:local-download"),
+  choose: variant => ipcRenderer.invoke("banger:local-choose", variant),
+  start: () => ipcRenderer.invoke("banger:local-start"),
+  stop: () => ipcRenderer.invoke("banger:local-stop"),
+  select: selected => ipcRenderer.invoke("banger:local-select", selected),
 }));

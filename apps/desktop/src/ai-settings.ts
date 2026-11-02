@@ -58,6 +58,13 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
   }
   return {
     load: () => serialize(async () => summary(await read())),
+    select: (provider: unknown) => serialize(async () => {
+      const id = providerId(provider);
+      const settings = await read();
+      if (!settings.providers[id]) throw new Error("Configure this provider before selecting it.");
+      settings.activeProvider = id;
+      return persist(settings);
+    }),
     credentials: () => serialize(async () => {
       const settings = await read();
       const provider = settings.activeProvider;

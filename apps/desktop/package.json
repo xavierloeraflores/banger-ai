@@ -15,7 +15,8 @@
     "smoke": "electron scripts/smoke.mjs",
     "smoke:byok": "electron scripts/smoke-byok.mjs",
     "smoke:chat": "electron scripts/smoke-chat.mjs",
-    "smoke:web": "electron scripts/smoke-web.mjs"
+    "smoke:web": "electron scripts/smoke-web.mjs",
+    "smoke:local": "electron scripts/smoke-local.mjs"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",

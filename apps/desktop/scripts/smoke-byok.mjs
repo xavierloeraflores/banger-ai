@@ -22,7 +22,7 @@ async function exercise(window, desktop) {
   const evaluate = script => window.webContents.executeJavaScript(script, true);
   async function waitFor(script) {
     for (let attempt = 0; attempt < 200; attempt++) {
-      if (await evaluate(script)) return;
+      if (await evaluate(`Boolean(${script})`)) return;
       await delay(25);
     }
     throw new Error(`UI state did not arrive: ${script}. ${await evaluate("document.querySelector('.byok-feedback')?.textContent")}`);
@@ -40,7 +40,7 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-source')?.value");
   await click("BYOK");
   await waitFor("document.querySelector('#studio-tab-byok')?.getAttribute('aria-selected') === 'true' && !document.querySelector('.byok-form fieldset').disabled");
-  assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), 5);
+  assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), desktop ? 6 : 5);
   const providers = ["Vercel AI Gateway", "Anthropic", "OpenAI", "Meta Muse", "Grok"];
   for (const name of providers) {
     await evaluate(`([...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === ${JSON.stringify(name)})).click()`);
@@ -53,6 +53,27 @@ async function exercise(window, desktop) {
     await click("Save and select");
     await waitFor(`document.querySelector('.byok-feedback [role="status"]')?.textContent.includes(${JSON.stringify(name + " settings saved")})`);
     assert.equal(await evaluate("document.querySelector('#byok-key').value"), "");
+  }
+  assert.equal(await evaluate("document.querySelectorAll('#active-ai-model option:not([disabled])').length"), 5);
+  for (const id of ["openai", "anthropic", "grok"]) {
+    await evaluate(`(() => {
+      const select = document.getElementById('active-ai-model');
+      select.value = ${JSON.stringify(id)};
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await waitFor(`document.querySelector('#active-ai-model')?.value === ${JSON.stringify(id)} && !document.querySelector('#active-ai-model').disabled`);
+    if (desktop) assert.equal((await evaluate("window.bangerAI.load()")).activeProvider, id);
+    else assert.equal(await evaluate("JSON.parse(sessionStorage.getItem('banger.ai-settings.v1')).activeProvider"), id);
+  }
+  if (desktop) {
+    await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Local model').click()");
+    await waitFor("document.querySelector('.byok-layout > .local-model-settings')");
+    assert.equal(await evaluate("document.querySelector('.byok-form')"), null);
+    assert.equal(await evaluate("document.querySelectorAll('#local-model-size option').length"), 2);
+    await assert.rejects(evaluate("window.bangerAI.select('local:small')"), /Download/);
+    assert.equal((await evaluate("window.bangerAI.load()")).activeProvider, "grok");
+    await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Grok').click()");
+    await waitFor("document.querySelector('#byok-model')");
   }
   assert.equal(await evaluate("document.querySelector('#producer-source').value.includes('fake-smoke-key')"), false);
   if (desktop) {
@@ -87,7 +108,7 @@ async function run(desktopWindow) {
     await webWindow.loadURL("banger://app/");
     await exercise(webWindow, false);
     webWindow.destroy();
-    console.log("BYOK smoke passed: five providers, masked keys, save/replace/remove, reload persistence, encrypted desktop storage, web session storage, mobile layout, and tab navigation.");
+    console.log("BYOK smoke passed: provider menu with local models, configured-model dropdown, saved-key switching, masked keys, save/replace/remove, reload persistence, encrypted desktop storage, web session storage, mobile layout, and tab navigation.");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
