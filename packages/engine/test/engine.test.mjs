@@ -201,3 +201,44 @@ test('overlapping starts keep only the newest playback request', async t => {
   assert.equal(Context.instances.length, 1); assert.equal(Context.instances[0].sources.length, 4);
   await player.dispose();
 });
+
+const chords = () => compileMusic(`tempo 120; track chords { instrument "synth/pluck"; piano {
+  note "A4" start 0 duration 2 velocity 1;
+  note "C5" start 0 duration 1 velocity .5;
+  note "A4" start .5 duration 3.5 velocity .25;
+  note "E5" start 1 duration 1 velocity 0;
+} gain .4; }`);
+
+test('piano events preserve chords, overlaps, velocity and beat duration at any tempo', () => {
+  const program = chords();
+  const events = eventsForBar(program, 10);
+  assert.deepEqual(events.map(e => [e.time, e.duration, e.velocity]), [[10, 1, 1], [10, .5, .5], [10.25, 1.75, .25], [10.5, .5, 0]]);
+  program.tempo = 60;
+  assert.equal(eventsForBar(program)[2].duration, 3.5);
+});
+
+test('piano audio sustains full lengths, scales velocity and allocates overlapping voices', () => {
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const bar = renderer.renderBar(chords(), 1);
+  assert.equal(context.sources.length, 3);
+  assert.deepEqual(context.sources.map(s => s.starts[0]), [1, 1, 1.25]);
+  assert.deepEqual(context.sources.map(s => s.stops[0]), [2.05, 1.55, 3.05]);
+  const envelopes = context.sources.map(s => s.connections[0].gain.events);
+  near(envelopes[0][1].value, .55); near(envelopes[1][1].value, .275);
+  near(envelopes[2][1].value, .1375);
+  assert.ok(bar.cleanupAt > 3.05);
+  bar.dispose(); renderer.dispose();
+  assert.ok(context.nodes.every(n => !n.connections.length));
+});
+
+test('piano edits are copied, scheduled at the next bar and stopped together', async t => {
+  const env = environment(t), player = new BangerPlayer();
+  await player.start(chords());
+  const context = Context.instances[0]; context.currentTime = .5;
+  const next = chords(); next.tracks[0].pianoRoll[0].midi = 60;
+  player.update(next); next.tracks[0].pianoRoll[0].midi = 0;
+  context.currentTime = 1.96; env.tick();
+  near(context.sources[3].frequency.value, 440 * 2 ** ((60 - 69) / 12));
+  player.stop(); assert.ok(context.sources.every(s => !s.connections.length));
+  await player.dispose();
+});

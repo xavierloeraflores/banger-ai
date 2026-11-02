@@ -53,7 +53,7 @@ export class AudioRenderer {
     this.active.add(rendered);
     try {
       for (const event of events) {
-        if (event.time < skipBefore || event.track.gain === 0) continue;
+        if (event.time < skipBefore || event.track.gain === 0 || event.velocity === 0) continue;
         const input = inputs.get(event.track)!;
         let source: AudioScheduledSourceNode;
         let envelope: GainNode | undefined;
@@ -67,11 +67,15 @@ export class AudioRenderer {
           oscillator.type = bass ? 'triangle' : 'sine';
           oscillator.frequency.value = 440 * 2 ** ((event.step.midi - 69) / 12);
           envelope = context.createGain(); nodes.push(envelope);
-          const duration = Math.min(event.duration * .85, bass ? .6 : .35);
+          const duration = event.sustained ? event.duration : Math.min(event.duration * .85, bass ? .6 : .35);
           const attack = Math.min(.008, duration / 4);
           envelope.gain.setValueAtTime(0, event.time);
-          envelope.gain.linearRampToValueAtTime(bass ? .45 : .55, event.time + attack);
-          envelope.gain.exponentialRampToValueAtTime(.025, event.time + duration);
+          const peak = (bass ? .45 : .55) * event.velocity;
+          envelope.gain.linearRampToValueAtTime(peak, event.time + attack);
+          if (event.sustained) {
+            envelope.gain.linearRampToValueAtTime(peak * .7, event.time + Math.min(.08, duration / 2));
+            envelope.gain.setValueAtTime(peak * .7, event.time + duration);
+          } else envelope.gain.exponentialRampToValueAtTime(.025, event.time + duration);
           envelope.gain.linearRampToValueAtTime(0, event.time + duration + .05);
           oscillator.connect(envelope).connect(input); source = oscillator;
           source.start(event.time); source.stop(event.time + duration + .05);

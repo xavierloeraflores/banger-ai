@@ -87,3 +87,12 @@ test("provider adapters authenticate only to the selected provider", async () =>
     assert.equal(count, 1, provider);
   }
 });
+
+test('generated piano chords retain timing and velocity through validation', () => {
+  const file = validateGeneratedFile('chords.banger', `track keys { instrument "synth/pluck"; piano {
+    note "C4" start 0 duration 2 velocity .8;
+    note "E4" start 0 duration 1 velocity .5;
+  } gain .3; }`);
+  assert.match(file.source, /note "C4" start 0 duration 2 velocity 0.8;/);
+  assert.match(file.source, /note "E4" start 0 duration 1 velocity 0.5;/);
+});
