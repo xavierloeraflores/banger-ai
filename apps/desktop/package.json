@@ -1,0 +1,22 @@
+{
+  "name": "@banger/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "pnpm build && electron .",
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "start": "electron .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@banger/eslint-config": "workspace:*",
+    "@banger/typescript-config": "workspace:*",
+    "@types/node": "^22.19.0",
+    "electron": "^45.2.1",
+    "eslint": "^9.39.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "banger-ai",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:www": "turbo run dev --filter=@banger/www",
+    "dev:desktop": "turbo run dev --filter=@banger/desktop",
+    "build": "turbo run build",
+    "fullbuild": "cross-env NODE_ENV=production turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.10",
+    "typescript": "^5.9.3",
+    "cross-env": "^10.1.0"
+  }
+}
