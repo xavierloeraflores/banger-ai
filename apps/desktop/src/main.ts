@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, safeStorage, type IpcMainInvokeEvent } from "electron";
 import { access, open, writeFile } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_URL, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
+import { createAISettingsStore } from "./ai-settings.js";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
@@ -19,7 +20,7 @@ function senderWindow(event: IpcMainInvokeEvent): BrowserWindow {
   const window = BrowserWindow.fromWebContents(event.sender);
   if (!window || !windows.has(window) || event.senderFrame !== event.sender.mainFrame ||
       !isAppUrl(event.senderFrame.url, developmentUrl)) {
-    throw new Error("Project files are available only from the Banger app.");
+    throw new Error("This operation is available only from the Banger app.");
   }
   if (pendingDialogs.has(window.id)) throw new Error("A project dialog is already open.");
   return window;
@@ -141,6 +142,19 @@ void app.whenReady().then(() => {
   protocol.handle("banger", (request) => serveApp(request, fileURLToPath(new URL("./web/", import.meta.url))));
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
+  const aiSettings = createAISettingsStore(join(app.getPath("userData"), "ai-settings.enc"), {
+    isAvailable: async () => await safeStorage.isAsyncEncryptionAvailable() &&
+      (process.platform !== "linux" || (safeStorage.isEncryptionAvailable() &&
+        safeStorage.getSelectedStorageBackend() !== "basic_text")),
+    encrypt: value => safeStorage.encryptStringAsync(value),
+    decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
+  });
+  ipcMain.handle("banger:ai-load", event => { senderWindow(event); return aiSettings.load(); });
+  ipcMain.handle("banger:ai-save", (event, provider: unknown, model: unknown, key: unknown) => {
+    senderWindow(event);
+    return aiSettings.save(provider, model, key);
+  });
+  ipcMain.handle("banger:ai-remove", (event, provider: unknown) => { senderWindow(event); return aiSettings.remove(provider); });
   installProjectHandlers();
   createWindow();
   app.on("activate", () => { if (windows.size === 0) createWindow(); });

@@ -1,7 +1,13 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-// Sandboxed preloads use CommonJS and expose only dialog-based project operations.
+// Sandboxed preloads expose scoped operations without filesystem or generic IPC access.
 contextBridge.exposeInMainWorld("bangerProjects", Object.freeze({
   openProject: () => ipcRenderer.invoke("banger:open-project"),
   saveProject: (source, name) => ipcRenderer.invoke("banger:save-project", source, name),
+}));
+
+contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
+  load: () => ipcRenderer.invoke("banger:ai-load"),
+  save: (provider, model, key) => ipcRenderer.invoke("banger:ai-save", provider, model, key),
+  remove: provider => ipcRenderer.invoke("banger:ai-remove", provider),
 }));

@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "compile": "tsc -p tsconfig.json && node scripts/copy-preload.mjs",
     "test": "pnpm compile && node --test tests/*.test.mjs",
-    "smoke": "electron scripts/smoke.mjs"
+    "smoke": "electron scripts/smoke.mjs",
+    "smoke:byok": "electron scripts/smoke-byok.mjs"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",

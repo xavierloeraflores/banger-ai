@@ -11,6 +11,7 @@ import {
 import { Button, IconButton, Input, Panel, Range, Select, StepButton } from "@banger/shadcn";
 import { openProject, saveProject } from "@/lib/project-files";
 import { usePlayer } from "./use-player";
+import { ByokMenu } from "./byok-menu";
 import "./producer.css";
 
 const sounds = [
@@ -193,6 +194,7 @@ export function Producer() {
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : "Local project"}</span></div>
         <div className="producer-file-actions">
+          <ByokMenu />
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
           <Button variant="secondary" onClick={save} disabled={fileBusy}>Save .banger</Button>
         </div>
