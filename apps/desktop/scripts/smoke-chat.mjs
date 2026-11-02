@@ -154,15 +154,53 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-tempo').value === '105'");
   assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
   assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Unsaved");
+  await evaluate("document.querySelectorAll('.ai-chat-file button')[3].click()");
+  await waitFor("document.querySelector('#producer-tempo').value === '85'");
   await input("ai-chat-prompt", "Make the second loop softer");
   await click("Send");
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 3");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file strong')[2].textContent"), "slow-loop.banger");
   assert.match(await evaluate("document.querySelectorAll('.ai-chat-file pre')[2].textContent"), /gain 0.25;/);
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file-heading span')[2].textContent"), "Revision compiled");
+  // Choosing an old card edits its latest proposal, even when it shares the editor name.
+  await evaluate("document.querySelectorAll('.ai-chat-file button')[4].click()");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"File to edit\"]').value"), "slow-loop.banger");
+  await input("ai-chat-prompt", "Slow the selected loop again");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 4");
+  const secondRevision = await evaluate("document.querySelectorAll('.ai-chat-file pre')[3].textContent");
+  assert.match(secondRevision, /tempo 75;/);
+  assert.match(secondRevision, /gain 0.25;/);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"File to edit\"]').value"), "slow-loop.banger");
+  // Load the revision, then explicitly target the editor to preserve manual source changes.
+  await evaluate("document.querySelectorAll('.ai-chat-file button')[9].click()");
+  await closeChat();
+  await input("producer-source", `${secondRevision}\n// preserve my manual arrangement\n`);
+  await openChat();
+  await evaluate(`(() => {
+    const select = document.querySelector('[aria-label="File to edit"]');
+    select.value = '';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await input("ai-chat-prompt", "Keep my manual edit and soften the editor");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 5");
+  const editorRevision = await evaluate("document.querySelectorAll('.ai-chat-file pre')[4].textContent");
+  assert.equal(editorRevision, `${secondRevision}\n// preserve my manual arrangement\n`.replace('gain 0.25;', 'gain 0.15;'));
   const recorded = desktop ? calls : await evaluate("window.__chatCalls");
   assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("slow-loop.banger"));
-  assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("Make the second loop softer"));
+  assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("Keep my manual edit and soften the editor"));
+  // More than four distinct proposals must not make an older card silently target the editor.
+  await input("ai-chat-prompt", "Create three more loops");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 8");
+  await evaluate("document.querySelectorAll('.ai-chat-file button')[1].click()");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"File to edit\"]').value"), "warm-loop.banger");
+  await input("ai-chat-prompt", "Edit the older selected loop");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 9");
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file strong')[8].textContent"), "warm-loop.banger");
+  assert.match(await evaluate("document.querySelectorAll('.ai-chat-file pre')[8].textContent"), /tempo 100;/);
   assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').scrollHeight === document.querySelector('#ai-chat-dialog').clientHeight"), true);
   await writeFile(join(tmpdir(), desktop ? "banger-chat-desktop.png" : "banger-chat-web.png"), (await window.webContents.capturePage()).toPNG());
   await input("ai-chat-prompt", "slow request");
@@ -174,7 +212,7 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("Boolean(document.querySelector('.ai-chat-working'))"), true);
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
-  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 3);
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 9);
   await click("New chat");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
   // The popup stays inside a narrow viewport, and its backdrop dismisses it.
