@@ -23,6 +23,9 @@ importers:
       '@banger/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@banger/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
     devDependencies:
       '@banger/eslint-config':
         specifier: workspace:*

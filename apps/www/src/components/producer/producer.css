@@ -265,3 +265,16 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 
 .ai-chat-target { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; font-size: .8rem; }
 .ai-chat-target select { min-width: 0; max-width: 100%; border: 1px solid var(--border); border-radius: .5rem; background: var(--background); color: inherit; padding: .4rem; }
+
+.project-workspace { margin-top: 1rem; padding: 1.25rem; }
+.project-workspace-heading, .project-workspace-files, .project-workspace-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.project-workspace-heading { justify-content: space-between; }
+.project-workspace p { color: var(--muted-foreground); font-size: .85rem; }
+.project-workspace label { display: block; margin: .8rem 0 .4rem; font-size: .85rem; }
+.project-workspace select { display: block; background: #171923; color: inherit; border: 1px solid #343745; padding: .5rem; max-width: 100%; }
+.project-workspace textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; background: #10121a; color: #e5e7eb; border: 1px solid #343745; border-radius: .5rem; padding: .8rem; font: .85rem/1.55 monospace; }
+#workspace-source { min-height: 240px; }
+#workspace-prompt { min-height: 84px; }
+.project-workspace-actions { margin-top: .75rem; }
+.project-workspace-events { max-height: 240px; overflow: auto; font: .8rem/1.6 monospace; overflow-wrap: anywhere; }
+.project-workspace-notice { white-space: pre-wrap; }

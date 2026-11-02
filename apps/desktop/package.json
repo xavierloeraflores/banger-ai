@@ -16,6 +16,7 @@
     "smoke:byok": "electron scripts/smoke-byok.mjs",
     "smoke:chat": "electron scripts/smoke-chat.mjs",
     "smoke:web": "electron scripts/smoke-web.mjs",
+    "smoke:workspace": "electron scripts/smoke-workspace.mjs",
     "smoke:local": "electron scripts/smoke-local.mjs"
   },
   "devDependencies": {
@@ -27,6 +28,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@banger/agent": "workspace:*"
+    "@banger/agent": "workspace:*",
+    "@banger/harness": "workspace:*"
   }
 }

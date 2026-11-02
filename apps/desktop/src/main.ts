@@ -8,6 +8,8 @@ import { parseChatRequest, selectModel, selectLocalModel, runBangerAgent, public
 import { createAISettingsStore } from "./ai-settings.js";
 import { createLocalModel } from "./local-model.js";
 
+import { installWorkspaceHandlers } from "./project-workspace.js";
+
 protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
 } }]);
@@ -168,6 +170,7 @@ void app.whenReady().then(() => {
   ipcMain.handle("banger:local-stop", async event => {
     senderWindow(event);
     for (const controller of pendingChats.values()) controller.abort();
+    projectWorkspace.cancelAll();
     await localModel.stop();
   });
   ipcMain.handle("banger:local-select", (event, selected: unknown) => {
@@ -212,6 +215,7 @@ void app.whenReady().then(() => {
         await localModel.select(false);
       }
       for (const controller of pendingChats.values()) controller.abort();
+    projectWorkspace.cancelAll();
       return loadAISettings();
     });
   });
@@ -254,6 +258,16 @@ void app.whenReady().then(() => {
       return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };
     } finally { pendingChats.delete(window.id); }
   });
+  const projectWorkspace = installWorkspaceHandlers({ senderWindow, selectModel: async () => {
+    await settingsQueue;
+    if ((await localModel.status()).selected) {
+      const { port, token } = localModel.connection();
+      return selectLocalModel(port, token);
+    }
+    const credentials = await aiSettings.credentials();
+    if (!credentials) throw new Error("Choose a model in AI settings before running a project task.");
+    return selectModel(credentials);
+  } });
   installProjectHandlers();
   createWindow();
   app.on("activate", () => { if (windows.size === 0) createWindow(); });
