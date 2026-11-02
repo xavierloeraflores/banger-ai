@@ -35,3 +35,20 @@ test('interrupted paid requests are retained for review and never repeated by re
  try{const store=createMusicStore(root,()=>provider),key=randomUUID();const job=await store.importWav(wav(),'song.wav',key);assert.equal((await done(store,job.id)).status,'needs_review');assert.equal((await store.recover(job.id)).status,'needs_review');await store.importWav(wav(),'song.wav',key);assert.equal(calls,1);await assert.rejects(store.importWav(wav(),'different.wav',key),/different task/);assert.deepEqual(await store.list(),[]);}
  finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('history keeps original audio and branches selected versions behind the current revision fence',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'banger-music-history-'));const provider=fixtureProvider();let generatedBase;
+ const originalGenerate=provider.generate;provider.generate=async version=>{generatedBase=version;return originalGenerate(version);};
+ const store=createMusicStore(root,()=>provider);
+ try{
+  const upload=await store.importWav(wav(),'original.wav',randomUUID());await done(store,upload.id);const id=upload.musicId;
+  const edit=await store.act(id,{operation:'edit',baseVersion:1,edits:[{index:0,lyrics:'Changed'}]},randomUUID());await done(store,edit.id);
+  const generation=await store.act(id,{operation:'generate',baseVersion:2,indices:[0,1]},randomUUID());await done(store,generation.id);
+  const branch=await store.act(id,{operation:'generate',baseVersion:3,sourceVersion:1,indices:[1]},randomUUID());await done(store,branch.id);
+  assert.equal(generatedBase.songId,'original-song');assert.deepEqual(generatedBase.plan,fixturePlan);assert.equal((await store.get(id)).parentVersion,1);
+  const history=await store.versions(id);assert.deepEqual(history.versions.map(item=>item.version),[4,3,2,1]);assert.equal(history.original.audioType,'audio/wav');
+  assert.deepEqual((await store.versions(id,3)).versions.map(item=>item.version),[2,1]);assert.deepEqual(Buffer.from((await store.audio(id,1)).bytes),wav());
+  await assert.rejects(store.act(id,{operation:'generate',baseVersion:3,sourceVersion:1,indices:[0]},randomUUID()),/changed/);
+  await assert.rejects(store.act(id,{operation:'generate',baseVersion:4,sourceVersion:999,indices:[0]},randomUUID()));
+ }finally{await rm(root,{recursive:true,force:true});}
+});

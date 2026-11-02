@@ -1,5 +1,5 @@
 import { get, head, put } from '@vercel/blob';
-import { ElevenMusic, MusicProviderError, performMusicAction, publicMusicError, type MusicProvider, type MusicVersion } from '@banger/elevenlabs';
+import { ElevenMusic, MusicProviderError, musicActionBase, performMusicAction, publicMusicError, type MusicProvider, type MusicVersion } from '@banger/elevenlabs';
 import { db, transaction } from './db';
 import { ApiError } from './domain';
 import { authorize } from './projects';
@@ -56,7 +56,10 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
         const result=await provider().analyze(audio,'source.wav');
         version={id:musicId,version:1,name:'Uploaded song',songId:result.songId,plan:result.plan,audioId:source.id,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
       } else {
-        const result=await performMusicAction(provider,session!.current_version!,input.action,job.id);version=result.version;output=result.audio;
+        const source=input.action.sourceVersion?(await db().query('SELECT document FROM music_versions WHERE music_id=$1 AND revision=$2',[musicId,input.action.sourceVersion])).rows[0]?.document:session!.current_version;
+        if(!source)throw new ApiError(404,'Music version not found.');
+        const base=musicActionBase(session!.current_version!,source,input.action);
+        const result=await performMusicAction(provider,base,input.action,job.id);version=result.version;output=result.audio;
       }
       if(output) await objects.write(`projects/${job.project_id}/music/${musicId}/audio/${job.id}.mp3`,Buffer.from(output),'audio/mpeg');
       await objects.write(receiptPath,JSON.stringify(version),'application/json');

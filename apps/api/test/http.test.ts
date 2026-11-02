@@ -43,6 +43,7 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   assert.deepEqual(await (await request(`/music/${musicId}`)).json(),version);
   assert.equal((await (await request(`/projects/${project.projectId}/music`)).json()).music[0].id,musicId);
   assert.equal((await (await request(`/music/${musicId}/versions`)).json()).versions[0].document.version,1);
+  const history=await (await request(`/music/${musicId}/versions?before=1`)).json();assert.deepEqual(history.versions,[]);assert.deepEqual(history.original,version);
   assert.equal((await request(`/music/${musicId}/actions`,'POST',{idempotencyKey:randomUUID(),action:{operation:'generate',baseVersion:2,indices:[0]}})).status,409);
   assert.equal((await request(`/music/${musicId}/actions`,'POST',{idempotencyKey:randomUUID(),action:{operation:'generate',baseVersion:1,indices:[20]}})).status,400);
   const musicJob=await request(`/music/${musicId}/actions`,'POST',{idempotencyKey:randomUUID(),action:{operation:'lyrics',baseVersion:1,indices:[0],prompt:'hope'}});assert.equal(musicJob.status,202);

@@ -30,6 +30,8 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  const uncertain=await enqueue(user,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:5,indices:[0]}});
  await runElevenStep((await claim(uncertain.id))!,{...provider,async generate(){throw new MusicProviderError('Interrupted',true);}},storage);assert.equal((await getJob(user,uncertain.id)).status,'needs_review');assert.equal(await claim(uncertain.id),undefined);assert.equal((await getMusic(user,song.id)).revision,5);
  assert.equal((await db().query('SELECT count(*)::int AS count FROM music_versions WHERE music_id=$1',[song.id])).rows[0].count,5);assert.equal((await getJob(user,edit.id)).result?.version,2);
+ const branched=await run({musicId:song.id,action:{operation:'generate',baseVersion:5,sourceVersion:1,indices:[1]}});
+ const branch=(await getMusic(user,song.id)).current_version!;assert.equal(branch.version,6);assert.equal(branch.parentVersion,1);assert.deepEqual(branch.plan,plan);assert.equal(branch.audioId,branched.id);
  await setMember(user,project.projectId,viewer,null);await assert.rejects(getMusic(viewer,song.id),/denied/);
 });
 after(async()=>db().end());

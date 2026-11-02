@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, validateMusicAction, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
+import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
 export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? '')) {
   let queue:Promise<unknown>=Promise.resolve();
@@ -17,6 +17,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
   const operationPath=(id:string)=>join(root,`operation-${uuid(id)}.json`);
   const audioPath=(id:string)=>join(root,`audio-${uuid(id)}`);
   const get=(id:string)=>read<MusicVersion>(musicPath(id));
+  const getVersion=(id:string,version:number)=>{if(!Number.isInteger(version)||version<1)throw new Error('Invalid music version.');return read<MusicVersion>(join(root,`version-${uuid(id)}-${version}.json`));};
   async function catalog(){return read<{id:string;name:string;version:number}[]>(join(root,'catalog.json')).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return [];throw error;});}
   async function publish(version:MusicVersion,expected:number) {
     await locked(async()=>{
@@ -68,6 +69,12 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
   }
   return {
     async list(){return catalog();},get,operation,
+    async versions(id:string,before?:number){
+      const current=await get(id);if(before!==undefined&&(!Number.isInteger(before)||before<1))throw new Error('Invalid history cursor.');
+      const end=Math.min(current.version,(before??current.version+1)-1),start=Math.max(1,end-49);
+      const versions=await Promise.all(Array.from({length:Math.max(0,end-start+1)},(_,index)=>getVersion(id,end-index)));
+      return {versions,original:await getVersion(id,1),...(start>1?{nextBefore:start}:{})};
+    },
     async operations(){const ids=await read<string[]>(join(root,'operation-catalog.json')).catch(()=>[]);return Promise.all(ids.map(id=>operation(id)));},
     async importWav(bytes:Uint8Array,name:string,key:string) {
       uuid(key);validateWav(bytes);await mkdir(root,{recursive:true});
@@ -84,12 +91,12 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
     async act(id:string,input:unknown,key:string){
       uuid(key);const action=musicActionSchema.parse(input),hash=fingerprint({id,action});
       const existing=await prior(key,hash);if(existing)return existing;
-      const base=await get(id);
-      validateMusicAction(base,action);
+      const current=await get(id);
+      const base=musicActionBase(current,action.sourceVersion?await getVersion(id,action.sourceVersion):current,action);
       return launch(id,key,()=>performMusicAction(provider,base,action,key),base.version,hash,action.operation!=='edit');
     },
     async audio(id:string,version?:number){
-      const current=version===undefined?await get(id):await read<MusicVersion>(join(root,`version-${uuid(id)}-${Number.isInteger(version)&&version>0?version:0}.json`));
+      const current=version===undefined?await get(id):await getVersion(id,version);
       const bytes=await readFile(audioPath(current.audioId));
       return {bytes:new Uint8Array(bytes),contentType:current.audioType};
     },

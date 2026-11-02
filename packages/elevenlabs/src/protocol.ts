@@ -16,13 +16,13 @@ export type ProviderPlan = z.infer<typeof providerPlanSchema>;
 export type MusicVersion = {
   id: string; version: number; name: string; songId: string; plan: CompositionPlan; providerPlan?: ProviderPlan;
   audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number;
-  createdAt: string; operation: 'analyze' | 'edit' | 'lyrics' | 'generate';
+  createdAt: string; parentVersion?: number; operation: 'analyze' | 'edit' | 'lyrics' | 'generate';
 };
 export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: z.string().max(6200) }).strict();
 export const musicActionSchema = z.discriminatedUnion('operation', [
-  z.object({ operation: z.literal('edit'), baseVersion: z.number().int().positive(), edits: z.array(lyricEditSchema).min(1).max(30) }).strict(),
-  z.object({ operation: z.literal('lyrics'), baseVersion: z.number().int().positive(), prompt: z.string().trim().min(1).max(2000), indices: z.array(z.number().int().min(0).max(29)).min(1).max(30) }).strict(),
-  z.object({ operation: z.literal('generate'), baseVersion: z.number().int().positive(), indices: z.array(z.number().int().min(0).max(29)).min(1).max(30) }).strict(),
+  z.object({ operation: z.literal('edit'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), edits: z.array(lyricEditSchema).min(1).max(30) }).strict(),
+  z.object({ operation: z.literal('lyrics'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), prompt: z.string().trim().min(1).max(2000), indices: z.array(z.number().int().min(0).max(29)).min(1).max(30) }).strict(),
+  z.object({ operation: z.literal('generate'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), indices: z.array(z.number().int().min(0).max(29)).min(1).max(30) }).strict(),
 ]);
 export type MusicAction = z.infer<typeof musicActionSchema>;
 export type MusicOperation = { id: string; musicId: string; status: 'queued' | 'running' | 'completed' | 'failed' | 'needs_review' | 'conflict'; progress: number; stage: string; error?: string; resultVersion?: number };
@@ -62,3 +62,13 @@ export function validateMusicAction(version:MusicVersion, action:MusicAction) {
   if(action.operation==='edit')applyLyrics(version.plan,action.edits);
   else validateIndices(version.plan,action.indices);
 }
+
+/** Branch an immutable composition while retaining the current revision for publication fencing. */
+export function musicActionBase(current:MusicVersion, source:MusicVersion, action:MusicAction):MusicVersion {
+  if(current.version!==action.baseVersion)throw new Error('This composition changed. Reload it before editing.');
+  if(source.id!==current.id || source.version!==(action.sourceVersion??current.version) || source.version>current.version)throw new Error('The selected music version is unavailable.');
+  const base={...structuredClone(source),version:current.version};
+  validateMusicAction(base,action);
+  return base;
+}
+export type MusicHistory={versions:MusicVersion[];original:MusicVersion;nextBefore?:number};

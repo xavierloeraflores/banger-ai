@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
 contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
   list: () => ipcRenderer.invoke("banger:music-list"),
   get: id => ipcRenderer.invoke("banger:music-get", id),
+  versions: (id, before) => ipcRenderer.invoke("banger:music-versions", id, before),
   operations: () => ipcRenderer.invoke("banger:music-operations"),
   operation: id => ipcRenderer.invoke("banger:music-operation", id),
   act: (id, action, key) => ipcRenderer.invoke("banger:music-act", id, action, key),

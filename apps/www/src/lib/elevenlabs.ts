@@ -1,17 +1,17 @@
-import type { MusicVersion, MusicOperation, MusicAction } from '@banger/elevenlabs/protocol';
+import type { MusicVersion, MusicOperation, MusicAction, MusicHistory } from '@banger/elevenlabs/protocol';
 import {audioUrl,cloudRequest,uploadWav,type CloudConnection} from './cloud-projects';
 type MusicSummary={id:string;name:string;version:number};
 export type MusicBackend={
-  mode:'desktop'|'cloud';list():Promise<MusicSummary[]>;get(id:string):Promise<MusicVersion>;
+  mode:'desktop'|'cloud';list():Promise<MusicSummary[]>;get(id:string):Promise<MusicVersion>;versions(id:string,before?:number):Promise<MusicHistory>;
   upload(file?:File):Promise<MusicOperation|null>;rendered(wav:ArrayBuffer,name:string):Promise<MusicOperation>;
   act(id:string,action:MusicAction,key:string):Promise<MusicOperation>;operations():Promise<MusicOperation[]>;
   audio(version:MusicVersion):Promise<string>;save(version:MusicVersion):Promise<void>;
 };
-type NativeMusic={list():Promise<MusicSummary[]>;get(id:string):Promise<MusicVersion>;importWav(key:string):Promise<MusicOperation|null>;rendered(bytes:Uint8Array,name:string,key:string):Promise<MusicOperation>;act:MusicBackend['act'];operations():Promise<MusicOperation[]>;operation(id:string):Promise<MusicOperation>;audio(id:string,version:number):Promise<{bytes:Uint8Array;contentType:string}>;save(id:string,version:number):Promise<boolean>};
+type NativeMusic={list():Promise<MusicSummary[]>;get(id:string):Promise<MusicVersion>;versions(id:string,before?:number):Promise<MusicHistory>;importWav(key:string):Promise<MusicOperation|null>;rendered(bytes:Uint8Array,name:string,key:string):Promise<MusicOperation>;act:MusicBackend['act'];operations():Promise<MusicOperation[]>;operation(id:string):Promise<MusicOperation>;audio(id:string,version:number):Promise<{bytes:Uint8Array;contentType:string}>;save(id:string,version:number):Promise<boolean>};
 declare global{interface Window{bangerMusic?:NativeMusic}}
 export function desktopMusic():MusicBackend|undefined {
   const native=window.bangerMusic;if(!native)return;
-  return {mode:'desktop',list:()=>native.list(),get:id=>native.get(id),upload:()=>native.importWav(crypto.randomUUID()),rendered:(wav,name)=>native.rendered(new Uint8Array(wav),name,crypto.randomUUID()),act:(...args)=>native.act(...args),operations:async()=>{
+  return {mode:'desktop',list:()=>native.list(),get:id=>native.get(id),versions:(id,before)=>native.versions(id,before),upload:()=>native.importWav(crypto.randomUUID()),rendered:(wav,name)=>native.rendered(new Uint8Array(wav),name,crypto.randomUUID()),act:(...args)=>native.act(...args),operations:async()=>{
     const operations=await native.operations();return Promise.all(operations.map(operation=>['queued','running','needs_review','failed'].includes(operation.status)?native.operation(operation.id):operation));
   },audio:async version=>{const audio=await native.audio(version.id,version.version);return URL.createObjectURL(new Blob([new Uint8Array(audio.bytes)],{type:audio.contentType}));},save:async version=>{await native.save(version.id,version.version);}};
 }
@@ -22,6 +22,7 @@ export function cloudMusic(connection:CloudMusicContext):MusicBackend {
   const submit=async(artifactId:string)=>operation(await cloudRequest<Job>(connection,`/projects/${connection.projectId}/jobs`,'POST',{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId}}));
   const upload=async(wav:ArrayBuffer)=>submit(await uploadWav({...connection,path:'upload.wav',source:''},wav,()=>undefined));
   return {mode:'cloud',list:async()=>(await cloudRequest<{music:MusicSummary[]}>(connection,`/projects/${connection.projectId}/music`)).music,get:id=>cloudRequest(connection,`/music/${id}`),
+    versions:async(id,before)=>{const result=await cloudRequest<{versions:{document:MusicVersion}[];original:MusicVersion;nextBefore?:number}>(connection,`/music/${id}/versions${before?`?before=${before}`:''}`);return {...result,versions:result.versions.map(row=>row.document)};},
     upload:async file=>{if(!file)return null;return upload(await file.arrayBuffer());},rendered:async wav=>upload(wav),
     act:async(id,action,key)=>operation(await cloudRequest<Job>(connection,`/music/${id}/actions`,'POST',{action,idempotencyKey:key})),
     operations:async()=>{

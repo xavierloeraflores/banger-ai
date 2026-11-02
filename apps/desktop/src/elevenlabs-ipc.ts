@@ -9,6 +9,7 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
   const dialogs=new Set<number>();
   ipcMain.handle('banger:music-list',event=>{senderWindow(event);return store.list();});
   ipcMain.handle('banger:music-operations',event=>{senderWindow(event);return store.operations();});
+  ipcMain.handle('banger:music-versions',(event,id:string,before?:number)=>{senderWindow(event);return store.versions(id,before);});
   ipcMain.handle('banger:music-get',(event,id:string)=>{senderWindow(event);return store.get(id);});
   ipcMain.handle('banger:music-operation',(event,id:string)=>{senderWindow(event);return store.recover(id);});
   ipcMain.handle('banger:music-act',(event,id:string,input:unknown,key:string)=>{senderWindow(event);return store.act(id,input,key);});

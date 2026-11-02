@@ -68,7 +68,12 @@ async function dispatch(request: Request, path: string[]) {
   if (path[0] === 'music') {
     const music=await getMusic(user,id.parse(path[1]));
     if (path.length===2 && method==='GET') return json(music.current_version);
-    if (path[2]==='versions' && method==='GET') return json({versions:(await db().query('SELECT revision,document FROM music_versions WHERE music_id=$1 ORDER BY revision DESC LIMIT 50',[music.id])).rows});
+    if (path[2]==='versions' && path.length===3 && method==='GET') {
+      const before=url.searchParams.has('before')?z.coerce.number().int().positive().parse(url.searchParams.get('before')):music.revision+1;
+      const versions=(await db().query('SELECT revision,document FROM music_versions WHERE music_id=$1 AND revision<$2 ORDER BY revision DESC LIMIT 50',[music.id,before])).rows;
+      const original=(await db().query('SELECT document FROM music_versions WHERE music_id=$1 AND revision=1',[music.id])).rows[0]?.document;
+      const last=versions.at(-1)?.revision;return json({versions,original,...(last>1?{nextBefore:last}:{})});
+    }
     if (path[2]==='actions' && method==='POST') {
       const input=z.object({action:musicActionSchema,idempotencyKey:id}).strict().parse(await body(request));
       const job=await enqueue(user,music.project_id,'elevenlabs',input.idempotencyKey,{musicId:music.id,action:input.action});
