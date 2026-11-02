@@ -12,12 +12,27 @@ test('lyric edits preserve every non-text composition property and untouched chu
  assert.equal(plan.chunks[0].text,'[Verse]\nOriginal words');
  assert.throws(()=>applyLyrics(plan,[{index:8,lyrics:'x'}]));
 });
-test('selective inpainting keeps exact original ranges and selected properties',()=>{
+test('selective inpainting preserves untouched audio and forces xhigh original conditioning',()=>{
  const request=inpaintingPlan(version,[1]);
  assert.deepEqual(request.chunks[0],{songId:'original-song',range:{startMs:0,endMs:4000}});
- assert.deepEqual(request.chunks[1],plan.chunks[1]);
+ assert.deepEqual(request.chunks[1],{...plan.chunks[1],conditioningRef:{songId:'original-song',range:{startMs:4000,endMs:10000}},conditionStrength:'xhigh'});
  const first=inpaintingPlan(version,[0]);assert.deepEqual(first.chunks[1],{songId:'original-song',range:{startMs:4000,endMs:10000}});
  assert.throws(()=>inpaintingPlan(version,[0,0]));
+});
+test('all-chunk retries stay anchored to the upload and cap references at 30 seconds',()=>{
+ const input={...version,songId:'generated-song',originalSongId:'uploaded-song',plan:{chunks:[
+  {...plan.chunks[0],durationMs:45000,conditioningRef:{songId:'wrong-song',range:{startMs:0,endMs:4000}},conditionStrength:'low'},
+  {...plan.chunks[1],durationMs:30000},
+ ]}};
+ const before=globalThis.structuredClone(input);
+ const request=inpaintingPlan(input,[0,1]);
+ assert.deepEqual(request.chunks.map(chunk=>chunk.conditioningRef),[
+  {songId:'uploaded-song',range:{startMs:0,endMs:30000}},
+  {songId:'uploaded-song',range:{startMs:45000,endMs:75000}},
+ ]);
+ assert.deepEqual(request.chunks.map(chunk=>chunk.conditionStrength),['xhigh','xhigh']);
+ assert.deepEqual(request.chunks.map(chunk=>chunk.durationMs),[45000,30000]);
+ assert.deepEqual(input,before);
 });
 test('SDK lyric generation ignores provider attempts to alter musical properties',async()=>{
  const api=new ElevenMusic('fixture-key',{fetch:async()=>globalThis.Response.json({chunks:[{text:'[Changed]\nNew verse',duration_ms:3000,positive_styles:['metal']},{text:'[Chorus]\nOther lyrics',duration_ms:3000,positive_styles:['loud']}]})});
@@ -44,7 +59,13 @@ test('actual SDK multipart parsing retains song IDs and binary MP3; inpainting r
  }});
  const result=await api.generate(version,[0]);
  assert.equal(request.model_id,'music_v2_5');assert.equal(request.store_for_inpainting,true);assert.deepEqual(request.composition_plan.chunks[1],{song_id:'original-song',range:{start_ms:4000,end_ms:10000}});
+ assert.equal(request.composition_plan.chunks[0].condition_strength,'xhigh');
+ assert.deepEqual(request.composition_plan.chunks[0].conditioning_ref,{song_id:'original-song',range:{start_ms:0,end_ms:4000}});
  assert.equal(result.songId,'new-song');assert.deepEqual(Buffer.from(result.audio),audio);assert.deepEqual(result.plan.chunks[1],plan.chunks[1]);assert.equal(result.plan.chunks[0].text,'[Verse]\nNew words');
+ await api.generate({...version,songId:result.songId,originalSongId:version.songId,plan:result.plan},[0]);
+ assert.equal(request.composition_plan.chunks[0].condition_strength,'xhigh');
+ assert.deepEqual(request.composition_plan.chunks[0].conditioning_ref,{song_id:'original-song',range:{start_ms:0,end_ms:4000}});
+ assert.equal(request.composition_plan.chunks[1].song_id,'new-song');
 });
 test('WAV validation accepts metadata and rejects truncated or compressed files',async()=>{
  const {validateWav}=await import('../dist/index.js');const {wav}=await import('./fixtures.mjs');const bytes=wav();assert.equal(validateWav(bytes).durationMs,8000);

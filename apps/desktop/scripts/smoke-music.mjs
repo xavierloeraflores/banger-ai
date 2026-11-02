@@ -70,7 +70,7 @@ async function run(){
   response.end(content);
  });
  await Promise.all([new Promise(resolve=>api.listen(0,'127.0.0.1',resolve)),new Promise(resolve=>web.listen(0,'127.0.0.1',resolve))]);
- window=new BrowserWindow({width:1440,height:1080,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,...(!cloud?{preload:resolve('dist/preload.cjs')}:{})}});
+ window=new BrowserWindow({show:false,width:1440,height:1080,webPreferences:{backgroundThrottling:false,sandbox:true,contextIsolation:true,nodeIntegration:false,...(!cloud?{preload:resolve('dist/preload.cjs')}:{})}});
  if(!cloud){
   installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store);
   ipcMain.handle('banger:ai-load',()=>({activeProvider:null,providers:{}}));

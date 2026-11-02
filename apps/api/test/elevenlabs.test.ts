@@ -13,7 +13,7 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  const source=await readFile(new URL('../../../examples/night-drive.banger',import.meta.url),'utf8'),user=randomUUID(),viewer=randomUUID();
  const project=await createProject(user,'Music',[{path:'song.banger',source}],{write:storage.write,text:async path=>(await storage.read(path)).toString()});
  const artifact=randomUUID();objects.set(`${artifact}.wav`,Buffer.from('fixture'));await db().query("INSERT INTO artifacts(id,project_id,revision,user_id,kind,pathname,content_type,size,status) VALUES($1,$2,1,$3,'wav',$4,'audio/wav',7,'ready')",[artifact,project.projectId,user,`${artifact}.wav`]);
- let calls=0;const provider:MusicProvider={async analyze(){calls++;return {songId:'uploaded',plan};},async lyrics(base){calls++;return {...base,chunks:base.chunks.map(chunk=>({...chunk,text:'[Verse]\nAI lyrics'}))};},async generate(base){calls++;return {songId:'generated',plan:base.plan,providerPlan:base.plan,audio:Buffer.from('ID3fixture')};}};
+ let calls=0;const provider:MusicProvider={async analyze(){calls++;return {songId:'uploaded',plan};},async lyrics(base){calls++;return {...base,chunks:base.chunks.map(chunk=>({...chunk,text:'[Verse]\nAI lyrics'}))};},async generate(base){calls++;assert.equal(base.originalSongId,'uploaded');return {songId:'generated',plan:base.plan,providerPlan:base.plan,audio:Buffer.from('ID3fixture')};}};
  const run=async(input:unknown)=>{const job=await enqueue(user,project.projectId,'elevenlabs',randomUUID(),input);await runElevenStep((await claim(job.id))!,provider,storage);assert.equal((await getJob(user,job.id)).status,'completed');return job;};
  const analyze=await run({artifactId:artifact});let song=(await getMusic(user,analyze.id)).current_version!;assert.deepEqual(song.plan,plan);
  await setMember(user,project.projectId,viewer,'viewer');assert.equal((await getMusic(viewer,song.id)).revision,1);await assert.rejects(enqueue(viewer,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:1,indices:[0]}}),/denied/);
@@ -22,6 +22,8 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  await run({musicId:song.id,action:{operation:'lyrics',baseVersion:2,indices:[1],prompt:'hope'}});
  const generated=await run({musicId:song.id,action:{operation:'generate',baseVersion:3,indices:[0,1]}});song=(await getMusic(user,song.id)).current_version!;
  assert.equal(song.version,4);assert.equal(song.audioId,generated.id);assert.equal((await db().query('SELECT status FROM artifacts WHERE id=$1',[generated.id])).rows[0].status,'ready');
+ // Legacy saved versions must also anchor retries to the first upload.
+ await db().query("UPDATE music_sessions SET current_version=current_version-'originalSongId' WHERE id=$1",[song.id]);
  // A completed provider receipt survives a database publication outage; no second paid call.
  const retry=await enqueue(user,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:4,indices:[1]}});const leased=(await claim(retry.id))!;
  let once=true;const outage={...storage,async size(path:string){if(once){once=false;throw new Error('Temporary metadata outage');}return storage.size(path);}};
@@ -32,6 +34,7 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  assert.equal((await db().query('SELECT count(*)::int AS count FROM music_versions WHERE music_id=$1',[song.id])).rows[0].count,5);assert.equal((await getJob(user,edit.id)).result?.version,2);
  const branched=await run({musicId:song.id,action:{operation:'generate',baseVersion:5,sourceVersion:1,indices:[1]}});
  const branch=(await getMusic(user,song.id)).current_version!;assert.equal(branch.version,6);assert.equal(branch.parentVersion,1);assert.deepEqual(branch.plan,plan);assert.equal(branch.audioId,branched.id);
+ assert.equal(branch.originalSongId,'uploaded');
  await setMember(user,project.projectId,viewer,null);await assert.rejects(getMusic(viewer,song.id),/denied/);
 });
 after(async()=>db().end());

@@ -85,7 +85,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
       await writeFile(audioPath(audioId),bytes,{flag:'wx',mode:0o600});
       return launch(id,key,async()=>{
         const result=await provider().analyze(bytes,name);
-        return {version:{id,version:1,name,songId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
+        return {version:{id,version:1,name,songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
       },0,hash);
     },
     async act(id:string,input:unknown,key:string){
@@ -93,6 +93,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
       const existing=await prior(key,hash);if(existing)return existing;
       const current=await get(id);
       const base=musicActionBase(current,action.sourceVersion?await getVersion(id,action.sourceVersion):current,action);
+      base.originalSongId ??= (await getVersion(id,1)).songId;
       return launch(id,key,()=>performMusicAction(provider,base,action,key),base.version,hash,action.operation!=='edit');
     },
     async audio(id:string,version?:number){

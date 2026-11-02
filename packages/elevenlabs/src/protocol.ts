@@ -14,7 +14,7 @@ export const providerPlanSchema = z.object({ chunks: z.array(z.union([generation
 export type CompositionPlan = z.infer<typeof planSchema>;
 export type ProviderPlan = z.infer<typeof providerPlanSchema>;
 export type MusicVersion = {
-  id: string; version: number; name: string; songId: string; plan: CompositionPlan; providerPlan?: ProviderPlan;
+  id: string; version: number; name: string; songId: string; originalSongId?: string; plan: CompositionPlan; providerPlan?: ProviderPlan;
   audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number;
   createdAt: string; parentVersion?: number; operation: 'analyze' | 'edit' | 'lyrics' | 'generate';
 };
@@ -47,13 +47,22 @@ export function applyLyrics(plan: CompositionPlan, edits: z.infer<typeof lyricEd
 export function validateIndices(plan: CompositionPlan, indices: number[]) {
   if (!indices.length || new Set(indices).size !== indices.length || indices.some(index => !Number.isInteger(index) || !plan.chunks[index])) throw new Error('Choose existing chunks once each.');
 }
-/** Only selected chunks regenerate; all other samples come from the currently rendered song. */
+/** Regeneration always uses the original upload at maximum conditioning strength. */
 export function inpaintingPlan(version: MusicVersion, indices: number[]): ProviderPlan {
   validateIndices(version.plan, indices);
   let startMs = 0;
   return { ...structuredClone(version.plan), chunks: version.plan.chunks.map((chunk, index) => {
     const range = { startMs, endMs: startMs + chunk.durationMs }; startMs = range.endMs;
-    return indices.includes(index) ? structuredClone(chunk) : { songId: version.songId, range };
+    if (!indices.includes(index)) return { songId: version.songId, range };
+    return {
+      ...structuredClone(chunk),
+      conditioningRef: {
+        songId: version.originalSongId ?? version.songId,
+        // ElevenLabs permits at most 30 seconds of reference audio per chunk.
+        range: { startMs: range.startMs, endMs: Math.min(range.endMs, range.startMs + 30000) },
+      },
+      conditionStrength: 'xhigh' as const,
+    };
   }) };
 }
 

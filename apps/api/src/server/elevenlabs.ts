@@ -54,11 +54,16 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
       if(analyze) {
         const audio=await objects.read(source.pathname);
         const result=await provider().analyze(audio,'source.wav');
-        version={id:musicId,version:1,name:'Uploaded song',songId:result.songId,plan:result.plan,audioId:source.id,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
+        version={id:musicId,version:1,name:'Uploaded song',songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId:source.id,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
       } else {
         const source=input.action.sourceVersion?(await db().query('SELECT document FROM music_versions WHERE music_id=$1 AND revision=$2',[musicId,input.action.sourceVersion])).rows[0]?.document:session!.current_version;
         if(!source)throw new ApiError(404,'Music version not found.');
         const base=musicActionBase(session!.current_version!,source,input.action);
+        if(!base.originalSongId) {
+          const original=(await db().query('SELECT document FROM music_versions WHERE music_id=$1 AND revision=1',[musicId])).rows[0]?.document as MusicVersion|undefined;
+          if(!original)throw new ApiError(404,'The original audio reference is unavailable.');
+          base.originalSongId=original.songId;
+        }
         const result=await performMusicAction(provider,base,input.action,job.id);version=result.version;output=result.audio;
       }
       if(output) await objects.write(`projects/${job.project_id}/music/${musicId}/audio/${job.id}.mp3`,Buffer.from(output),'audio/mpeg');

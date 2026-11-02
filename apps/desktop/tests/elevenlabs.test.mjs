@@ -11,6 +11,7 @@ import {fixtureProvider,fixturePlan,wav} from '../../../packages/elevenlabs/test
 const done=async(store,id)=>{for(let i=0;i<100;i++){const op=await store.operation(id);if(!['queued','running'].includes(op.status))return op;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Operation timed out');};
 test('desktop upload, lyric edit, AI lyrics, generation, selected regeneration and persisted download',async()=>{
  const root=await mkdtemp(join(tmpdir(),'banger-music-'));const provider=fixtureProvider();let store=createMusicStore(root,()=>provider);
+ const generateAudio=provider.generate;provider.generate=async version=>{assert.equal(version.originalSongId,'original-song');return generateAudio(version);};
  try{
   const upload=await store.importWav(wav(),'song.wav',randomUUID());assert.equal((await done(store,upload.id)).status,'completed');
   let song=await store.get(upload.musicId);assert.deepEqual(song.plan,fixturePlan);assert.deepEqual(Buffer.from((await store.audio(song.id)).bytes),wav());
@@ -21,8 +22,11 @@ test('desktop upload, lyric edit, AI lyrics, generation, selected regeneration a
   await assert.rejects(store.act(song.id,input,randomUUID()),/changed/);
   const lyrics=await store.act(song.id,{operation:'lyrics',baseVersion:2,indices:[1],prompt:'hope'},randomUUID());assert.equal((await done(store,lyrics.id)).status,'completed');
   const generate=await store.act(song.id,{operation:'generate',baseVersion:3,indices:[0,1]},randomUUID());assert.equal((await done(store,generate.id)).status,'completed');
+  // Existing songs predate originalSongId; recover their upload reference from version 1.
+  const legacy=await store.get(song.id);delete legacy.originalSongId;await writeFile(join(root,`music-${song.id}.json`),JSON.stringify(legacy));
   const regen=await store.act(song.id,{operation:'generate',baseVersion:4,indices:[1]},randomUUID());assert.equal((await done(store,regen.id)).status,'completed');
   store=createMusicStore(root,()=>provider);song=await store.get(song.id);assert.equal(song.version,5);assert.equal(song.audioVersion,5);assert.equal(song.songId,'generated-2');assert.equal((await store.list())[0].version,5);
+  assert.equal(song.originalSongId,'original-song');
   assert.deepEqual(Buffer.from((await store.audio(song.id)).bytes),Buffer.from('ID3fixture-audio'));assert.deepEqual(Buffer.from((await store.audio(song.id,1)).bytes),wav());
   assert.deepEqual(provider.calls,{analyze:1,lyrics:1,generate:2});
   // Simulate interruption after the durable result and pointer, before job completion/catalog.
