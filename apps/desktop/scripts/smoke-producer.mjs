@@ -91,6 +91,19 @@ export async function smokeProducer(window, directory) {
   assert.deepEqual(initial.map(track => track.steps.length), [16, 16, 16, 16]);
   assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "120");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
+  const originalLevels = await evaluate("[...document.querySelectorAll('.producer-track-mix input')].map(input => input.value)");
+  for (const name of ["kick", "snare"]) {
+    await click(`[aria-label="Mute ${name}"]`);
+    await waitFor(`document.querySelector('[aria-label="Mute ${name}"]')?.getAttribute('aria-pressed') === 'true'`, `${name} muted`);
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Mute ${name}"]').textContent`), "Unmute");
+  }
+  await click('[aria-label="Mute kick"]');
+  await waitFor(`document.querySelector('[aria-label="Mute kick"]')?.getAttribute('aria-pressed') === 'false'`, "kick unmuted");
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Mute snare"]').getAttribute('aria-pressed')`), "true", "Unmuting one track must leave another muted.");
+  await click('[aria-label="Mute snare"]');
+  await waitFor(`document.querySelector('[aria-label="Mute snare"]')?.getAttribute('aria-pressed') === 'false'`, "snare unmuted");
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-track-mix input')].map(input => input.value)"), originalLevels, "Mute toggles must preserve every volume slider.");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource, "Mute toggles must preserve saved track gains.");
   assert.equal(initial[0].steps[1], "false");
   await click('.producer-track:first-child .producer-step:nth-child(2)');
   await waitFor(`document.querySelector('.producer-track:first-child .producer-step:nth-child(2)')?.getAttribute('aria-pressed') === 'true' && document.querySelector('#producer-source')?.value !== ${JSON.stringify(originalSource)}`, "step edit and serialization");

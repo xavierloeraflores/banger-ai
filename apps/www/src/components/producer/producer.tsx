@@ -313,9 +313,9 @@ export function Producer() {
                     <div className="producer-track-mix">
                       <Range min={0} max={1} step={0.01} value={track.gain} aria-label={`${track.name} gain`} aria-valuetext={`${Math.round(track.gain * 100)} percent`} onChange={event => editTrack(index, { ...track, gain: Number(event.target.value) })} />
                       <output aria-label={`${track.name} level`}>{Math.round(track.gain * 100)}%</output>
+                      <Button className="producer-track-mute" variant={muted.has(index) ? "primary" : "secondary"} aria-pressed={muted.has(index)} aria-label={`Mute ${track.name}`} title="Mute playback without changing this track's volume" onClick={() => toggle(muted, index, setMuted)}>{muted.has(index) ? "Unmute" : "Mute"}</Button>
                     </div>
                     <div className="producer-track-options">
-                      <Button variant={muted.has(index) ? "primary" : "ghost"} aria-pressed={muted.has(index)} aria-label={`Mute ${track.name}`} onClick={() => toggle(muted, index, setMuted)}>M</Button>
                       <Button variant={solo.has(index) ? "primary" : "ghost"} aria-pressed={solo.has(index)} aria-label={`Solo ${track.name}`} onClick={() => toggle(solo, index, setSolo)}>S</Button>
                       {track.source.kind === "instrument" && <Select aria-label={`${track.name} pitch for new steps`} value={pitch[index] ?? 36} onChange={event => setPitch({ ...pitch, [index]: Number(event.target.value) })}>
                         {Array.from({ length: 49 }, (_, i) => i + 24).map(midi => <option key={midi} value={midi}>{noteName(midi)}</option>)}

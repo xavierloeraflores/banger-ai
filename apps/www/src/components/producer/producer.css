@@ -73,7 +73,8 @@ body { margin: 0; background: #141514; }
 .producer .producer-step[data-current="true"]:focus-visible { outline: 3px solid #d6fa54; outline-offset: 3px; box-shadow: 0 0 0 2px #eeeee5, inset 0 -4px 0 #202412; }
 .producer-step-index { position: absolute; top: 3px; left: 4px; font-size: 8px; line-height: 1; }
 .producer-step-tone { margin-top: 9px; }
-.producer-track-mix { display: flex; gap: 9px; align-items: center; }
+.producer-track-mix { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.producer-track-mix .producer-track-mute { width: 100%; min-height: 28px; height: 28px; padding: 1px 7px; font-size: 11px; border-radius: 3px; }
 .producer-track-mix input { width: 66px; min-width: 0; accent-color: var(--producer-lime); }
 .producer-track-mix output { color: var(--producer-dim); font-family: monospace; font-size: 10px; min-width: 30px; }
 .producer-track-options { display: flex; align-items: center; grid-column: 2 / 4; gap: 4px; min-height: 32px; margin-top: 6px; }
