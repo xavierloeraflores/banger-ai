@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {db} from '../src/server/db';
 import {createProject} from '../src/server/projects';
 import {enqueue,claim,checkpoint} from '../src/server/jobs';
-import {boundedAudio} from '../src/server/elevenlabs';
+import {runElevenStep, boundedAudio} from '../src/server/elevenlabs';
 const source=await readFile(new URL('../../../examples/night-drive.banger',import.meta.url),'utf8');
 test('bounded audio reader rejects oversized provider results',async()=>{
   const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(new Uint8Array(12));controller.close();}});
@@ -31,5 +31,12 @@ test('durable job idempotency, exclusive claims and fenced checkpoints', {skip:!
   assert.notEqual(resumed?.lease_token,job.lease_token);
   await checkpoint(resumed!,'completed',100,{},'completed');
   assert.equal(await claim(job.id),undefined);
+  const pending=await db().query("INSERT INTO jobs(id,project_id,user_id,kind,idempotency_key,input) VALUES($1,$2,$3,'elevenlabs',$4,$5) RETURNING id",[randomUUID(),project.projectId,user,randomUUID(),{artifactId:randomUUID()}]);
+  const audioJob=await claim(pending.rows[0].id);
+  await runElevenStep(audioJob!);
+  const waiting=(await db().query('SELECT status,progress FROM jobs WHERE id=$1',[audioJob!.id])).rows[0];
+  assert.equal(waiting.status,'awaiting_provider');assert.equal(waiting.progress,0);
+  assert.equal(await claim(audioJob!.id),undefined);
+
 });
 after(async()=>{await db().end();});

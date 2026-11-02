@@ -22,6 +22,8 @@ import { AutomationEditor } from "./automation-editor";
 import { TrackRouting, LevelMeter } from "./mixer-routing";
 import { MixerView } from "./mixer-view";
 import { AudioExport } from "./audio-export";
+import { CloudProjectWorkspace } from "./cloud-project-workspace";
+import type { CloudBinding } from "@/lib/cloud-projects";
 import { SoundDesign } from "./sound-design";
 import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
@@ -72,6 +74,7 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
+  const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [view, setView] = useState<StudioView>("sequencer");
   const [program, setProgram] = useState<MusicProgram>(() => compileMusic(initialFile.source));
@@ -434,7 +437,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
             <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>Click to toggle · Drag for velocity · % for probability · C for conditions</span></div>
             <div className="producer-song-tools">
-              <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} />
+              <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
             </div>
           </Panel>
 
@@ -459,6 +462,10 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
           {view === "byok" && <ByokSettings />}
         </div>
+        <CloudProjectWorkspace studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
+          if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
+          loadGeneratedFile(file, sourceRevision); setCloudBinding(binding);
+        }} />
         <DesktopProjectWorkspace onLoad={file => { if (!window.confirm("Load this workspace file in the studio and replace the current studio editor?")) return; loadGeneratedFile(file, sourceRevision); }} />
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
       </div>

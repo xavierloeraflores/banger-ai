@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import { openProject, ProjectSession, type HarnessEvent } from "@banger/harness";
 import { selectModel, publicAIError, type ProviderId } from "@banger/agent";
-const root = '/vercel/sandbox';
+const root = process.env.BANGER_WORKSPACE_ROOT ?? '/vercel/sandbox';
 // An atomic directory claim prevents a replayed launch from invoking the model twice.
 try { await mkdir(`${root}/run-lock`); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') process.exit(0); throw error; }
 const atomic = async (path: string, value: unknown) => { await writeFile(`${path}.tmp`, JSON.stringify(value)); await rename(`${path}.tmp`, path); };

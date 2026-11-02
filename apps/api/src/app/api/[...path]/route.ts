@@ -63,7 +63,7 @@ async function dispatch(request: Request, path: string[]) {
   if (path[0] === 'jobs') {
     const job=await getJob(user,id.parse(path[1]));
     if (path.length === 2 && method === 'GET') return json(publicJob(job));
-    if (path[2] === 'resume' && method === 'POST') { await authorize(user,job.project_id,true); after(() => workOne(job.id).then(() => undefined)); return json(publicJob(job),202); }
+    if (path[2] === 'resume' && method === 'POST') { await authorize(user,job.project_id,true); if (job.status === 'awaiting_provider') await db().query("UPDATE jobs SET status='queued',available_at=now() WHERE id=$1 AND status='awaiting_provider'", [job.id]); after(() => workOne(job.id).then(() => undefined)); return json(publicJob(job),202); }
     if (path[2] === 'candidate' && method === 'GET' && typeof job.checkpoint.candidate === 'string') return json(JSON.parse(await blobs.text(job.checkpoint.candidate)));
   }
   if (path[0] === 'artifacts') {

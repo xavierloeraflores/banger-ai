@@ -1,0 +1,30 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
+const source='tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain .6; }';
+test('bundled sandbox runner edits real files and replay never repeats a model invocation',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'banger-cloud-runner-'));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  await writeFile(join(directory,'input.json'),JSON.stringify({files:[{path:'songs/song.banger',source}],prompt:'Slow the tempo',activeFile:'songs/song.banger'}));
+  const preload=join(directory,'mock-provider.mjs');
+  await writeFile(preload,`import {appendFileSync} from 'node:fs';
+  let calls=0;
+  globalThis.fetch=async()=>{
+    appendFileSync(${JSON.stringify(join(directory,'calls'))},'call\\n');
+    const message= calls++===0 ? {role:'assistant',content:null,tool_calls:[{id:'edit-1',type:'function',function:{name:'edit_file',arguments:JSON.stringify({path:'songs/song.banger',search:'tempo 120',replacement:'tempo 100'})}}]} : {role:'assistant',content:'Slowed to 100 BPM.'};
+    return Response.json({id:'test',object:'chat.completion',created:1,model:'test',choices:[{index:0,message,finish_reason:calls===1?'tool_calls':'stop'}],usage:{prompt_tokens:10,completion_tokens:10,total_tokens:20}});
+  };`);
+  const env={...process.env,BANGER_WORKSPACE_ROOT:directory,BANGER_PROVIDER:'openai',BANGER_MODEL:'test',BANGER_API_KEY:'test-only'};
+  const first=spawnSync(process.execPath,['--import',preload,'dist/sandbox-runner.mjs'],{env,encoding:'utf8',timeout:15000});
+  assert.equal(first.status,0,first.stderr);
+  const result=JSON.parse(await readFile(join(directory,'result.json'),'utf8'));
+  assert.equal(result.status,'completed');
+  assert.match(await readFile(join(directory,'project/songs/song.banger'),'utf8'),/tempo 100/);
+  const before=await readFile(join(directory,'calls'),'utf8');
+  const replay=spawnSync(process.execPath,['--import',preload,'dist/sandbox-runner.mjs'],{env,encoding:'utf8',timeout:10000});
+  assert.equal(replay.status,0,replay.stderr);
+  assert.equal(await readFile(join(directory,'calls'),'utf8'),before);
+});

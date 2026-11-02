@@ -1,8 +1,11 @@
 {
   "$schema": "https://turborepo.com/schema.json",
-  "globalDependencies": ["examples/night-drive.banger"],
+  "globalDependencies": [
+    "examples/night-drive.banger"
+  ],
   "globalEnv": [
-    "NODE_ENV"
+    "NODE_ENV",
+    "NEXT_PUBLIC_BANGER_API_URL"
   ],
   "tasks": {
     "build": {
@@ -18,7 +21,25 @@
       ]
     },
     "dev": {
-      "passThroughEnv": ["PORT", "BANGER_DEV_URL"],
+      "passThroughEnv": [
+        "PORT",
+        "BANGER_DEV_URL",
+        "DATABASE_URL",
+        "AUTH_JWKS_URL",
+        "AUTH_ISSUER",
+        "AUTH_AUDIENCE",
+        "CLIENT_ORIGINS",
+        "BLOB_READ_WRITE_TOKEN",
+        "VERCEL_OIDC_TOKEN",
+        "VERCEL_TOKEN",
+        "VERCEL_TEAM_ID",
+        "VERCEL_PROJECT_ID",
+        "BANGER_PROVIDER",
+        "BANGER_MODEL",
+        "BANGER_API_KEY",
+        "SANDBOX_RUNNER_BLOB_PATH",
+        "CRON_SECRET"
+      ],
       "cache": false,
       "persistent": true,
       "dependsOn": [
@@ -45,7 +66,10 @@
       ]
     },
     "@banger/desktop#dev": {
-      "passThroughEnv": ["PORT", "BANGER_DEV_URL"],
+      "passThroughEnv": [
+        "PORT",
+        "BANGER_DEV_URL"
+      ],
       "cache": false,
       "persistent": true,
       "dependsOn": [

@@ -1,0 +1,22 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {generateKeyPair,exportJWK,SignJWT} from 'jose';
+import {authenticate} from '../src/server/auth';
+test('authentication verifies signature, issuer, audience and expiry',async t=>{
+  const {privateKey,publicKey}=await generateKeyPair('RS256');
+  const key=await exportJWK(publicKey);
+  const server=createServer((_request,response)=>{response.setHeader('content-type','application/json');response.end(JSON.stringify({keys:[{...key,kid:'test',alg:'RS256'}]}));});
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise<void>(resolve=>server.close(()=>resolve())));
+  const address=server.address() as {port:number};
+  process.env.AUTH_JWKS_URL=`http://127.0.0.1:${address.port}/jwks`;
+  process.env.AUTH_ISSUER='banger-test';process.env.AUTH_AUDIENCE='banger-api';
+  const token=async(audience='banger-api',expires='1m')=>new SignJWT({}).setProtectedHeader({alg:'RS256',kid:'test'}).setIssuer('banger-test').setAudience(audience).setSubject('user-1').setExpirationTime(expires).sign(privateKey);
+  const request=(token:string)=>new Request('http://localhost/api/projects',{headers:{Authorization:`Bearer ${token}`}});
+  assert.equal(await authenticate(request(await token())),'user-1');
+  await assert.rejects(authenticate(request(await token('wrong'))),/session expired/);
+  await assert.rejects(authenticate(request(await token('banger-api','-1s'))),/session expired/);
+  await assert.rejects(authenticate(request('unsigned.user-1.fake')),/session expired/);
+  await assert.rejects(authenticate(new Request('http://localhost/api/projects')),/Sign in/);
+});

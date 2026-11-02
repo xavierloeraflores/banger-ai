@@ -5,6 +5,7 @@ import { ApiError } from "./domain";
 import { authorize } from "./projects";
 import { checkpoint, elevenInput, type Job } from "./jobs";
 import { getArtifact, MAX_AUDIO_BYTES } from "./artifacts";
+import { audioProvider, type AudioProvider } from "./audio-provider";
 export async function boundedAudio(stream: ReadableStream<Uint8Array>, limit = MAX_AUDIO_BYTES): Promise<Buffer> {
   const reader = stream.getReader(); const chunks: Buffer[] = []; let size = 0;
   try {
@@ -12,38 +13,31 @@ export async function boundedAudio(stream: ReadableStream<Uint8Array>, limit = M
   } finally { await reader.cancel(); }
   return Buffer.concat(chunks);
 }
-export async function runElevenStep(job: Job) {
-  if (!process.env.ELEVENLABS_API_KEY) throw new ApiError(503, 'ElevenLabs is not configured.');
+export async function runElevenStep(job: Job, provider: AudioProvider | undefined = audioProvider()) {
+  if (!provider) { await checkpoint(job, 'awaiting-provider', 0, {}, 'awaiting_provider', null, 'ElevenLabs integration is not implemented yet. Your submission is saved.'); return; }
   const input = elevenInput.parse(job.input);
   const source = await getArtifact(job.user_id, input.artifactId, true);
   if (source.project_id !== job.project_id || source.status !== 'ready' || source.kind !== 'wav') throw new ApiError(400, 'The source WAV is unavailable.');
-  const pathname = `projects/${job.project_id}/elevenlabs/${job.id}.${input.operation === 'audio-isolation' ? 'wav' : 'mp3'}`;
+  const pathname = `projects/${job.project_id}/elevenlabs/${job.id}/result`;
   let metadata = await head(pathname).catch((error: unknown) => {
     if (error instanceof Error && error.name === 'BlobNotFoundError') return null;
     throw error;
   });
   if (!metadata) {
-    if (job.checkpoint.submitting) {
-      // ElevenLabs has no documented idempotency key for these endpoints. Never bill twice on an ambiguous retry.
-      await checkpoint(job, 'needs-review', 40, {}, 'needs_review', null, 'The provider request was interrupted. Check ElevenLabs history before explicitly submitting a new job.'); return;
-    }
-    const audio = await get(source.pathname, { access: 'private' });
-    if (!audio || audio.statusCode !== 200) throw new ApiError(502, 'The source WAV could not be read.');
-    const bytes = await boundedAudio(audio.stream);
-    const form = new FormData(); form.append('audio', new Blob([new Uint8Array(bytes)], {type:'audio/wav'}), 'source.wav');
-    const endpoint = input.operation === 'audio-isolation' ? 'audio-isolation' : `voice-changer/${encodeURIComponent(input.voiceId!)}`;
-    if (input.operation === 'voice-conversion') form.append('model_id', 'eleven_multilingual_sts_v2');
-    await checkpoint(job, 'submitting', 40, { submitting: true }, 'running');
-    const response = await fetch(`https://api.elevenlabs.io/v1/${endpoint}`, { method: 'POST', headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }, body: form, signal: AbortSignal.timeout(180000) });
-    if (!response.ok || !response.body) {
-      if (response.status >= 400 && response.status < 500) await checkpoint(job, 'failed', 40, {}, 'failed', null, `ElevenLabs rejected the request (${response.status}).`);
-      else await checkpoint(job, 'needs-review', 40, {}, 'needs_review', null, 'ElevenLabs returned an uncertain response. Review provider history before resubmitting.');
+    if (typeof job.checkpoint.providerRequestId !== 'string') {
+      const audio = await get(source.pathname, { access: 'private' });
+      if (!audio || audio.statusCode !== 200) throw new ApiError(502, 'The source WAV could not be read.');
+      const bytes = await boundedAudio(audio.stream);
+      await checkpoint(job, 'submitting', 10, {}, 'running');
+      const submitted = await provider.submit({ idempotencyKey: job.id, audio: bytes, contentType: 'audio/wav' });
+      await checkpoint(job, 'processing', 20, { providerRequestId: submitted.requestId });
       return;
     }
-    const contentType = response.headers.get('content-type')?.split(';')[0] ?? 'audio/mpeg';
-    if (!['audio/mpeg','audio/wav','audio/x-wav'].includes(contentType)) throw new ApiError(502, 'ElevenLabs returned an unexpected file type.');
-    const result = await boundedAudio(response.body);
-    await put(pathname, result, { access: 'private', addRandomSuffix: false, allowOverwrite: false, contentType });
+    const result = await provider.poll(job.checkpoint.providerRequestId);
+    if (result.status === 'processing') { await checkpoint(job, 'processing', Math.max(20, Math.min(90, Math.round(result.progress))), {}); return; }
+    if (result.status === 'failed') { await checkpoint(job, 'failed', job.progress, {}, 'failed', null, result.error.slice(0,500)); return; }
+    const bytes = await boundedAudio(result.audio);
+    await put(pathname, bytes, { access: 'private', addRandomSuffix: false, allowOverwrite: false, contentType: result.contentType });
     metadata = await head(pathname);
   }
   await transaction(async client => {

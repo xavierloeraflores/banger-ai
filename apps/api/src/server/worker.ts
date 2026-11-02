@@ -13,8 +13,7 @@ export async function workOne(jobId?: string) {
     if (job.kind === 'agent') await runAgentStep(job); else await runElevenStep(job);
   } catch (error) {
     const permanent = error instanceof ApiError && [400,403,404,413,422,504].includes(error.status);
-    const uncertain = job.kind === 'elevenlabs' && Boolean(job.checkpoint.submitting);
-    const status = uncertain ? 'needs_review' : permanent || job.attempts >= 12 ? 'failed' : 'queued';
+    const status = permanent || job.attempts >= 12 ? 'failed' : 'queued';
     const message = error instanceof ApiError ? error.message : 'The service could not finish this step. It will retry from its saved checkpoint.';
     await checkpoint(job, status === 'queued' ? 'retrying' : status, job.progress, {}, status, null, message).catch(() => undefined);
     if (status === 'failed' && job.kind === 'agent') {

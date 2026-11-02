@@ -4,7 +4,7 @@ import { db, transaction } from "./db";
 import { authorize } from "./projects";
 import { ApiError, id, pathSchema } from "./domain";
 export const agentInput = z.object({ baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional() }).strict();
-export const elevenInput = z.object({ artifactId: id, operation: z.enum(["voice-conversion", "audio-isolation"]), voiceId: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/).optional() }).strict().refine(input => input.operation !== "voice-conversion" || input.voiceId, "Choose a target voice.");
+export const elevenInput = z.object({ artifactId: id }).strict();
 export type Job = { id: string; project_id: string; user_id: string; kind: "agent" | "elevenlabs"; session_id: string | null; status: string; stage: string; progress: number; input: Record<string, unknown>; checkpoint: Record<string, unknown>; result: Record<string, unknown> | null; error: string | null; lease_token: string; attempts: number; created_at: Date };
 export async function enqueue(user: string, project: string, kind: Job["kind"], key: string, input: unknown) {
   const parsed = kind === "agent" ? agentInput.parse(input) : elevenInput.parse(input);
