@@ -13,6 +13,7 @@ export class BangerPlayer {
   private bars: ScheduledBar[] = [];
   private pending?: MusicProgram;
   private running = false;
+  private fill = false;
   private disposed = false;
   private generation = 0;
   private closing?: Promise<void>;
@@ -73,6 +74,7 @@ export class BangerPlayer {
     if (this.disposed) throw new Error('This player has been disposed');
     if (!this.running) throw new Error('Start playback before updating it');
     const song = copyMusicProgram(program);
+    this.renderer?.setMasterGain(song.masterGain ?? 1);
     this.tick();
     const future = this.bars.findIndex(bar => bar.start > this.context!.currentTime);
     if (future >= 0) {
@@ -82,11 +84,25 @@ export class BangerPlayer {
       this.pending = undefined;
     } else this.pending = song;
   }
+  /** Rebuild only not-yet-started notes so holding Fill works within the current bar. */
+  setFill(active: boolean): void {
+    if (active === this.fill) return;
+    this.fill = active;
+    if (!this.running || !this.context) return;
+    const now = this.context.currentTime;
+    for (const bar of this.bars) {
+      if (bar.end <= now) continue;
+      const previous = bar.audio;
+      previous.cancelFrom(now);
+      const next = this.renderer!.renderBar(bar.program, bar.start, now, bar.index - 1, active);
+      bar.audio = { cleanupAt: Math.max(previous.cleanupAt, next.cleanupAt), dispose() { previous.dispose(); next.dispose(); }, cancelFrom(time) { previous.cancelFrom(time); next.cancelFrom(time); } };
+    }
+  }
   stop(): void {
     this.generation++;
     this.clock?.stop(); this.clock = undefined;
     for (const bar of this.bars) bar.audio.dispose();
-    this.bars = []; this.pending = undefined; this.running = false;
+    this.bars = []; this.pending = undefined; this.running = false; this.fill = false;
   }
   async dispose(): Promise<void> {
     if (this.closing) return this.closing;
@@ -96,7 +112,7 @@ export class BangerPlayer {
   }
   private schedule(program: MusicProgram, start: number, index: number): ScheduledBar {
     return { program, start, end: start + barDuration(program), index,
-      audio: this.renderer!.renderBar(program, start, this.context!.currentTime, index - 1) };
+      audio: this.renderer!.renderBar(program, start, this.context!.currentTime, index - 1, this.fill) };
   }
   private tick(): void {
     if (!this.running || this.context?.state !== 'running') return;

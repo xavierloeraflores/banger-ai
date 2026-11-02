@@ -1,5 +1,5 @@
 import { CompileError, tokenize, type Token } from './lexer.js';
-import { validateMusicProgram, validateEffect, type MusicBus, type MusicSection, type TimelineEntry, type MusicPattern, type Groove, type AutomationCurve, type AutomationTarget, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type MusicEffect, type SoundName, type Step } from './model.js';
+import { validateMusicProgram, validateEffect, type MusicBus, type MusicSection, type TimelineEntry, type MusicPattern, type Groove, type AutomationCurve, type AutomationTarget, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type MusicEffect, type SoundName, type Step, type StepCondition } from './model.js';
 type Value = string | number;
 const pitchClasses: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
@@ -73,6 +73,14 @@ class Parser {
           this.variables.set(name.text, this.expression());
           this.expect(';');
           break;
+        }
+        case 'master': case 'metronome': case 'activePattern': {
+          if (declarations.has(token.text)) this.error(`Duplicate ${token.text}`, token);
+          declarations.add(token.text);
+          if (token.text === 'master') program.masterGain = this.numeric();
+          else if (token.text === 'activePattern') program.activePattern = this.identifier().text;
+          else { const value = this.identifier(); if (!['on', 'off'].includes(value.text)) this.error('Metronome must be on or off', value); program.metronome = value.text === 'on'; }
+          this.expect(';'); break;
         }
         case 'tempo': {
           if (declarations.has('tempo')) this.error('Tempo is already declared', token);
@@ -232,11 +240,14 @@ class Parser {
     this.expect(';');
     return words.map((word): Step => {
       if (word === '.') return null;
+      const match = /^([^@?!]+)(?:@([0-9.]+))?(?:\?([0-9.]+))?(?:!([a-z0-9-]+))?$/.exec(word);
+      if (!match) this.error(`Invalid step token '${word}'`, token);
+      const base = match[1], performance = { ...(match[2] === undefined ? {} : { velocity: Number(match[2]) }), ...(match[3] === undefined ? {} : { probability: Number(match[3]) }), ...(match[4] === undefined ? {} : { condition: match[4] as StepCondition }) };
       if (kind === 'rhythm') {
-        if (word !== 'x') this.error(`Invalid rhythm token '${word}'`, token);
-        return { kind: 'hit' };
+        if (base !== 'x') this.error(`Invalid rhythm token '${word}'`, token);
+        return { kind: 'hit', ...performance };
       }
-      return { kind: 'note', midi: this.pitch(word, token) };
+      return { kind: 'note', midi: this.pitch(base, token), ...performance };
     });
   }
   private phrase(name: Token): { pattern: MusicPattern; kind: string } {

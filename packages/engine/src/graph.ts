@@ -41,7 +41,7 @@ export class MixerGraph {
       const clips = this.clipsByBar.get(bar) ?? []; clips.push(clip); this.clipsByBar.set(bar, clips);
     }
     this.impulse = createImpulse(context);
-    this.master = this.keep(context.createGain()); this.master.gain.value = .6;
+    this.master = this.keep(context.createGain()); this.master.gain.value = .6 * (program.masterGain ?? 1);
     // A fixed linear master keeps stem gain predictable; compression is explicit in the mixer.
     this.masterMeter = this.meter(this.master);
     this.master.connect(context.destination);

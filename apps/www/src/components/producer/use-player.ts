@@ -87,5 +87,7 @@ export function usePlayer(program: MusicProgram) {
     setState({ ...idle, tempo: latestProgram.current.tempo });
   }, []);
 
-  return { state, meters, starting, error, play, stop };
+  const setFill = useCallback((active: boolean) => player.current?.setFill(active), []);
+
+  return { state, meters, starting, error, play, stop, setFill };
 }

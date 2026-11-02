@@ -11,10 +11,13 @@ export function serializeMusic(program: MusicProgram): string {
   const pitch = (midi: number) => `${pitches[midi % 12]}${Math.floor(midi / 12) - 1}`;
   const lines = [`tempo ${program.tempo};`, 'meter 4/4;'];
   if (program.chainEnabled !== undefined) lines.push(`chain ${program.chainEnabled ? 'on' : 'off'};`);
+  if (program.masterGain !== undefined) lines.push(`master ${program.masterGain};`);
+  if (program.metronome !== undefined) lines.push(`metronome ${program.metronome ? 'on' : 'off'};`);
+  if (program.activePattern !== undefined) lines.push(`activePattern ${program.activePattern};`);
   const phrase = (pattern: Pick<MusicPattern, 'bars' | 'steps' | 'pianoRoll'>, source: MusicTrack['source'], indent: string): void => {
     if (pattern.bars !== undefined) lines.push(`${indent}bars ${pattern.bars};`);
     if (pattern.pianoRoll === undefined) {
-      const steps = pattern.steps.map(step => step === null ? '.' : step.kind === 'hit' ? 'x' : pitch(step.midi)).join(' ');
+      const steps = pattern.steps.map(step => step === null ? '.' : `${step.kind === 'hit' ? 'x' : pitch(step.midi)}${step.velocity === undefined ? '' : `@${step.velocity}`}${step.probability === undefined ? '' : `?${step.probability}`}${step.condition === undefined ? '' : `!${step.condition}`}`).join(' ');
       lines.push(`${indent}${source.kind === 'sound' ? 'rhythm' : 'notes'} ${JSON.stringify(steps)};`);
     } else lines.push(`${indent}piano {`, ...pattern.pianoRoll.map(note => `${indent}  note ${JSON.stringify(pitch(note.midi))} start ${note.start} duration ${note.duration} velocity ${note.velocity};`), `${indent}}`);
   };

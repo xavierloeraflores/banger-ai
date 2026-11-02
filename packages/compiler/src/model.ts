@@ -1,6 +1,9 @@
 export type SoundName = 'drums/kick' | 'drums/snare' | 'drums/hat' | 'drums/clap' | 'drums/tom' | 'drums/open-hat';
 export type InstrumentName = 'synth/bass' | 'synth/pluck' | 'synth/lead' | 'synth/pad' | 'synth/bell' | 'synth/organ' | 'synth/keys';
-export type Step = null | { kind: 'hit' } | { kind: 'note'; midi: number };
+export const STEP_CONDITIONS = ['always', 'fill', 'not-fill', 'first', 'every-2', 'every-4'] as const;
+export type StepCondition = typeof STEP_CONDITIONS[number];
+export interface StepPerformance { velocity?: number; probability?: number; condition?: StepCondition }
+export type Step = null | (({ kind: 'hit' } | { kind: 'note'; midi: number }) & StepPerformance);
 /** A note in a phrase piano roll. Start and duration are quarter-note beats. */
 export interface PianoNote { midi: number; start: number; duration: number; velocity: number }
 export interface ReverbEffect { kind: 'reverb'; mix: number }
@@ -40,6 +43,8 @@ export interface MusicTrack {
 }
 export interface MusicProgram {
   chainEnabled?: boolean;
+  masterGain?: number;
+  metronome?: boolean;
   activePattern?: string;
   sections?: MusicSection[];
   timeline?: TimelineEntry[];
@@ -140,6 +145,9 @@ function validatePattern(pattern: Pick<MusicPattern, 'bars' | 'steps' | 'pianoRo
   for (const step of pattern.steps) {
     if (step === null) continue;
     if (!step || typeof step !== 'object') fail('Invalid step');
+    if (step.velocity !== undefined) range(step.velocity, 0, 1, 'Step velocity');
+    if (step.probability !== undefined) range(step.probability, 0, 1, 'Step probability');
+    if (step.condition !== undefined && !STEP_CONDITIONS.includes(step.condition)) fail('Unknown step condition');
     if (source.kind === 'sound' ? step.kind !== 'hit' : step.kind !== 'note' || !Number.isInteger(step.midi) || step.midi < 0 || step.midi > 127)
       fail('Use hits with sounds and MIDI notes from 0 to 127 with instruments');
   }
@@ -157,6 +165,8 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
   const program = value as MusicProgram;
   if (program.chainEnabled !== undefined && typeof program.chainEnabled !== 'boolean') fail('Chain enabled must be a boolean');
   if (program.activePattern !== undefined) name(program.activePattern);
+  if (program.masterGain !== undefined) range(program.masterGain, 0, 1, 'Master gain');
+  if (program.metronome !== undefined && typeof program.metronome !== 'boolean') fail('Metronome must be boolean');
   range(program.tempo, MUSIC_LIMITS.minTempo, MUSIC_LIMITS.maxTempo, 'Tempo');
   if (program.meter?.numerator !== 4 || program.meter?.denominator !== 4) fail('Only 4/4 meter is supported');
   array(program.tracks, MUSIC_LIMITS.tracks, 'Tracks');
@@ -254,7 +264,7 @@ export function pianoNotes(track: MusicTrack): PianoNote[] {
   if (track.pianoRoll !== undefined) return track.pianoRoll.map(note => ({ ...note }));
   return track.steps.flatMap((step, index) => step?.kind === 'note'
     ? [{ midi: step.midi, start: index * patternDurationBeats(track) / track.steps.length,
-        duration: Math.min(patternDurationBeats(track) / track.steps.length, patternDurationBeats(track) - index * patternDurationBeats(track) / track.steps.length), velocity: 1 }] : []);
+        duration: Math.min(patternDurationBeats(track) / track.steps.length, patternDurationBeats(track) - index * patternDurationBeats(track) / track.steps.length), velocity: step.velocity ?? 1 }] : []);
 }
 
 export function validateEffect(effect: MusicEffect): void {
