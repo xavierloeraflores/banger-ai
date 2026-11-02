@@ -17,6 +17,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [local, setLocal] = useState(false);
   const [connection, setConnection] = useState("Choose a provider in BYOK");
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -31,7 +32,8 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
       void aiSettingsBridge().load().then(settings => {
         if (!active) return;
         const provider = AI_PROVIDERS.find(item => item.id === settings.activeProvider);
-        setConnection(provider ? `${provider.name} · your key` : "Choose a provider in BYOK");
+        setLocal(Boolean(settings.localSelected));
+        setConnection(settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · your key` : "Choose a provider in BYOK");
       }).catch(() => { if (active) setConnection("AI settings unavailable"); });
     };
     refresh();
@@ -123,7 +125,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         : <Button variant="primary" type="submit" disabled={!prompt.trim() || fileBusy}>Send</Button>}
     </form>
     <div className="ai-chat-footer">
-      <p>Your current source and recent chat are sent to the selected AI provider. Use BYOK to choose your own key.</p>
+      <p>{local ? "Your current source and recent chat stay on this computer. Muse Glimmer generates files locally." : "Your current source and recent chat are sent to the selected AI provider. Choose a local model or your own key in BYOK."}</p>
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>

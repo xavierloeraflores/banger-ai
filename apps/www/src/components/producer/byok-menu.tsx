@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input } from "@banger/shadcn";
 import { AI_PROVIDERS, aiSettingsBridge, type AISettings, type ProviderId } from "@/lib/ai-providers";
 
+import { LocalModelSettings } from "./local-model";
+
 export function ByokSettings() {
   const pending = useRef(false);
   const [settings, setSettings] = useState<AISettings>({ activeProvider: null, providers: {} });
@@ -39,7 +41,7 @@ export function ByokSettings() {
       setModel(next.providers[id]?.model ?? "");
       setLoaded(true);
     }).catch(cause => {
-      if (active) setError(cause instanceof Error ? cause.message : "Could not load AI settings.");
+      if (active) { setDesktop(Boolean(window.bangerAI)); setError(cause instanceof Error ? cause.message : "Could not load AI settings."); }
     });
     return () => { active = false; };
   }, []);
@@ -65,9 +67,10 @@ export function ByokSettings() {
 
   return <section className="byok-settings" aria-labelledby="byok-title" aria-describedby="byok-description">
       <div className="byok-heading">
-        <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">Bring your own key</h2></div>
+        <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">{desktop ? "Local model or your own key" : "Bring your own key"}</h2></div>
       </div>
       <p id="byok-description" className="byok-description">Select your own key and model for AI chat.</p>
+      {desktop && <LocalModelSettings />}
       <div className="byok-layout">
         <nav className="byok-providers" aria-label="AI providers">
           {AI_PROVIDERS.map(item => <button key={item.id} type="button" aria-pressed={provider === item.id}

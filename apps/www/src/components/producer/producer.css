@@ -204,3 +204,11 @@ body { margin: 0; background: #141514; }
 .producer-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--producer-lime); color: var(--producer-lime); }
 .producer-tabs [role="tab"]:hover { color: var(--producer-text); }
 .producer [role="tabpanel"][hidden] { display: none; }
+
+.local-model-settings { border: 1px solid var(--producer-border); border-radius: 8px; padding: 20px; margin-bottom: 28px; }
+.local-model-settings h3 { margin: 0; font-size: 18px; }
+.local-model-settings > p[role="status"] { font-size: 13px; margin: 16px 0; }
+.local-model-progress { display: flex; align-items: center; gap: 14px; margin: 16px 0; font-size: 12px; }
+.local-model-progress progress { flex: 1; accent-color: var(--producer-lime); }
+.local-model-size { display: grid; gap: 8px; font-size: 13px; max-width: 480px; }
+.local-model-size select { padding: 10px; border-radius: 6px; background: var(--producer-panel); color: var(--producer-text); border: 1px solid var(--producer-border); }

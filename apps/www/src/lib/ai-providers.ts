@@ -8,7 +8,7 @@ export const AI_PROVIDERS = [
 
 export type ProviderId = typeof AI_PROVIDERS[number]["id"];
 export type ProviderSettings = { model: string; configured: boolean };
-export type AISettings = { activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
+export type AISettings = { localSelected?: boolean; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
 export type AISettingsBridge = {
   load(): Promise<AISettings>;
   save(provider: ProviderId, model: string, key: string): Promise<AISettings>;

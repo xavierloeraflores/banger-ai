@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createServer } from "node:http";
 import { MockLanguageModelV4 } from "ai/test";
-import { parseChatRequest, selectModel, runBangerAgent, validateGeneratedFile, publicAIError } from "../dist/index.js";
+import { parseChatRequest, selectLocalModel, selectModel, runBangerAgent, validateGeneratedFile, publicAIError } from "../dist/index.js";
 import { compileMusic } from "@banger/compiler";
 
 const source = 'tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain 0.6; }';
@@ -86,4 +87,33 @@ test("provider adapters authenticate only to the selected provider", async () =>
     });
     assert.equal(count, 1, provider);
   }
+});
+
+
+test("local inference authenticates on loopback and returns compiler-validated tool files", async () => {
+  let calls = 0;
+  const server = createServer(async (incoming, outgoing) => {
+    assert.equal(incoming.url, "/v1/chat/completions");
+    assert.equal(incoming.headers.authorization, "Bearer local-test-token");
+    let text = "";
+    for await (const chunk of incoming) text += chunk;
+    const body = JSON.parse(text);
+    assert.equal(body.model, "muse-glimmer");
+    assert.equal(text.includes("local-test-token"), false);
+    calls++;
+    outgoing.setHeader("Content-Type", "application/json");
+    outgoing.end(JSON.stringify({ id: "local-test", object: "chat.completion", created: 0, model: "muse-glimmer",
+      choices: [{ index: 0, finish_reason: calls === 1 ? "tool_calls" : "stop", message: calls === 1
+        ? { role: "assistant", content: null, tool_calls: [{ id: "file", type: "function", function: { name: "create_banger_file", arguments: JSON.stringify({ name: "local.banger", source }) } }] }
+        : { role: "assistant", content: "Your local loop is ready." } }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const result = await runBangerAgent(request, selectLocalModel(server.address().port, "local-test-token"));
+    assert.equal(calls, 2);
+    assert.equal(result.files[0].name, "local.banger");
+    assert.equal(compileMusic(result.files[0].source).tempo, 120);
+    assert.match(result.model, /local/);
+    for (const port of [0, -1, 65536, 1.5]) assert.throws(() => selectLocalModel(port, "token"));
+  } finally { await new Promise(resolve => server.close(resolve)); }
 });

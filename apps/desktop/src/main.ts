@@ -4,8 +4,9 @@ import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_URL, getDevelopmentUrl, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
-import { parseChatRequest, selectModel, runBangerAgent, publicAIError } from "@banger/agent";
+import { parseChatRequest, selectModel, selectLocalModel, runBangerAgent, publicAIError } from "@banger/agent";
 import { createAISettingsStore } from "./ai-settings.js";
+import { createLocalModel } from "./local-model.js";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
@@ -148,6 +149,8 @@ function createWindow() {
 }
 
 void app.whenReady().then(() => {
+  const localModel = createLocalModel(join(app.getPath("userData"), "local-model"));
+  app.on("before-quit", () => localModel.dispose());
   protocol.handle("banger", (request) => serveApp(request, fileURLToPath(new URL("./web/", import.meta.url))));
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
@@ -158,10 +161,32 @@ void app.whenReady().then(() => {
     encrypt: value => safeStorage.encryptStringAsync(value),
     decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
   });
-  ipcMain.handle("banger:ai-load", event => { senderWindow(event); return aiSettings.load(); });
-  ipcMain.handle("banger:ai-save", (event, provider: unknown, model: unknown, key: unknown) => {
+  ipcMain.handle("banger:local-status", event => { senderWindow(event); return localModel.status(); });
+  ipcMain.handle("banger:local-download", event => { senderWindow(event); return localModel.download(); });
+  ipcMain.handle("banger:local-choose", (event, variant: unknown) => { senderWindow(event); return localModel.choose(variant); });
+  ipcMain.handle("banger:local-start", event => { senderWindow(event); return localModel.start(); });
+  ipcMain.handle("banger:local-stop", async event => {
     senderWindow(event);
-    return aiSettings.save(provider, model, key);
+    for (const controller of pendingChats.values()) controller.abort();
+    await localModel.stop();
+  });
+  ipcMain.handle("banger:local-select", (event, selected: unknown) => {
+    senderWindow(event);
+    if (typeof selected !== "boolean") throw new Error("Choose local AI or an API provider.");
+    return localModel.select(selected);
+  });
+  ipcMain.handle("banger:ai-load", async event => {
+    senderWindow(event);
+    const local = await localModel.status();
+    // Local AI works even when the operating system keychain is locked.
+    if (local.selected) return { activeProvider: null, providers: {}, localSelected: true };
+    return { ...await aiSettings.load(), localSelected: false };
+  });
+  ipcMain.handle("banger:ai-save", async (event, provider: unknown, model: unknown, key: unknown) => {
+    senderWindow(event);
+    const settings = await aiSettings.save(provider, model, key);
+    await localModel.select(false);
+    return settings;
   });
   ipcMain.handle("banger:ai-remove", (event, provider: unknown) => { senderWindow(event); return aiSettings.remove(provider); });
   ipcMain.handle("banger:chat-cancel", event => { pendingChats.get(senderWindow(event).id)?.abort(); });
@@ -172,6 +197,15 @@ void app.whenReady().then(() => {
     pendingChats.set(window.id, controller);
     try {
       const input = parseChatRequest(request);
+      if ((await localModel.status()).selected) {
+        try {
+          const { port, token } = localModel.connection();
+          return { ok: true, reply: await runBangerAgent(input, selectLocalModel(port, token), controller.signal) };
+        } catch {
+          return { ok: false, error: controller.signal.aborted ? "Generation stopped." :
+            "Local generation failed. Check that Muse Glimmer is running in AI settings, then try a smaller request." };
+        }
+      }
       const credentials = await aiSettings.credentials();
       if (!credentials) return { ok: false, error: "Add a provider key and model in BYOK to start chatting." };
       const selected = selectModel(credentials);
