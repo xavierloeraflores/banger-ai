@@ -9,7 +9,14 @@ import { AI_PROVIDERS, aiSettingsBridge } from "@/lib/ai-providers";
 
 type Turn = { prompt: string; reply: ChatReply; revision: number };
 type Props = { source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number): void };
-const suggestions = ["Make a warm lo-fi beat at 85 BPM", "Create three different house loops", "Add a melody to this project"];
+const suggestions = [
+  "Write a synth-pop song with an intro, verse, chorus and outro",
+  "Make a lo-fi beat at 85 BPM with swung drums and mellow keys chords",
+  "Create an ambient piece with sustained pads, bells and reverb",
+  "Make three house variations with bass ducking under the kick",
+  "Add a pluck melody with delay to this project, keeping the drums",
+  "Build tension in this song with a rising filter sweep before the chorus",
+];
 
 export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) {
   const [open, setOpen] = useState(false);
@@ -132,7 +139,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
     </div>
     <div ref={transcript} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
       {!turns.length && !busy && <div className="ai-chat-empty">
-        <p>Make a new loop, revise this project, or ask for a few variations. Preview the files, then load one into the studio or save it.</p>
+        <p>Create a loop or a full song with sections, layer chords and melodies, or reshape this project with effects and automation. Preview the files, then load one into the studio or save it.</p>
         <div className="ai-chat-suggestions">{suggestions.map(text => <Button key={text} variant="ghost" onClick={() => { setPrompt(text); input.current?.focus(); }}>{text}</Button>)}</div>
       </div>}
       {turns.map((turn, index) => <div className="ai-chat-turn" key={index}>
@@ -160,7 +167,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
       <label className="producer-sr-only" htmlFor="ai-chat-prompt">Message Banger AI</label>
       <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={4000} value={prompt} disabled={busy}
-        placeholder="A syncopated bass line with tight drums, 124 BPM…" onChange={event => setPrompt(event.target.value)}
+        placeholder="Describe a song, a loop, or a change to this project…" onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       {busy ? <Button variant="secondary" onClick={() => request.current?.abort()}>Stop generating</Button>
         : <Button variant="primary" type="submit" disabled={!prompt.trim() || fileBusy}>Send</Button>}
