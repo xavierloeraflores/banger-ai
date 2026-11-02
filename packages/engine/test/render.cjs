@@ -8,6 +8,8 @@ let server;
 const timeout = setTimeout(() => { console.error('Audio render test timed out'); app.exit(1); }, 120000);
 app.whenReady().then(async () => {
   server = createServer(async (request, response) => {
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; worker-src 'self'");
+    if (request.url === '/banger-sidechain.js') { const { SIDECHAIN_WORKLET_SOURCE } = await import(resolve(root, 'packages/engine/dist/index.js')); response.setHeader('Content-Type', 'text/javascript'); response.end(SIDECHAIN_WORKLET_SOURCE); return; }
     const path = request.url === '/test.js' ? resolve(__dirname, 'render-browser.mjs') : request.url.startsWith('/engine/') ? resolve(root, 'packages/engine/dist', request.url.slice(8)) : request.url.startsWith('/compiler/') ? resolve(root, 'packages/compiler/dist', request.url.slice(10)) : undefined;
     if (!path) { response.setHeader('Content-Type', 'text/html'); response.end('<!doctype html><title>Engine audio verification</title>'); return; }
     try { response.setHeader('Content-Type', 'text/javascript'); response.end((await readFile(path, 'utf8')).replaceAll("'@banger/compiler'", "'/compiler/index.js'")); }
