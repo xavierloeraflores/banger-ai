@@ -49,5 +49,15 @@ test('actual SDK multipart parsing retains song IDs and binary MP3; inpainting r
 test('WAV validation accepts metadata and rejects truncated or compressed files',async()=>{
  const {validateWav}=await import('../dist/index.js');const {wav}=await import('./fixtures.mjs');const bytes=wav();assert.equal(validateWav(bytes).durationMs,8000);
  const metadata=Buffer.concat([bytes.subarray(0,36),Buffer.from('JUNK\x02\0\0\0hi'),bytes.subarray(36)]);metadata.writeUInt32LE(metadata.length-8,4);assert.equal(validateWav(metadata).durationMs,8000);
- assert.throws(()=>validateWav(bytes.subarray(0,bytes.length-1)),/complete/);const compressed=Buffer.from(bytes);compressed.writeUInt16LE(6,20);assert.throws(()=>validateWav(compressed),/uncompressed/);
+ assert.throws(()=>validateWav(bytes.subarray(0,bytes.length-1)),/complete/);const layout=Buffer.from(bytes);layout.writeUInt32LE(1,28);assert.throws(()=>validateWav(layout),/layout/);const compressed=Buffer.from(bytes);compressed.writeUInt16LE(6,20);assert.throws(()=>validateWav(compressed),/uncompressed/);
+});
+
+test('extensible PCM WAVs retain compatibility with desktop audio exports',async()=>{
+ const {validateWav}=await import('../dist/index.js');const {wav}=await import('./fixtures.mjs');const bytes=wav();
+ const format=Buffer.alloc(48);format.write('fmt ');format.writeUInt32LE(40,4);bytes.copy(format,8,20,36);format.writeUInt16LE(65534,8);format.writeUInt16LE(22,24);format.writeUInt16LE(16,26);format.writeUInt32LE(4,28);Buffer.from('0100000000001000800000aa00389b71','hex').copy(format,32);
+ const extended=Buffer.concat([bytes.subarray(0,12),format,bytes.subarray(36)]);extended.writeUInt32LE(extended.length-8,4);assert.equal(validateWav(extended).durationMs,8000);
+ format.writeUInt32LE(6,32);const compressed=Buffer.concat([extended.subarray(0,12),format,bytes.subarray(36)]);assert.throws(()=>validateWav(compressed),/uncompressed/);
+});
+test('manual lyric edits work without constructing a credentialed provider',async()=>{
+ const {performMusicAction}=await import('../dist/index.js');const next=await performMusicAction(()=>{throw new Error('Provider must not be called');},version,{operation:'edit',baseVersion:1,edits:[{index:0,lyrics:'New words'}]},'operation');assert.equal(next.version.version,2);assert.equal(next.version.audioVersion,1);
 });
