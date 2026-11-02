@@ -305,7 +305,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         <span className="producer-transport-state">{playback.state.hasPendingUpdate ? "Changes next bar" : playback.state.playing ? "Playing" : "Ready to play"}</span>
         <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
-          onLaunch={(name, next = program) => { const launch = { ...next, chainEnabled: false }; if (name) launch.activePattern = name; else delete launch.activePattern; if (edit(launch)) setPatterns(Object.fromEntries(next.tracks.map((track, index) => [index, track.patterns?.some(pattern => pattern.name === name) ? name : ""]))); }} />
+          onLaunch={(name, next = program) => { const launch = { ...next, chainEnabled: false }; if (name) launch.activePattern = name; else delete launch.activePattern; if (edit(launch)) { setPreviewSection(undefined); setPatterns(Object.fromEntries(next.tracks.map((track, index) => [index, track.patterns?.some(pattern => pattern.name === name) ? name : ""]))); } }} />
         <LevelMeter name="Master" level={playback.meters.master.peak} />
       </section>
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}

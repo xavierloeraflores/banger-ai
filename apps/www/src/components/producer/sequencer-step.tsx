@@ -10,10 +10,11 @@ export function SequencerStep({ step, index, name, current, newStep, onChange }:
   const dragged = useRef(false);
   const [velocity, setVelocity] = useState<number | null>(null);
   const active = step !== null, level = velocity ?? step?.velocity ?? 1;
+  const locked = Object.keys(step?.locks ?? {}).length > 0;
   const label = `${name}, step ${index + 1}`;
   return <div className="producer-step-cell" style={{ "--step-velocity": `${level * 100}%` } as CSSProperties}>
     <StepButton active={active} current={current} accent="var(--producer-lime)" data-current={current} className="producer-step"
-      aria-label={`${label}, ${step ? step.kind === "note" ? pitchName(step.midi) : "hit" : "rest"}, velocity ${Math.round(level * 100)}%`} aria-pressed={active}
+      aria-label={`${label}, ${step ? step.kind === "note" ? pitchName(step.midi) : "hit" : "rest"}, velocity ${Math.round(level * 100)}%${locked ? ", parameter locks" : ""}`} aria-pressed={active}
       title="Click to toggle. Drag up or down to change velocity. Shift + arrow keys also change velocity."
       onPointerDown={event => { if (event.button !== 0 || !step) return; drag.current = { y: event.clientY, velocity: step.velocity ?? 1, moved: false }; dragged.current = false; event.currentTarget.setPointerCapture(event.pointerId); }}
       onPointerMove={event => { const start = drag.current; if (!start) return; if (Math.abs(event.clientY - start.y) > 3) start.moved = true; if (start.moved) setVelocity(Math.max(0, Math.min(1, Math.round((start.velocity + (start.y - event.clientY) / 100) * 100) / 100))); }}
@@ -22,7 +23,7 @@ export function SequencerStep({ step, index, name, current, newStep, onChange }:
       onKeyDown={event => { if (!event.shiftKey || !step || !["ArrowUp", "ArrowDown"].includes(event.key)) return; event.preventDefault(); onChange({ ...step, velocity: Math.round(Math.max(0, Math.min(1, (step.velocity ?? 1) + (event.key === "ArrowUp" ? .05 : -.05))) * 100) / 100 }); }}
       onClick={() => { if (dragged.current) { dragged.current = false; return; } onChange(step ? null : newStep); }}>
       <span className="producer-step-index" aria-hidden="true">{index + 1}</span><span className="producer-step-tone">{step?.kind === "note" ? pitchName(step.midi) : step ? "●" : ""}</span>
-      {active && <span className="producer-step-velocity" aria-hidden="true">{Math.round(level * 100)}</span>}
+      {active && <span className="producer-step-velocity" aria-hidden="true">{locked ? "◆ " : ""}{Math.round(level * 100)}</span>}
     </StepButton>
     {step && <div className="producer-step-badges">
       <button type="button" aria-label={`${label} probability ${Math.round((step.probability ?? 1) * 100)}%`} title="Cycle probability" onClick={() => onChange({ ...step, probability: probabilities[(probabilities.indexOf(step.probability ?? 1) + 1) % probabilities.length]! })}>{Math.round((step.probability ?? 1) * 100)}%</button>
