@@ -9,8 +9,10 @@ const message=(error:unknown)=>error instanceof Error ? error.message : 'The clo
 export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicContextChange,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding):void;onDisconnect():void;onMusicContextChange?(context:CloudMusicContext|undefined):void;onOpenMusic?():void}) {
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
-  const [url,setUrl]=useState(process.env.NEXT_PUBLIC_BANGER_API_URL ?? 'http://localhost:3001');
-  const [token,setToken]=useState('');
+  const [password,setPassword]=useState('');
+  const [signInEnabled,setSignInEnabled]=useState(false);
+  const [storageReady,setStorageReady]=useState(false);
+  const [checking,setChecking]=useState(true);
   const [connection,setConnection]=useState<CloudConnection|null>(null);
   const [projects,setProjects]=useState<{id:string;name:string;revision:number}[]>([]);
   const [snapshot,setSnapshot]=useState<CloudSnapshot|null>(null);
@@ -28,6 +30,23 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
   const generation=useRef(0);
   const pollBusy=useRef(false);
   useEffect(()=>{current.current={snapshot,path,source,draftBase};},[snapshot,path,source,draftBase]);
+  useEffect(()=>{
+    if(!available)return;let cancelled=false;
+    void(async()=>{
+      try{
+        const access=new URLSearchParams(window.location.hash.slice(1)).get('access');
+        if(access){window.history.replaceState(null,'',window.location.pathname+window.location.search);await cloudRequest({url:''},'/session','POST',{password:access});}
+        const session=await cloudRequest<{authenticated:boolean;signInEnabled:boolean;services:{storage:boolean}}>({url:''},'/session');
+        if(cancelled)return;setSignInEnabled(session.signInEnabled);setStorageReady(session.services.storage);
+        if(session.authenticated){
+          setConnection({url:''});
+          if(session.services.storage){const list=await cloudRequest<{projects:typeof projects}>({url:''},'/projects');if(cancelled)return;setProjects(list.projects);
+            if(list.projects[0]){const next=await cloudRequest<CloudSnapshot>({url:''},`/projects/${list.projects[0].id}`);if(!cancelled)adopt(next);}
+          }else setNotice('Project storage is being configured. You can still use the local studio.');
+        }
+      }catch(error){if(!cancelled)setNotice(message(error));}finally{if(!cancelled)setChecking(false);}
+    })();return()=>{cancelled=true;};
+  },[available]);
   const projectId=snapshot?.projectId;
   const revision=snapshot?.revision;
   const cloudMusicContext=useMemo(()=>connection&&projectId&&revision!==undefined?{...connection,projectId,revision}:undefined,[connection,projectId,revision]);
@@ -79,17 +98,18 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
   async function refreshProjects(active:CloudConnection){setProjects((await cloudRequest<{projects:typeof projects}>(active,'/projects')).projects);}
   if(!available) return null;
   return <details id="cloud-projects" className="project-workspace producer-panel"><summary>Cloud projects</summary>
-    {!connection ? <form onSubmit={event=>{event.preventDefault();void action(async()=>{
-      const parsed=new URL(url);if(parsed.protocol !== 'https:' && !(['localhost','127.0.0.1'].includes(parsed.hostname)&&parsed.protocol==='http:'))throw new Error('Use HTTPS for the cloud backend.');
-      const next={url:parsed.origin,token:token.trim()};await refreshProjects(next);setConnection(next);setToken('');
+    {!connection ? checking?<p role="status">Connecting to your workspace…</p>:signInEnabled?<form onSubmit={event=>{event.preventDefault();void action(async()=>{
+      await cloudRequest({url:''},'/session','POST',{password});setPassword('');
+      const session=await cloudRequest<{services:{storage:boolean}}>({url:''},'/session');setStorageReady(session.services.storage);setConnection({url:''});
+      if(session.services.storage)await refreshProjects({url:''});else setNotice('Project storage is being configured. You can still use the local studio.');
     });}}>
-      <label>Backend URL<input type="url" value={url} onChange={event=>setUrl(event.target.value)} required /></label>
-      <label>Cloud access token<input type="password" autoComplete="off" value={token} onChange={event=>setToken(event.target.value)} required /></label>
-      <Button type="submit" disabled={busy}>Connect cloud projects</Button>
-    </form> : <>
-      <div className="project-workspace-actions"><Button disabled={busy} onClick={()=>void action(()=>refreshProjects(connection))}>Refresh projects</Button>
-        <Button disabled={busy} onClick={()=>{if(!discard())return;generation.current++;setConnection(null);setSnapshot(null);setPlaying('');setDraftBase(null);onDisconnect();}}>Disconnect</Button>
-        <Button disabled={busy} onClick={()=>{if(!discard())return;void action(async()=>{
+      <label>Workspace password<input type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)} required /></label>
+      <Button type="submit" disabled={busy}>Sign in</Button>
+    </form>:<p>Workspace sign-in is being configured. The local studio is ready to use.</p> : <>
+
+      <div className="project-workspace-actions"><Button disabled={busy||!storageReady} onClick={()=>void action(()=>refreshProjects(connection))}>Refresh projects</Button>
+        <Button disabled={busy} onClick={()=>{if(!discard())return;void action(async()=>{await cloudRequest(connection,'/session','DELETE');setConnection(null);setSnapshot(null);setPlaying('');setDraftBase(null);onDisconnect();});}}>Sign out</Button>
+        <Button disabled={busy||!storageReady} onClick={()=>{if(!discard())return;void action(async()=>{
           compileMusic(studioFile.source);
           const name=studioFile.name.replace(/\.banger$/,'');
           const created=await cloudRequest<{projectId:string}>(connection,'/projects','POST',{name,files:[{path:studioFile.name.replace(/[^a-zA-Z0-9_.-]/g,'_').replace(/^\.+/,'') || 'song.banger',source:studioFile.source}]});

@@ -4,6 +4,7 @@ import { z, ZodError } from 'zod';
 import { get } from '@vercel/blob';
 import type { HandleUploadBody } from '@vercel/blob/client';
 import { authenticate } from '../../../server/auth';
+import {assertWebOrigin,hasWebSession,sessionCookie,sessionUser,signIn,webOrigin,webSessionEnabled} from '../../../server/web-session';
 import { ApiError, changeSchema, id, saveSchema } from '../../../server/domain';
 import { db } from '../../../server/db';
 import { authorize, createProject, projectFiles, saveChanges, setMember } from '../../../server/projects';
@@ -29,6 +30,18 @@ async function body(request: Request) {
 async function dispatch(request: Request, path: string[]) {
   const method = request.method;
   const url = new URL(request.url);
+  if(path.join('/')==='session') {
+    if(method==='GET') {
+      let authenticated=false;
+      try{await sessionUser(request);authenticated=true;}catch{/* A missing or expired session displays the sign-in form. */}
+      return json({authenticated,signInEnabled:webSessionEnabled(),services:{storage:Boolean(process.env.DATABASE_URL&&process.env.BLOB_READ_WRITE_TOKEN),agent:Boolean(process.env.SANDBOX_RUNNER_BLOB_PATH&&process.env.BANGER_MODEL&&process.env.BANGER_API_KEY)}});
+    }
+    if(method==='POST') {
+      const input=z.object({password:z.string().max(512)}).strict().parse(await body(request));
+      const cookie=await signIn(request,input.password);const response=json({authenticated:true});response.headers.set('Set-Cookie',cookie);return response;
+    }
+    if(method==='DELETE') {assertWebOrigin(request);const response=json({authenticated:false});response.headers.set('Set-Cookie',sessionCookie(request,''));return response;}
+  }
   if (path.join('/') === 'worker' && ['GET','POST'].includes(method)) {
     const secret = process.env.CRON_SECRET, provided = request.headers.get('authorization') ?? '';
     const expected = `Bearer ${secret}`;
@@ -101,9 +114,10 @@ async function dispatch(request: Request, path: string[]) {
 async function route(request:Request,context:{params:Promise<{path:string[]}>}) {
   const origin=request.headers.get('origin');
   const allowed=(process.env.CLIENT_ORIGINS ?? '').split(',').map(value=>value.trim()).filter(Boolean);
-  const same=origin === new URL(request.url).origin;
+  const same=origin === webOrigin(request);
   let response:Response;
   try {
+    if(hasWebSession(request)&&!['GET','HEAD','OPTIONS'].includes(request.method)&&!request.headers.has('authorization'))assertWebOrigin(request);
     if (origin && !same && !allowed.includes(origin)) throw new ApiError(403,'This client origin is not allowed.');
     response=request.method === 'OPTIONS' ? new Response(null,{status:204}) : await dispatch(request,(await context.params).path);
   } catch (error) {

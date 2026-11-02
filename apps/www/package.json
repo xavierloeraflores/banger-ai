@@ -30,5 +30,8 @@
     "eslint": "^9.39.0",
     "serve": "^14.2.5",
     "typescript": "^5.9.3"
+  },
+  "exports": {
+    "./studio": "./src/components/producer/producer.tsx"
   }
 }

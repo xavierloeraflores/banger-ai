@@ -4,8 +4,7 @@
     "examples/night-drive.banger"
   ],
   "globalEnv": [
-    "NODE_ENV",
-    "NEXT_PUBLIC_BANGER_API_URL"
+    "NODE_ENV"
   ],
   "tasks": {
     "build": {
@@ -39,7 +38,11 @@
         "BANGER_API_KEY",
         "SANDBOX_RUNNER_BLOB_PATH",
         "CRON_SECRET",
-        "ELEVENLABS_API_KEY"
+        "ELEVENLABS_API_KEY",
+        "APP_ORIGIN",
+        "BANGER_WEB_PASSWORD",
+        "BANGER_SESSION_SECRET",
+        "BANGER_WEB_USER"
       ],
       "cache": false,
       "persistent": true,

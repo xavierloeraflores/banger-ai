@@ -29,9 +29,18 @@ importers:
       '@banger/elevenlabs':
         specifier: workspace:*
         version: link:../../packages/elevenlabs
+      '@banger/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@banger/harness':
         specifier: workspace:*
         version: link:../../packages/harness
+      '@banger/shadcn':
+        specifier: workspace:*
+        version: link:../../packages/shadcn
+      '@banger/www':
+        specifier: workspace:*
+        version: link:../www
       '@vercel/blob':
         specifier: ^2.3.0
         version: 2.8.2

@@ -7,14 +7,15 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:www": "node scripts/dev.mjs --filter=@banger/www",
+    "dev:www": "node scripts/dev.mjs --filter=@banger/api",
     "dev:desktop": "node scripts/dev.mjs --filter=@banger/desktop --filter=@banger/www",
     "build": "turbo run build",
     "fullbuild": "cross-env NODE_ENV=production turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "verify:audio": "pnpm --filter @banger/desktop exec electron ../../packages/engine/test/render.cjs",
-    "verify:song": "pnpm --filter @banger/desktop exec electron ../../scripts/verify-song.mjs"
+    "verify:song": "pnpm --filter @banger/desktop exec electron ../../scripts/verify-song.mjs",
+    "start:web": "pnpm --filter @banger/api start"
   },
   "devDependencies": {
     "turbo": "^2.11.10",
