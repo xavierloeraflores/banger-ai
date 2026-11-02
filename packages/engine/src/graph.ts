@@ -53,6 +53,7 @@ export class MixerGraph {
       const strip = this.tracks.get(track.name)!;
       const audible = this.keep(context.createGain());
       audible.gain.value = !track.muted && (!hasSolo || track.solo) && (solo === undefined || solo === track.name) ? 1 : 0;
+      if (strip.meter) { strip.output.disconnect(strip.meter); audible.connect(strip.meter); }
       strip.output.connect(audible).connect(destination(track.output));
       for (const send of track.sends ?? []) { const gain = this.keep(context.createGain()); gain.gain.value = send.gain; audible.connect(gain).connect(destination(send.bus)); }
     }

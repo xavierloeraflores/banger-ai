@@ -14,12 +14,12 @@ const panLabel = (value: number) => value === 0 ? "Center" : `${Math.round(Math.
 function Parameter({ label, value, min, max, step, display, onChange }: { label: string; value: number; min: number; max: number; step: number; display?: string; onChange: (value: number) => void }) {
   return <label className="producer-effect-parameter"><span>{label}</span><Range aria-label={label} aria-valuetext={display ?? String(value)} min={min} max={max} step={step} value={value} onChange={event => onChange(Number(event.target.value))} /><output>{display ?? value}</output></label>;
 }
-export function TrackEffects({ track, disabled, tracks = [], onChange }: { track: Pick<MusicTrack, "name" | "pan" | "effects" | "automation">; disabled: boolean; tracks?: string[]; onChange: (track: Pick<MusicTrack, "name" | "pan" | "effects" | "automation">) => unknown }) {
+export function TrackEffects({ track, disabled, tracks = [], open, onChange }: { track: Pick<MusicTrack, "name" | "pan" | "effects" | "automation">; disabled: boolean; tracks?: string[]; open?: boolean; onChange: (track: Pick<MusicTrack, "name" | "pan" | "effects" | "automation">) => unknown }) {
   const effects = track.effects ?? [];
   const changeEffects = (next: MusicEffect[]) => onChange({ ...track, effects: next, ...(track.automation ? { automation: track.automation.filter(curve => !curve.target.includes(".") || next.some(effect => curve.target.startsWith(`${effect.kind}.`))) } : {}) });
   const changeEffect = (index: number, effect: MusicEffect) => changeEffects(effects.map((current, i) => i === index ? effect : current));
   const move = (index: number, direction: number) => { const next = [...effects]; const target = index + direction; if (!next[index] || !next[target]) return; [next[index], next[target]] = [next[target]!, next[index]!]; changeEffects(next); };
-  return <details className="producer-track-effects"><summary>{track.name} mix &amp; effects <span>{panLabel(track.pan ?? 0)} · {effects.length ? effects.map(effect => names[effect.kind]).join(" → ") : "No effects"}</span></summary>
+  return <details className="producer-track-effects" open={open}><summary>{track.name} mix &amp; effects <span>{panLabel(track.pan ?? 0)} · {effects.length ? effects.map(effect => names[effect.kind]).join(" → ") : "No effects"}</span></summary>
     <fieldset disabled={disabled} aria-label={`${track.name} mix and effects`}>
       <Parameter label={`${track.name} pan`} value={track.pan ?? 0} min={-1} max={1} step={.01} display={panLabel(track.pan ?? 0)} onChange={pan => onChange({ ...track, pan })} /><p>Effects run in the order shown.</p>
       <ol className="producer-effect-chain">{effects.map((effect, index) => <li key={effect.kind} data-effect={effect.kind}>

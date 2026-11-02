@@ -17,7 +17,8 @@ import { openProject, saveProject } from "@/lib/project-files";
 import { SongArrangement } from "./song-arrangement";
 import { PatternControls } from "./pattern-controls";
 import { AutomationEditor } from "./automation-editor";
-import { BusMixer, TrackRouting, LevelMeter } from "./mixer-routing";
+import { TrackRouting, LevelMeter } from "./mixer-routing";
+import { MixerView } from "./mixer-view";
 import { AudioExport } from "./audio-export";
 import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
@@ -28,9 +29,12 @@ import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
+import "./mixer-song.css";
 
 const studioViews = [
   { id: "sequencer", label: "Sequencer" },
+  { id: "mixer", label: "Mixer" },
+  { id: "song", label: "Song" },
   { id: "source", label: "Raw .banger" },
   { id: "byok", label: "BYOK" },
 ] as const;
@@ -73,8 +77,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [savedSource, setSavedSource] = useState(appliedSource);
   const [fileName, setFileName] = useState(initialFile.name);
   const [tempoDraft, setTempoDraft] = useState(String(program.tempo));
-  const [muted, setMuted] = useState<Set<number>>(() => new Set());
-  const [solo, setSolo] = useState<Set<number>>(() => new Set());
+  const [previewSection, setPreviewSection] = useState<string | undefined>();
   const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
   const [patterns, setPatterns] = useState<Record<number, string>>({});
   const [pitch, setPitch] = useState<Record<number, number>>({});
@@ -91,16 +94,17 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
     try { return { program: compileMusic(source), error: null }; }
     catch (cause) { return { program: null, error: diagnose(cause) }; }
   }, [source]);
-  const audibleProgram = useMemo(() => ({
-    ...program,
-    tracks: program.tracks.map((track, index) => ({
-      ...track,
-      gain: muted.has(index) || (solo.size > 0 && !solo.has(index)) ? 0 : track.gain,
-      automation: muted.has(index) || (solo.size > 0 && !solo.has(index)) ? track.automation?.filter(curve => curve.target !== "gain") : track.automation,
-    })),
-  }), [program, muted, solo]);
+  const audibleProgram = useMemo(() => previewSection && program.sections?.some(section => section.name === previewSection)
+    ? { ...program, chainEnabled: true, timeline: [{ section: previewSection }] } : program, [program, previewSection]);
   const playback = usePlayer(audibleProgram);
-  const arrangement = useMemo(() => resolveArrangement(program), [program]);
+  const arrangement = useMemo(() => resolveArrangement(audibleProgram), [audibleProgram]);
+  const stopPlayback = () => { playback.stop(); setPreviewSection(undefined); };
+  const preview = (name?: string) => { if (name || previewSection) playback.stop(); setPreviewSection(name); };
+  const playPreview = playback.play;
+  useEffect(() => {
+    if (previewSection) void playPreview();
+  }, [previewSection, playPreview]);
+  const hasSolo = program.tracks.some(track => track.solo);
 
   useEffect(() => {
     if (!dirty) return;
@@ -122,6 +126,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
       if (next.timeline?.length === 0) { next = { ...next }; delete next.timeline; }
       const text = serializeMusic(next);
       const checked = compileMusic(text);
+      if (previewSection && !checked.sections?.some(section => section.name === previewSection)) stopPlayback();
       setProgram(checked);
       setAppliedSource(text);
       writeSource(text);
@@ -145,19 +150,12 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
     setProgram(result.program);
     setTempoDraft(String(result.program.tempo));
     setAppliedSource(source);
-    setMuted(new Set());
-    setSolo(new Set());
+    setPreviewSection(undefined);
     setPitch({});
     setPatterns({});
     setExpandedTrack(null);
     setEditorEpoch(value => value + 1);
-    setNotice("Source applied. Mute and solo reset.");
-  }
-
-  function toggle(set: Set<number>, index: number, update: (value: Set<number>) => void) {
-    const next = new Set(set);
-    if (next.has(index)) next.delete(index); else next.add(index);
-    update(next);
+    setNotice("Source applied.");
   }
 
   function remove(index: number) {
@@ -170,9 +168,6 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
       ...(program.sections ? { sections: program.sections.map(section => ({ ...section, tracks: section.tracks.filter(binding => binding.track !== removed) })) } : {}),
       ...(program.buses ? { buses: program.buses.map(bus => ({ ...bus, effects: cleanEffects(bus.effects) })) } : {}),
     })) return;
-    const shift = (set: Set<number>) => new Set([...set].filter(i => i !== index).map(i => i > index ? i - 1 : i));
-    setMuted(shift(muted));
-    setSolo(shift(solo));
     setPitch({});
     setPatterns({});
     setExpandedTrack(null);
@@ -206,8 +201,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         setProgram(next);
         setAppliedSource(file.source);
         setTempoDraft(String(next.tempo));
-        setMuted(new Set());
-        setSolo(new Set());
+        setPreviewSection(undefined);
         setPitch({});
         setPatterns({});
         setExpandedTrack(null);
@@ -247,8 +241,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
       setSavedSource("");
       setFileName(file.name);
       setTempoDraft(String(next.tempo));
-      setMuted(new Set());
-      setSolo(new Set());
+      setPreviewSection(undefined);
       setPitch({});
       setPatterns({});
       setExpandedTrack(null);
@@ -300,7 +293,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
           <Button variant="primary" onClick={() => void playback.play()} disabled={playback.starting || playback.state.playing} className="producer-play">
             <span aria-hidden="true">▶</span> {playback.starting ? "Starting" : "Play"}
           </Button>
-          <IconButton aria-label="Stop playback" variant="secondary" onClick={playback.stop} disabled={!playback.state.playing && !playback.starting}><span aria-hidden="true">■</span></IconButton>
+          <IconButton aria-label="Stop playback" variant="secondary" onClick={stopPlayback} disabled={!playback.state.playing && !playback.starting}><span aria-hidden="true">■</span></IconButton>
         </div>
         <div className="producer-meter"><strong>4/4</strong><span>{programDurationBeats(program) / 4} bar song</span></div>
         <div className="producer-position" aria-label={playback.state.playing ? `Bar ${playback.state.bar}, step ${playback.state.step + 1}` : "Stopped"}>
@@ -366,7 +359,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
                   const clip = arrangement.find(item => item.track === track.name && item.startBeat <= songBeat && item.startBeat + item.durationBeats > songBeat);
                   const phrasePlaying = playback.state.playing && !!clip && clip.pattern === selectedPattern;
                   const phase = clip ? (songBeat - clip.startBeat) / ((phrase.bars ?? 1) * 4) : 0;
-                  return <div className={`producer-track${muted.has(index) || (solo.size > 0 && !solo.has(index)) ? " is-muted" : ""}`} key={index}>
+                  return <div className={`producer-track${track.muted || (hasSolo && !track.solo) ? " is-muted" : ""}`} key={index}>
                     <button type="button" className="producer-track-toggle" aria-label={`Edit ${track.name}`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`}
                       title={`Edit ${track.name} sound, pattern and mix`} onClick={() => setExpandedTrack(expandedTrack === index ? null : index)}>
                       <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
@@ -387,8 +380,8 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
                       </StepButton>)}
                     </div>}
                     <div className="producer-track-mix">
-                      <Button className="producer-track-mute" variant={muted.has(index) ? "primary" : "ghost"} aria-pressed={muted.has(index)} aria-label={`Mute ${track.name}`} title={muted.has(index) ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => toggle(muted, index, setMuted)}>M</Button>
-                      <Button variant={solo.has(index) ? "primary" : "ghost"} aria-pressed={solo.has(index)} aria-label={`Solo ${track.name}`} title={`Solo ${track.name}`} onClick={() => toggle(solo, index, setSolo)}>S</Button>
+                      <Button className="producer-track-mute" variant={!!track.muted ? "primary" : "ghost"} aria-pressed={!!track.muted} aria-label={`Mute ${track.name}`} title={!!track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => editTrack(index, { ...track, muted: !track.muted })}>M</Button>
+                      <Button variant={!!track.solo ? "primary" : "ghost"} aria-pressed={!!track.solo} aria-label={`Solo ${track.name}`} title={`Solo ${track.name}`} onClick={() => editTrack(index, { ...track, solo: !track.solo })}>S</Button>
                     </div>
                     <div className="producer-track-editor" id={`track-editor-${index}`} hidden={expandedTrack !== index}>
                       <div className="producer-track-editor-heading">
@@ -434,12 +427,16 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
             <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>Click steps to toggle · Click a track to edit</span></div>
             <div className="producer-song-tools">
-              <SongArrangement program={program} disabled={draft || fileBusy} section={playback.state.section} onChange={edit} />
-              <BusMixer program={program} disabled={draft || fileBusy} levels={playback.meters.buses} onChange={edit} />
               <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} />
             </div>
           </Panel>
 
+        </div>
+        <div id="studio-panel-mixer" role="tabpanel" aria-labelledby="studio-tab-mixer" hidden={view !== "mixer"} tabIndex={0}>
+          <Panel><MixerView program={program} disabled={draft || fileBusy} meters={playback.meters} onTrackChange={editTrack} onChange={edit} /></Panel>
+        </div>
+        <div id="studio-panel-song" role="tabpanel" aria-labelledby="studio-tab-song" hidden={view !== "song"} tabIndex={0}>
+          <Panel><SongArrangement program={program} disabled={draft || fileBusy} section={playback.state.section} preview={previewSection} onPreview={preview} onChange={edit} /></Panel>
         </div>
         <div id="studio-panel-source" role="tabpanel" aria-labelledby="studio-tab-source" hidden={view !== "source"} tabIndex={0}>
           <Panel className="producer-editor" aria-labelledby="source-title">
