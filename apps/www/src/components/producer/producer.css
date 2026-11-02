@@ -269,7 +269,21 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .chatgpt-settings { display: flex; flex-direction: column; gap: .8rem; min-width: 0; }
 .chatgpt-settings select { max-width: 100%; padding: .6rem; border-radius: .5rem; background: var(--producer-panel); color: inherit; border: 1px solid var(--producer-border); }
 .chatgpt-usage { font-size: .75rem; }
-.chatgpt-usage button { text-decoration: underline; margin-left: .5rem; }
+.chatgpt-usage button { text-decoration: underline; margin-left: .5rem; padding: 0; background: none; border: 0; color: inherit; }
 .chatgpt-welcome { max-width: min(440px, 90vw); padding: 1.5rem; border: 1px solid var(--producer-border); border-radius: 1rem; background: var(--producer-panel); color: var(--producer-text); }
 .chatgpt-welcome p { margin: 1rem 0; }
 .chatgpt-welcome::backdrop { background: #0009; }
+.producer-track-effects { grid-column: 1 / -1; margin-top: 12px; border-top: 1px solid var(--producer-border); }
+.producer-track-effects summary { cursor: pointer; padding: 10px 0; font-size: 12px; }
+.producer-track-effects summary span { margin-left: 12px; color: var(--producer-dim); font-size: 11px; }
+.producer-track-effects fieldset { border: 0; padding: 4px 0 12px; margin: 0; }
+.producer-track-effects p { color: var(--producer-dim); font-size: 11px; margin: 14px 0 8px; }
+.producer-effect-chain { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; padding: 0; margin: 0 0 12px; }
+.producer-effect-chain li { flex: 1 1 250px; padding: 10px; border: 1px solid var(--producer-border); border-radius: 6px; }
+.producer-effect-heading { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+.producer-effect-heading strong { font-weight: 500; margin-right: auto; }
+.producer-effect-heading button { padding: 2px 6px; min-height: 26px; height: 26px; font-size: 11px; }
+.producer-effect-parameter { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(80px, 1fr) 72px; align-items: center; gap: 8px; font-size: 11px; margin: 8px 0; max-width: 540px; }
+.producer-effect-parameter input { width: 100%; accent-color: var(--producer-lime); }
+.producer-effect-parameter output { text-align: right; font-variant-numeric: tabular-nums; color: var(--producer-dim); }
+.producer-effect-add { display: flex; gap: 8px; }
