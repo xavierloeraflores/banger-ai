@@ -262,3 +262,18 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
   .ai-model-select { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; }
   .producer-header .producer-file-actions { margin-left: auto; }
 }
+
+.producer-track-effects { grid-column: 1 / -1; margin-top: 12px; border-top: 1px solid var(--producer-border); }
+.producer-track-effects summary { cursor: pointer; padding: 10px 0; font-size: 12px; }
+.producer-track-effects summary span { margin-left: 12px; color: var(--producer-dim); font-size: 11px; }
+.producer-track-effects fieldset { border: 0; padding: 4px 0 12px; margin: 0; }
+.producer-track-effects p { color: var(--producer-dim); font-size: 11px; margin: 14px 0 8px; }
+.producer-effect-chain { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; padding: 0; margin: 0 0 12px; }
+.producer-effect-chain li { flex: 1 1 250px; padding: 10px; border: 1px solid var(--producer-border); border-radius: 6px; }
+.producer-effect-heading { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+.producer-effect-heading strong { font-weight: 500; margin-right: auto; }
+.producer-effect-heading button { padding: 2px 6px; min-height: 26px; height: 26px; font-size: 11px; }
+.producer-effect-parameter { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(80px, 1fr) 72px; align-items: center; gap: 8px; font-size: 11px; margin: 8px 0; max-width: 540px; }
+.producer-effect-parameter input { width: 100%; accent-color: var(--producer-lime); }
+.producer-effect-parameter output { text-align: right; font-variant-numeric: tabular-nums; color: var(--producer-dim); }
+.producer-effect-add { display: flex; gap: 8px; }
