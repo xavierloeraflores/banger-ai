@@ -1,0 +1,5 @@
+{
+  "extends": "@banger/typescript-config/library.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "dist", "lib": ["ES2022", "DOM"], "types": ["node"] },
+  "include": ["src/**/*.ts"]
+}
