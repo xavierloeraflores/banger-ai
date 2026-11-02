@@ -9,6 +9,7 @@ import { compileMusic } from '../../../packages/compiler/dist/index.js';
 app.on('window-all-closed', () => {});
 const timeout = setTimeout(() => { console.error('Sequencer smoke timed out'); app.exit(1); }, 120000);
 async function run(window) {
+  window.webContents.setBackgroundThrottling(false);
   const directory = await mkdtemp(join(tmpdir(), 'banger-sequencer-'));
   const evaluate = code => window.webContents.executeJavaScript(code, true);
   const waitFor = async (code, label, milliseconds = 7000) => {
@@ -37,16 +38,19 @@ async function run(window) {
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     await apply('tempo 120; track kick { sound "drums/kick"; rhythm "x x x x"; } section intro { bars 2; play kick; } song { play intro; }');
     const originalSong = (await program()).timeline;
+    window.show(); window.focus(); window.webContents.focus();
+    await delay(150);
     await evaluate("document.querySelector('.producer-step').scrollIntoView({block:'center'})"); await delay(100);
     const point = await evaluate("(() => { const r = document.querySelector('.producer-step').getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()");
-    window.webContents.sendInputEvent({ type:'mouseMove', ...point });
-    await delay(100);
-    window.webContents.sendInputEvent({ type:'mouseDown', ...point, button:'left', clickCount:1 });
-    await delay(100);
-    window.webContents.sendInputEvent({ type:'mouseMove', x:point.x, y:point.y+50, button:'left', modifiers:['leftButtonDown'] });
+    window.webContents.debugger.attach('1.3');
+    await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', ...point, button:'none', buttons:0 });
+    await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', ...point, button:'left', buttons:1, clickCount:1 });
+    await delay(50);
+    await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', x:point.x, y:point.y+50, button:'left', buttons:1 });
     await delay(80);
-    window.webContents.sendInputEvent({ type:'mouseUp', x:point.x, y:point.y+50, button:'left', clickCount:1 });
-    await delay(100);
+    await window.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:point.x, y:point.y+50, button:'left', buttons:0, clickCount:1 });
+    window.webContents.debugger.detach();
+    await waitFor("document.querySelector('.producer-step').getAttribute('aria-label').includes('velocity 50%') && document.querySelector('#producer-source').value.includes('@0.5')", 'saved drag velocity');
     assert.equal((await program()).tracks[0].steps[0].velocity, .5, 'Drag changes step velocity without disabling the step.');
     await click('kick, step 1 probability 100%');
     await click('kick, step 1 condition always');
@@ -91,7 +95,10 @@ async function run(window) {
       let peak = 0; for (let i=44; i<output.bytes.length; i+=2) peak = Math.max(peak, Math.abs(output.bytes.readInt16LE(i)));
       assert.ok(peak > 100, 'Export contains audio.');
     }
-    await evaluate("window.scrollTo(0,0)"); await delay(100);
+    window.show(); window.focus(); window.webContents.focus();
+    await evaluate("window.scrollTo(0,0); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"); await delay(250);
+    const heights = await evaluate("[...document.querySelectorAll('.producer-track')].map(row => row.getBoundingClientRect().height)");
+    console.log('Collapsed track heights:', heights);
     await writeFile('/tmp/banger-features-sequencer.png', (await window.webContents.capturePage()).toPNG());
     console.log('Sequencer smoke passed: pointer velocity, probability/condition badges, pattern copy/paste and bar-boundary launch, tap tempo, click, master, held fill, real playback, native save/reopen and mix/stem WAV export.');
   } catch (error) { console.error(error); process.exitCode = 1; }

@@ -97,7 +97,7 @@ export async function smokeProducer(window, directory) {
   assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Local project");
   assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 0, 'Track editors start collapsed.');
   assert.equal(await evaluate("document.querySelectorAll('.producer-song-tools details[open]').length"), 0, 'Song tools start collapsed.');
-  assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 52)"), 'Collapsed tracks form a compact rack.');
+  assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 64)"), 'Collapsed tracks, including step performance badges, form a compact rack.');
   await click('[aria-label="Edit kick"]');
   await waitFor("document.querySelector('[aria-label=\"kick gain\"]').checkVisibility()", 'track controls expand');
   await click('[aria-label="Edit bass"]');
