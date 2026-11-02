@@ -24,6 +24,7 @@ import { MixerView } from "./mixer-view";
 import { AudioExport } from "./audio-export";
 import { MusicWorkshop } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
+import type { CloudMusicContext } from "@/lib/elevenlabs";
 import type { CloudBinding } from "@/lib/cloud-projects";
 import { SoundDesign } from "./sound-design";
 import { TrackEffects } from "./track-effects";
@@ -42,6 +43,7 @@ const studioViews = [
   { id: "mixer", label: "Mixer" },
   { id: "song", label: "Song" },
   { id: "source", label: "Raw .banger" },
+  { id: "elevenlabs", label: "ElevenLabs" },
   { id: "byok", label: "BYOK" },
 ] as const;
 type StudioView = typeof studioViews[number]["id"];
@@ -75,6 +77,7 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
+  const [cloudMusicContext,setCloudMusicContext]=useState<CloudMusicContext>();
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [view, setView] = useState<StudioView>("sequencer");
@@ -284,12 +287,12 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
   }
 
   return (
-    <main className="producer">
+    <main className="producer" data-view={view}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : "Local project"}</span></div>
-        <AIModelSelect />
-        <div className="producer-file-actions">
+        {view!=="elevenlabs"&&<AIModelSelect />}
+        <div className="producer-file-actions" hidden={view==="elevenlabs"}>
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
           <Button variant="secondary" onClick={save} disabled={fileBusy}>Save .banger</Button>
         </div>
@@ -318,7 +321,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         <div className="producer-tabs" role="tablist" aria-label="Studio views">
           {studioViews.map((item, index) => <button key={item.id} type="button" role="tab"
             id={`studio-tab-${item.id}`} aria-controls={`studio-panel-${item.id}`} aria-selected={view === item.id}
-            tabIndex={view === item.id ? 0 : -1} onClick={() => setView(item.id)}
+            tabIndex={view === item.id ? 0 : -1} onClick={() => {if(item.id==="elevenlabs")stopPlayback();setView(item.id);}}
             onKeyDown={event => {
               const nextIndex = event.key === "ArrowRight" ? (index + 1) % studioViews.length
                 : event.key === "ArrowLeft" ? (index + studioViews.length - 1) % studioViews.length
@@ -326,7 +329,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
               if (nextIndex === null) return;
               event.preventDefault();
               const next = studioViews[nextIndex]!;
-              setView(next.id);
+              if(next.id==="elevenlabs")stopPlayback();setView(next.id);
               document.getElementById(`studio-tab-${next.id}`)?.focus();
             }}>{item.label}</button>)}
         </div>
@@ -463,13 +466,17 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
           {view === "byok" && <ByokSettings />}
         </div>
-        <MusicWorkshop studioFile={{ name: fileName, source }} />
-        <CloudProjectWorkspace studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
+        <div id="studio-panel-elevenlabs" role="tabpanel" aria-labelledby="studio-tab-elevenlabs" hidden={view!=="elevenlabs"}>
+          <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={view==="elevenlabs"} onConnect={()=>{setView('sequencer');queueMicrotask(()=>{const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'center'});panel.querySelector<HTMLInputElement>('input')?.focus();}});}}/>
+        </div>
+        <div hidden={view==="elevenlabs"}>
+        <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{stopPlayback();setView("elevenlabs");}} studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
           if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
           loadGeneratedFile(file, sourceRevision); setCloudBinding(binding);
         }} />
         <DesktopProjectWorkspace onLoad={file => { if (!window.confirm("Load this workspace file in the studio and replace the current studio editor?")) return; loadGeneratedFile(file, sourceRevision); }} />
-        <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
+        </div>
+        <div hidden={view==="elevenlabs"}><AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} /></div>
       </div>
       <footer className="producer-footer"><span>banger / music in plain text</span><span role="status">{notice ?? "Choose a pattern. Build a song."}</span></footer>
     </main>

@@ -1,12 +1,12 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {MusicWorkshop} from './music-workshop';
+import type {CloudMusicContext} from '@/lib/elevenlabs';
 import {compileMusic} from '@banger/compiler';
 import {Button} from '@banger/shadcn';
 import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnection,type CloudJob,type CloudSnapshot} from '@/lib/cloud-projects';
 type Artifact={id:string;kind:string;revision:number;status:string};
 const message=(error:unknown)=>error instanceof Error ? error.message : 'The cloud operation failed.';
-export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding):void;onDisconnect():void}) {
+export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicContextChange,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding):void;onDisconnect():void;onMusicContextChange?(context:CloudMusicContext|undefined):void;onOpenMusic?():void}) {
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
   const [url,setUrl]=useState(process.env.NEXT_PUBLIC_BANGER_API_URL ?? 'http://localhost:3001');
@@ -31,6 +31,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
   const projectId=snapshot?.projectId;
   const revision=snapshot?.revision;
   const cloudMusicContext=useMemo(()=>connection&&projectId&&revision!==undefined?{...connection,projectId,revision}:undefined,[connection,projectId,revision]);
+  useEffect(()=>{onMusicContextChange?.(cloudMusicContext);},[cloudMusicContext,onMusicContextChange]);
   const file=snapshot?.files.find(file=>file.path===path);
   const dirty=draftBase !== null;
   useEffect(()=>()=>{if(playing) URL.revokeObjectURL(playing);},[playing]);
@@ -77,7 +78,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
   function discard(){return !dirty || window.confirm('Discard the unsaved cloud workspace draft?');}
   async function refreshProjects(active:CloudConnection){setProjects((await cloudRequest<{projects:typeof projects}>(active,'/projects')).projects);}
   if(!available) return null;
-  return <details className="project-workspace producer-panel"><summary>Cloud projects</summary>
+  return <details id="cloud-projects" className="project-workspace producer-panel"><summary>Cloud projects</summary>
     {!connection ? <form onSubmit={event=>{event.preventDefault();void action(async()=>{
       const parsed=new URL(url);if(parsed.protocol !== 'https:' && !(['localhost','127.0.0.1'].includes(parsed.hostname)&&parsed.protocol==='http:'))throw new Error('Use HTTPS for the cloud backend.');
       const next={url:parsed.origin,token:token.trim()};await refreshProjects(next);setConnection(next);setToken('');
@@ -99,7 +100,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
         <option value="">Choose project</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}
       </select></label>
       {snapshot && <>
-        <MusicWorkshop cloud={cloudMusicContext} studioFile={studioFile}/>
+        <Button onClick={onOpenMusic}>Open ElevenLabs workshop</Button>
         <p>Saved revision {snapshot.revision}{dirty ? ` · Draft based on revision ${draftBase}` : ''}</p>
         <label>Cloud music file<select disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
           <option value="" disabled>Choose a file</option>{snapshot.files.map(file=><option key={file.path}>{file.path}</option>)}

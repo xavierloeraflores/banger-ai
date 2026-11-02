@@ -48,7 +48,7 @@ export async function serveApp(request: Request, directory: string): Promise<Res
     return new Response(request.method === "HEAD" ? null : new Uint8Array(body), {
       headers: {
         "Content-Type": contentTypes[extname(path)] ?? "application/octet-stream",
-        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
         "X-Content-Type-Options": "nosniff",
       },
     });
