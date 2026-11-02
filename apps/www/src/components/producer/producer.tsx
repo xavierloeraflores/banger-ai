@@ -12,6 +12,8 @@ import { Button, IconButton, Input, Panel, Range, Select, StepButton } from "@ba
 import { openProject, saveProject } from "@/lib/project-files";
 import { usePlayer } from "./use-player";
 import { ByokMenu } from "./byok-menu";
+import { AIChat } from "./ai-chat";
+import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
 
 const sounds = [
@@ -49,6 +51,7 @@ export function Producer() {
   const filePending = useRef(false);
   const sourceRef = useRef(source);
   const revision = useRef(0);
+  const [sourceRevision, setSourceRevision] = useState(0);
   const editor = useRef<HTMLTextAreaElement>(null);
   const draft = source !== appliedSource;
   const dirty = source !== savedSource;
@@ -75,6 +78,7 @@ export function Producer() {
   function writeSource(next: string) {
     sourceRef.current = next;
     revision.current += 1;
+    setSourceRevision(revision.current);
     setSource(next);
   }
 
@@ -174,6 +178,24 @@ export function Producer() {
     finally { filePending.current = false; setFileBusy(false); }
   }
 
+  function loadGeneratedFile(file: BangerFile, generatedRevision: number) {
+    if (filePending.current) return;
+    if (revision.current !== generatedRevision && !window.confirm("Your project changed after this request. Load the generated file and replace the current editor?")) return;
+    try {
+      const next = compileMusic(file.source);
+      setProgram(next);
+      setAppliedSource(file.source);
+      writeSource(file.source);
+      setSavedSource("");
+      setFileName(file.name);
+      setTempoDraft(String(next.tempo));
+      setMuted(new Set());
+      setSolo(new Set());
+      setPitch({});
+      setNotice(`Loaded ${file.name}. Save .banger to keep it.`);
+    } catch (cause) { setNotice(diagnose(cause)); }
+  }
+
   function changeSound(index: number, name: string) {
     const track = program.tracks[index];
     if (!track) return;
@@ -228,6 +250,7 @@ export function Producer() {
 
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
       <div className="producer-workspace" id="studio">
+        <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
         <Panel className="producer-sequencer" aria-labelledby="sequence-title">
           <div className="producer-panel-heading"><div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Step sequencer</h1></div><span className="producer-tag">1 BAR</span></div>
           {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}

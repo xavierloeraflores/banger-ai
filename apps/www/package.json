@@ -16,7 +16,8 @@
     "react-dom": "^19.3.1",
     "@banger/compiler": "workspace:*",
     "@banger/engine": "workspace:*",
-    "@banger/shadcn": "workspace:*"
+    "@banger/shadcn": "workspace:*",
+    "@banger/agent": "workspace:*"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",

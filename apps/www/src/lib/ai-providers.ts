@@ -82,3 +82,12 @@ export function aiSettingsBridge(): AISettingsBridge {
     },
   };
 }
+
+// Browser credentials are used directly with the selected provider.
+// Desktop credentials stay in the main process.
+export function browserCredentials() {
+  const settings = read();
+  const provider = settings.activeProvider;
+  const value = provider ? settings.providers[provider] : undefined;
+  return provider && value ? { provider, ...value } : null;
+}

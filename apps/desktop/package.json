@@ -13,7 +13,8 @@
     "compile": "tsc -p tsconfig.json && node scripts/copy-preload.mjs",
     "test": "pnpm compile && node --test tests/*.test.mjs",
     "smoke": "electron scripts/smoke.mjs",
-    "smoke:byok": "electron scripts/smoke-byok.mjs"
+    "smoke:byok": "electron scripts/smoke-byok.mjs",
+    "smoke:chat": "electron scripts/smoke-chat.mjs"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",
@@ -22,5 +23,8 @@
     "electron": "^45.2.1",
     "eslint": "^9.39.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@banger/agent": "workspace:*"
   }
 }

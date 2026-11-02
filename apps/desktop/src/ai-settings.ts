@@ -17,7 +17,7 @@ function summary(settings: Settings) {
   };
 }
 
-// Only metadata leaves this store. Keys are encrypted before touching the filesystem.
+// Only metadata is exposed over IPC. Credentials are read only by the main-process agent.
 export function createAISettingsStore(path: string, encryption: Encryption) {
   let queue = Promise.resolve();
   function serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -58,6 +58,12 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
   }
   return {
     load: () => serialize(async () => summary(await read())),
+    credentials: () => serialize(async () => {
+      const settings = await read();
+      const provider = settings.activeProvider;
+      const value = provider ? settings.providers[provider] : undefined;
+      return provider && value ? { provider, ...value } : null;
+    }),
     save: (provider: unknown, model: unknown, key: unknown) => serialize(async () => {
       const id = providerId(provider);
       if (typeof model !== "string" || !model.trim() || model.trim().length > 200 || /\s/.test(model.trim())) {

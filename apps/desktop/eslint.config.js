@@ -5,7 +5,7 @@ export default [
   {
     files: ["**/*.mjs", "**/*.cjs"],
     languageOptions: { globals: Object.fromEntries([
-      "URL", "Request", "Response", "fetch", "AbortSignal", "process", "console", "require",
+      "URL", "Request", "Response", "Headers", "fetch", "AbortSignal", "process", "console", "require",
       "setTimeout", "clearTimeout", "TextDecoder", "TextEncoder", "Blob",
     ].map((name) => [name, "readonly"])) },
   },

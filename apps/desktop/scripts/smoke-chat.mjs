@@ -1,0 +1,159 @@
+import { app, BrowserWindow, dialog } from "electron";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
+import { serveApp } from "../dist/static-app.js";
+import { chatFixture } from "./chat-fixture.mjs";
+
+const directory = await mkdtemp(join(tmpdir(), "banger-chat-smoke-"));
+app.setPath("userData", directory);
+const timeout = setTimeout(() => { console.error("Chat smoke timed out."); app.exit(1); }, 55_000);
+app.on("before-quit", event => event.preventDefault());
+const calls = [];
+globalThis.fetch = async (url, options) => {
+  assert.equal(String(url), "https://ai-gateway.vercel.sh/v4/ai/language-model");
+  assert.equal(new Headers(options.headers).get("authorization"), "Bearer fake-chat-key");
+  const body = JSON.parse(options.body);
+  assert.equal(options.body.includes("fake-chat-key"), false);
+  calls.push(body);
+  if (options.body.includes("slow request")) {
+    await new Promise((resolve, reject) => {
+      if (options.signal.aborted) reject(options.signal.reason);
+      else options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+    });
+  }
+  return Response.json(chatFixture(body));
+};
+const server = createServer(async (request, response) => {
+  const result = await serveApp(new Request(`banger://app${request.url}`), fileURLToPath(new URL("../dist/web/", import.meta.url)));
+  response.writeHead(result.status, { "Content-Type": result.headers.get("Content-Type") });
+  response.end(new Uint8Array(await result.arrayBuffer()));
+});
+await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+let started = false;
+app.on("browser-window-created", (_event, window) => {
+  if (started) return;
+  started = true;
+  window.webContents.once("did-finish-load", () => { void run(window); });
+});
+await import("../dist/main.js");
+
+async function exercise(window, desktop) {
+  const evaluate = script => window.webContents.executeJavaScript(script, true);
+  async function waitFor(script) {
+    for (let attempt = 0; attempt < 300; attempt++) {
+      if (await evaluate(`Boolean(${script})`)) return;
+      await delay(25);
+    }
+    throw new Error(`UI state did not arrive: ${script}. ${await evaluate("document.querySelector('.ai-chat-footer')?.textContent")}`);
+  }
+  const click = text => evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(text)});
+    if (!button || button.disabled) throw new Error('Unavailable button: ' + ${JSON.stringify(text)});
+    button.click();
+  })()`);
+  const input = (id, value) => evaluate(`(() => {
+    const input = document.getElementById(${JSON.stringify(id)});
+    Object.getOwnPropertyDescriptor(input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await waitFor("document.querySelector('#producer-source')?.value");
+  if (!desktop) {
+    await evaluate(`(() => {
+      const fixture = ${chatFixture.toString()};
+      window.__chatCalls = [];
+      window.__downloads = [];
+      const originalCreateURL = URL.createObjectURL;
+      URL.createObjectURL = function(blob) { window.__downloads.push(blob); return originalCreateURL.call(this, blob); };
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options) => {
+        if (!String(url).startsWith('https://ai-gateway.vercel.sh/')) return originalFetch(url, options);
+        if (new Headers(options.headers).get('authorization') !== 'Bearer fake-chat-key') throw new Error('Wrong key');
+        if (options.body.includes('fake-chat-key')) throw new Error('Key in prompt');
+        const body = JSON.parse(options.body);
+        window.__chatCalls.push(body);
+        if (options.body.includes('slow request')) {
+          await new Promise((resolve, reject) => {
+            if (options.signal.aborted) reject(options.signal.reason);
+            else options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+          });
+        }
+        return Response.json(fixture(body));
+      };
+    })()`);
+  }
+  // Missing keys produce a useful UI error without a network call.
+  await input("ai-chat-prompt", "Create two loops");
+  await click("Send");
+  await waitFor("document.querySelector('.ai-chat-footer [role=alert]')?.textContent.includes('BYOK')");
+  await click("BYOK");
+  await waitFor("!document.querySelector('.byok-form fieldset').disabled");
+  await input("byok-model", "anthropic/test-model");
+  await input("byok-key", "fake-chat-key");
+  await click("Save and select");
+  await waitFor("document.querySelector('.byok-feedback [role=status]')");
+  await evaluate("document.querySelector('[aria-label=\"Close AI settings\"]').click()");
+  await waitFor("document.querySelector('.ai-chat-heading-actions').textContent.includes('your key')");
+  const originalSource = await evaluate("document.querySelector('#producer-source').value");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 2");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource);
+  await evaluate("document.querySelector('.ai-chat-file details').open = true");
+  assert.ok((await evaluate("document.querySelector('.ai-chat-file pre').textContent")).includes("agent_kick"));
+  // Save a generated file without replacing the user's current project.
+  if (desktop) dialog.showSaveDialog = async () => ({ canceled: false, filePath: join(directory, "warm-loop.banger") });
+  else window.webContents.session.on("will-download", event => event.preventDefault());
+  await click("Save file");
+  await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent === 'Saved warm-loop.banger.'");
+  const saved = desktop ? await readFile(join(directory, "warm-loop.banger"), "utf8") : await evaluate("window.__downloads[0].text()");
+  assert.ok(saved.includes("agent_kick"));
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource);
+  // Edits made after generation require an explicit decision before loading.
+  const newer = `${originalSource}\n// newer manual edit\n`;
+  await input("producer-source", newer);
+  await evaluate("void (window.confirm = () => false)");
+  await click("Load in studio");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), newer);
+  await evaluate("void (window.confirm = () => true)");
+  await click("Load in studio");
+  await waitFor("document.querySelector('#producer-tempo').value === '105'");
+  assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
+  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Unsaved");
+  await input("ai-chat-prompt", "Make the second loop softer");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 4");
+  const recorded = desktop ? calls : await evaluate("window.__chatCalls");
+  assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("slow-loop.banger"));
+  assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("Make the second loop softer"));
+  await writeFile(join(tmpdir(), desktop ? "banger-chat-desktop.png" : "banger-chat-web.png"), (await window.webContents.capturePage()).toPNG());
+  await input("ai-chat-prompt", "slow request");
+  await click("Send");
+  await waitFor("document.querySelector('.ai-chat-working')");
+  await delay(100);
+  await click("Stop generating");
+  await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 4);
+  await click("New chat");
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
+}
+
+async function run(desktop) {
+  try {
+    await exercise(desktop, true);
+    const web = new BrowserWindow({ width: 1100, height: 900, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
+    await web.loadURL(`http://127.0.0.1:${server.address().port}/`);
+    await exercise(web, false);
+    console.log("Chat smoke passed on desktop and static web: missing key, Gateway adapter, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
+  } catch (error) { console.error(error); process.exitCode = 1; }
+  finally {
+    clearTimeout(timeout);
+    for (const window of BrowserWindow.getAllWindows()) window.destroy();
+    server.close();
+    await rm(directory, { recursive: true, force: true });
+    app.exit(process.exitCode ?? 0);
+  }
+}

@@ -58,6 +58,7 @@ export function ByokMenu() {
       const bridge = aiSettingsBridge();
       const next = await (remove ? bridge.remove(provider) : bridge.save(provider, model, key));
       setSettings(next);
+      window.dispatchEvent(new Event("banger:ai-settings-changed"));
       setModel(next.providers[provider]?.model ?? "");
       setKey("");
       setVisible(false);
@@ -82,7 +83,7 @@ export function ByokMenu() {
         <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">Bring your own key</h2></div>
         <Button variant="ghost" aria-label="Close AI settings" disabled={busy} onClick={close}>×</Button>
       </div>
-      <p id="byok-description" className="byok-description">Save a key and model for each provider. AI generation is not available yet.</p>
+      <p id="byok-description" className="byok-description">Select your own key and model for AI chat.</p>
       <div className="byok-layout">
         <nav className="byok-providers" aria-label="AI providers">
           {AI_PROVIDERS.map(item => <button key={item.id} type="button" aria-pressed={provider === item.id}
@@ -107,7 +108,7 @@ export function ByokMenu() {
             </div>
             <p id="byok-storage" className="byok-storage">{desktop
               ? "Keys are encrypted on this device using operating system protection."
-              : "Keys stay in this tab's session storage until the tab closes. Scripts on this site can access them."} Keys are never included in .banger files.</p>
+              : "Keys stay in this tab's session storage until the tab closes. Scripts on this site can access them."} Keys are used only for your selected provider and never included in .banger files.</p>
             <div className="byok-actions">
               <Button variant="primary" type="submit">{busy ? "Saving…" : "Save and select"}</Button>
               <Button variant="danger" disabled={!saved || busy} onClick={() => void update(true)}>Remove key</Button>

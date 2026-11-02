@@ -11,3 +11,8 @@ contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
   save: (provider, model, key) => ipcRenderer.invoke("banger:ai-save", provider, model, key),
   remove: provider => ipcRenderer.invoke("banger:ai-remove", provider),
 }));
+
+contextBridge.exposeInMainWorld("bangerChat", Object.freeze({
+  send: request => ipcRenderer.invoke("banger:chat", request),
+  cancel: () => ipcRenderer.invoke("banger:chat-cancel"),
+}));

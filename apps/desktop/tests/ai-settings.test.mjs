@@ -89,6 +89,7 @@ test("desktop encrypts keys, redacts responses, persists and serializes changes"
     const encryption = cipher();
     const store = createAISettingsStore(path, encryption);
     await lifecycle(store);
+    assert.equal(await store.credentials(), null);
     const bytes = await readFile(path);
     assert.equal(bytes.includes(Buffer.from("test-key")), false);
     const reloaded = createAISettingsStore(path, encryption);
@@ -98,6 +99,7 @@ test("desktop encrypts keys, redacts responses, persists and serializes changes"
     await reloaded.save("openai", "new-model", "");
     assert.equal(JSON.parse(encryption.decrypt(await readFile(path))).providers.openai.key, "first");
     await reloaded.save("openai", "new-model", "replacement");
+    assert.deepEqual(await reloaded.credentials(), { provider: "openai", model: "new-model", key: "replacement" });
     assert.equal(JSON.parse(encryption.decrypt(await readFile(path))).providers.openai.key, "replacement");
     await reloaded.remove("openai");
     assert.equal(JSON.parse(encryption.decrypt(await readFile(path))).providers.openai, undefined);

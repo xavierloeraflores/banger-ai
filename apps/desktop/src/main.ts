@@ -4,6 +4,7 @@ import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_URL, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
+import { parseChatRequest, selectModel, runBangerAgent, publicAIError } from "@banger/agent";
 import { createAISettingsStore } from "./ai-settings.js";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
@@ -14,6 +15,7 @@ const developmentUrl = !app.isPackaged && process.env.BANGER_DEV_URL === "http:/
   ? process.env.BANGER_DEV_URL : undefined;
 const windows = new Set<BrowserWindow>();
 const pendingDialogs = new Set<number>();
+const pendingChats = new Map<number, AbortController>();
 const filters = [{ name: "Banger project", extensions: ["banger"] }];
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow {
@@ -22,13 +24,13 @@ function senderWindow(event: IpcMainInvokeEvent): BrowserWindow {
       !isAppUrl(event.senderFrame.url, developmentUrl)) {
     throw new Error("This operation is available only from the Banger app.");
   }
-  if (pendingDialogs.has(window.id)) throw new Error("A project dialog is already open.");
   return window;
 }
 
 function installProjectHandlers() {
   ipcMain.handle("banger:open-project", async (event) => {
     const window = senderWindow(event);
+    if (pendingDialogs.has(window.id)) throw new Error("A project dialog is already open.");
     pendingDialogs.add(window.id);
     try {
       const result = await dialog.showOpenDialog(window, { title: "Open Banger project", filters, properties: ["openFile"] });
@@ -59,6 +61,7 @@ function installProjectHandlers() {
   });
   ipcMain.handle("banger:save-project", async (event, source: unknown, name: unknown) => {
     const window = senderWindow(event);
+    if (pendingDialogs.has(window.id)) throw new Error("A project dialog is already open.");
     const text = validateSource(source);
     const defaultPath = projectName(name);
     pendingDialogs.add(window.id);
@@ -113,7 +116,14 @@ function createWindow() {
     },
   });
   windows.add(window);
-  window.on("closed", () => windows.delete(window));
+  window.on("closed", () => {
+    pendingChats.get(window.id)?.abort();
+    pendingChats.delete(window.id);
+    windows.delete(window);
+  });
+  window.webContents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame) pendingChats.get(window.id)?.abort();
+  });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-prevent-unload", (event) => {
     const choice = dialog.showMessageBoxSync(window, {
@@ -155,6 +165,23 @@ void app.whenReady().then(() => {
     return aiSettings.save(provider, model, key);
   });
   ipcMain.handle("banger:ai-remove", (event, provider: unknown) => { senderWindow(event); return aiSettings.remove(provider); });
+  ipcMain.handle("banger:chat-cancel", event => { pendingChats.get(senderWindow(event).id)?.abort(); });
+  ipcMain.handle("banger:chat", async (event, request: unknown) => {
+    const window = senderWindow(event);
+    if (pendingChats.has(window.id)) return { ok: false, error: "A reply is already being generated." };
+    const controller = new AbortController();
+    pendingChats.set(window.id, controller);
+    try {
+      const input = parseChatRequest(request);
+      const credentials = await aiSettings.credentials();
+      if (!credentials) return { ok: false, error: "Add a provider key and model in BYOK to start chatting." };
+      const selected = selectModel(credentials);
+      try { return { ok: true, reply: await runBangerAgent(input, selected, controller.signal) }; }
+      catch (error) { return { ok: false, error: publicAIError(error) }; }
+    } catch {
+      return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };
+    } finally { pendingChats.delete(window.id); }
+  });
   installProjectHandlers();
   createWindow();
   app.on("activate", () => { if (windows.size === 0) createWindow(); });
