@@ -2,8 +2,7 @@ import { compileMusic } from './parser.js';
 import { validateMusicProgram, type MusicProgram } from './model.js';
 export { compileMusic } from './parser.js';
 export { CompileError, type Position } from './lexer.js';
-export { copyMusicProgram, pianoNotes, validateMusicProgram, MUSIC_LIMITS, SOUND_NAMES, INSTRUMENT_NAMES } from './model.js';
-export type { MusicProgram, MusicTrack, PianoNote, Step, SoundName, InstrumentName, ReverbEffect, DelayEffect, FilterEffect, MusicEffect } from './model.js';
+export * from './model.js';
 
 export function serializeMusic(program: MusicProgram): string {
   validateMusicProgram(program);
@@ -21,7 +20,7 @@ export function serializeMusic(program: MusicProgram): string {
     for (const effect of track.effects ?? []) {
       if (effect.kind === 'reverb') lines.push(`  effect reverb { mix ${effect.mix}; }`);
       else if (effect.kind === 'delay') lines.push(`  effect delay { mix ${effect.mix}; time ${effect.time}; feedback ${effect.feedback}; }`);
-      else lines.push(`  effect filter { cutoff ${effect.cutoff}; resonance ${effect.resonance}; }`);
+      else lines.push(`  effect ${effect.kind} { ${Object.entries(effect).filter(([key]) => key !== 'kind').map(([key, value]) => `${key} ${value};`).join(' ')} }`);
     }
     lines.push('}');
   }
