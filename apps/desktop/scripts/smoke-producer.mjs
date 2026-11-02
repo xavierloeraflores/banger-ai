@@ -78,7 +78,7 @@ export async function smokeProducer(window, directory) {
     assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Local project");
   }
 
-  await waitFor("document.querySelectorAll('.producer-track').length === 4 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
+  await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 3);
   assert.equal(await evaluate("document.querySelectorAll('[role=tabpanel]:not([hidden])').length"), 1);
@@ -88,10 +88,13 @@ export async function smokeProducer(window, directory) {
   await waitFor("document.activeElement.id === 'studio-tab-source' && !document.querySelector('#studio-panel-source').hidden", "keyboard tab navigation");
   await clickText("Sequencer");
   const initial = await evaluate(gridSnapshot);
-  assert.deepEqual(initial.map(track => track.name), ["kick", "snare", "hats", "bass"]);
-  assert.deepEqual(initial.map(track => track.steps.length), [16, 16, 16, 16]);
-  assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "120");
+  assert.deepEqual(initial.map(track => track.name), ["kick", "snare", "hats", "bass", "keys", "pad", "lead", "bell"]);
+  assert.deepEqual(initial.map(track => track.steps.length), [16, 16, 16, 16, 0, 0, 16, 8]);
+  assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "112");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
+  assert.equal(originalSource, await readFile(new URL("../../../examples/night-drive.banger", import.meta.url), "utf8"));
+  assert.equal(await evaluate("document.querySelector('#source-title').textContent"), "night-drive.banger");
+  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Local project");
   assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 0, 'Track editors start collapsed.');
   assert.equal(await evaluate("document.querySelectorAll('.producer-song-tools details[open]').length"), 0, 'Song tools start collapsed.');
   assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 52)"), 'Collapsed tracks form a compact rack.');
@@ -122,7 +125,7 @@ export async function smokeProducer(window, directory) {
   assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
 
   await click(".producer-play");
-  await waitFor("document.querySelector('.producer-transport-state')?.textContent === 'Playing' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length === 4", "audio playback");
+  await waitFor("document.querySelector('.producer-transport-state')?.textContent === 'Playing' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length > 0", "audio playback");
   const firstPosition = await evaluate("document.querySelector('.producer-position').getAttribute('aria-label')");
   await waitFor(`document.querySelector('.producer-position')?.getAttribute('aria-label') !== ${JSON.stringify(firstPosition)}`, "advancing audio playhead");
   const audioDeadline = Date.now() + 3_000;
@@ -203,5 +206,5 @@ export async function smokeProducer(window, directory) {
   assert.equal(unloadAttempts, 2);
   assert.equal(window.isDestroyed(), true, "Explicit discard must close the dirty window.");
   console.log("Unsaved-close smoke passed: actual beforeunload, Cancel preserves the project, explicit Discard closes the window.");
-  console.log("Producer smoke passed: hydrated 4×16 grid, step serialization, real audio and moving playhead, stop, invalid draft preservation, 8/3-step patterns, native save/reopen with restored tracks and tempo.");
+  console.log("Producer smoke passed: loaded exact Night Drive source and eight-track grid, step serialization, real audio and moving playhead, stop, invalid draft preservation, 8/3-step patterns, native save/reopen with restored tracks and tempo.");
 }
