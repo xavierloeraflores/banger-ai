@@ -46,7 +46,10 @@ async function run(window) {
     for (let count = 0; count < 250; count++) { if (await evaluate(`Boolean(${script})`)) return; await delay(30); }
     throw new Error(`Missing UI state: ${script}; ${await evaluate("document.querySelector('.project-workspace')?.textContent")}`);
   }
-  const click = label => evaluate(`(() => { const button = [...document.querySelectorAll('.project-workspace button')].find(b => b.textContent === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Missing enabled button'); button.click(); })()`);
+  const click = async label => {
+    await wait(`[...document.querySelectorAll('.project-workspace button')].some(button => button.textContent === ${JSON.stringify(label)} && !button.disabled)`);
+    return evaluate(`(() => { const button = [...document.querySelectorAll('.project-workspace button')].find(b => b.textContent === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Missing enabled button'); button.click(); })()`);
+  };
   const input = (id, text) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(text)}); field.dispatchEvent(new Event('input', { bubbles:true })); })()`);
   try {
     await wait("window.bangerWorkspace && document.querySelector('.project-workspace')");
@@ -92,6 +95,12 @@ async function run(window) {
     // Renderer receives relative names, and traversal is rejected by the real IPC handler.
     await assert.rejects(evaluate("window.bangerWorkspace.read('../secret.banger')"));
     assert.deepEqual(await evaluate("window.bangerWorkspace.list()"), ["chorus.banger", "verse.banger"]);
+    await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'verse.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
+    await wait("document.querySelector('#workspace-source').value.includes('tempo 110')");
+    await click("Reload files");
+    await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#workspace-source').disabled");
+    await evaluate("document.querySelector('.project-workspace').scrollIntoView({ block:'start' })");
+    await delay(100);
     await writeFile(join(tmpdir(), "banger-workspace-desktop.png"), (await window.webContents.capturePage()).toPNG());
     console.log("Workspace Electron smoke passed: native folder open, manual edits, dirty draft protection, external save conflict, cross-file harness edits, repeated same-file edit, continued history, real events, cancellation, and path confinement. Model network responses mocked; real harness and IPC used.");
   } catch (error) { console.error(error); process.exitCode = 1; }
