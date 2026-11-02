@@ -3,7 +3,10 @@ export function chatFixture(body) {
   const source = 'tempo 105; meter 4/4; track agent_kick { sound "drums/kick"; rhythm "x . x ."; gain 0.5; }';
   const prompt = body.prompt;
   const last = prompt.at(-1);
-  const content = last.role === "tool" ? [{ type: "text", text: "Two loops are ready. Preview either file or load it in the studio." }] : [
+  const revision = prompt.some(message => message.role === "user" && JSON.stringify(message.content).includes("Make the second loop softer"));
+  const content = last.role === "tool" ? [{ type: "text", text: "Two loops are ready. Preview either file or load it in the studio." }] : revision ? [
+    { type: "tool-call", toolCallId: "revise-loop", toolName: "edit_banger_file", input: JSON.stringify({ name: "slow-loop.banger", edits: [{ oldText: "gain 0.5;", newText: "gain 0.25;" }] }) },
+  ] : [
     { type: "tool-call", toolCallId: "loop-one", toolName: "create_banger_file", input: JSON.stringify({ name: "warm-loop.banger", source }) },
     { type: "tool-call", toolCallId: "loop-two", toolName: "create_banger_file", input: JSON.stringify({ name: "slow-loop.banger", source: source.replace("105", "85") }) },
   ];

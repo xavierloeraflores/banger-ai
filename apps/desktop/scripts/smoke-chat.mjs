@@ -156,7 +156,10 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Unsaved");
   await input("ai-chat-prompt", "Make the second loop softer");
   await click("Send");
-  await waitFor("document.querySelectorAll('.ai-chat-file').length === 4");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 3");
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file strong')[2].textContent"), "slow-loop.banger");
+  assert.match(await evaluate("document.querySelectorAll('.ai-chat-file pre')[2].textContent"), /gain 0.25;/);
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file-heading span')[2].textContent"), "Revision compiled");
   const recorded = desktop ? calls : await evaluate("window.__chatCalls");
   assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("slow-loop.banger"));
   assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("Make the second loop softer"));
@@ -171,7 +174,7 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("Boolean(document.querySelector('.ai-chat-working'))"), true);
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
-  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 4);
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 3);
   await click("New chat");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
   // The popup stays inside a narrow viewport, and its backdrop dismisses it.

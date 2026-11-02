@@ -262,3 +262,6 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
   .ai-model-select { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; }
   .producer-header .producer-file-actions { margin-left: auto; }
 }
+
+.ai-chat-target { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; font-size: .8rem; }
+.ai-chat-target select { min-width: 0; max-width: 100%; border: 1px solid var(--border); border-radius: .5rem; background: var(--background); color: inherit; padding: .4rem; }
