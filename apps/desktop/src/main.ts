@@ -9,6 +9,8 @@ import { createAISettingsStore } from "./ai-settings.js";
 import { createChatGPTAuth } from "./chatgpt-auth.js";
 import { createLocalModel } from "./local-model.js";
 
+import { installWorkspaceHandlers } from "./project-workspace.js";
+
 protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
 } }]);
@@ -174,24 +176,29 @@ void app.whenReady().then(() => {
   const aiSettings = createAISettingsStore(join(app.getPath("userData"), "ai-settings.enc"), encryption);
   const chatgpt = createChatGPTAuth(join(app.getPath("userData"), "chatgpt-accounts.enc"), encryption, { openExternal: url => shell.openExternal(url) });
   app.on("before-quit", () => chatgpt.dispose());
+  function cancelAI() {
+    for (const controller of pendingChats.values()) controller.abort();
+    projectWorkspace.cancelAll();
+  }
   ipcMain.handle("banger:chatgpt-status", event => { senderWindow(event); return chatgpt.status(); });
   ipcMain.handle("banger:chatgpt-sign-in", async (event, id: unknown) => {
     senderWindow(event);
     try {
       const result = await chatgpt.signIn(id);
-      if (result.selected) await localModel.select(false);
+      if (result.selected) { cancelAI(); await localModel.select(false); }
       return result;
     } catch { throw new Error("ChatGPT sign-in did not complete. Check your browser and system keychain, then try again."); }
   });
   ipcMain.handle("banger:chatgpt-cancel", event => { senderWindow(event); chatgpt.cancelSignIn(); });
   ipcMain.handle("banger:chatgpt-account", async (event, id: unknown) => {
     senderWindow(event);
+    cancelAI();
     const result = await chatgpt.selectAccount(id);
     await localModel.select(false);
     return result;
   });
-  ipcMain.handle("banger:chatgpt-model", (event, model: unknown) => { senderWindow(event); return chatgpt.selectModel(model); });
-  ipcMain.handle("banger:chatgpt-sign-out", (event, id: unknown) => { senderWindow(event); return chatgpt.signOut(id); });
+  ipcMain.handle("banger:chatgpt-model", (event, model: unknown) => { senderWindow(event); cancelAI(); return chatgpt.selectModel(model); });
+  ipcMain.handle("banger:chatgpt-sign-out", (event, id: unknown) => { senderWindow(event); cancelAI(); return chatgpt.signOut(id); });
   ipcMain.handle("banger:chatgpt-usage", event => { senderWindow(event); return shell.openExternal("https://chatgpt.com/settings/usage"); });
   ipcMain.handle("banger:local-status", event => { senderWindow(event); return localModel.status(); });
   ipcMain.handle("banger:local-download", event => { senderWindow(event); return localModel.download(); });
@@ -200,11 +207,13 @@ void app.whenReady().then(() => {
   ipcMain.handle("banger:local-stop", async event => {
     senderWindow(event);
     for (const controller of pendingChats.values()) controller.abort();
+    projectWorkspace.cancelAll();
     await localModel.stop();
   });
   ipcMain.handle("banger:local-select", async (event, selected: unknown) => {
     senderWindow(event);
     if (typeof selected !== "boolean") throw new Error("Choose local AI or an API provider.");
+    cancelAI();
     if (selected) await chatgpt.select(false).catch(() => undefined);
     return localModel.select(selected);
   });
@@ -252,13 +261,14 @@ void app.whenReady().then(() => {
         await chatgpt.select(false);
         await localModel.select(false);
       }
-      for (const controller of pendingChats.values()) controller.abort();
+      cancelAI();
       return loadAISettings();
     });
   });
   ipcMain.handle("banger:ai-save", (event, provider: unknown, model: unknown, key: unknown) => {
     senderWindow(event);
     return changeAISettings(async () => {
+      cancelAI();
       await aiSettings.save(provider, model, key);
       await chatgpt.select(false);
       await localModel.select(false);
@@ -268,7 +278,7 @@ void app.whenReady().then(() => {
   ipcMain.handle("banger:ai-remove", eventRemove);
   function eventRemove(event: IpcMainInvokeEvent, provider: unknown) {
     senderWindow(event);
-    return changeAISettings(async () => { await aiSettings.remove(provider); return loadAISettings(); });
+    return changeAISettings(async () => { cancelAI(); await aiSettings.remove(provider); return loadAISettings(); });
   }
   ipcMain.handle("banger:chat-cancel", event => { pendingChats.get(senderWindow(event).id)?.abort(); });
   ipcMain.handle("banger:chat", async (event, request: unknown) => {
@@ -301,6 +311,17 @@ void app.whenReady().then(() => {
       return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };
     } finally { pendingChats.delete(window.id); }
   });
+  const projectWorkspace = installWorkspaceHandlers({ senderWindow, selectModel: async () => {
+    await settingsQueue;
+    if ((await localModel.status()).selected) {
+      const { port, token } = localModel.connection();
+      return selectLocalModel(port, token);
+    }
+    if ((await chatgpt.status()).selected) return chatgpt.model();
+    const credentials = await aiSettings.credentials();
+    if (!credentials) throw new Error("Choose a model in AI settings before running a project task.");
+    return selectModel(credentials);
+  } });
   installProjectHandlers();
   createWindow();
   app.on("activate", () => { if (windows.size === 0) createWindow(); });

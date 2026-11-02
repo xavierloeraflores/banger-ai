@@ -17,6 +17,7 @@ import { PianoRoll } from "./piano-roll";
 import { usePlayer } from "./use-player";
 import { ByokSettings } from "./byok-menu";
 import { AIModelSelect } from "./ai-model-select";
+import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
@@ -371,6 +372,7 @@ export function Producer() {
         <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
           {view === "byok" && <ByokSettings />}
         </div>
+        <DesktopProjectWorkspace onLoad={file => { if (!window.confirm("Load this workspace file in the studio and replace the current studio editor?")) return; loadGeneratedFile(file, sourceRevision); }} />
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
       </div>
       <footer className="producer-footer"><span>banger / music in plain text</span><span role="status">{notice ?? "One bar. Start somewhere."}</span></footer>

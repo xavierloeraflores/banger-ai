@@ -36,3 +36,17 @@ contextBridge.exposeInMainWorld("bangerChatGPT", Object.freeze({
   signOut: accountId => ipcRenderer.invoke("banger:chatgpt-sign-out", accountId),
   usage: () => ipcRenderer.invoke("banger:chatgpt-usage"),
 }));
+
+contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
+  open: () => ipcRenderer.invoke("banger:workspace-open"),
+  list: () => ipcRenderer.invoke("banger:workspace-list"),
+  read: path => ipcRenderer.invoke("banger:workspace-read", path),
+  save: (path, source, expectedSource) => ipcRenderer.invoke("banger:workspace-save", path, source, expectedSource),
+  run: (prompt, activeFile) => ipcRenderer.invoke("banger:workspace-run", prompt, activeFile),
+  cancel: () => ipcRenderer.invoke("banger:workspace-cancel"),
+  onEvent: callback => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("banger:workspace-event", listener);
+    return () => ipcRenderer.removeListener("banger:workspace-event", listener);
+  },
+}));

@@ -29,6 +29,9 @@ importers:
       jose:
         specifier: ^6.2.14
         version: 6.2.14
+      '@banger/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
     devDependencies:
       '@banger/eslint-config':
         specifier: workspace:*

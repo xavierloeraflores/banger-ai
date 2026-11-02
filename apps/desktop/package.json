@@ -16,6 +16,7 @@
     "smoke:byok": "electron scripts/smoke-byok.mjs",
     "smoke:chat": "electron scripts/smoke-chat.mjs",
     "smoke:web": "electron scripts/smoke-web.mjs",
+    "smoke:workspace": "electron scripts/smoke-workspace.mjs",
     "smoke:local": "electron scripts/smoke-local.mjs"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",
     "@banger/agent": "workspace:*",
+    "@banger/harness": "workspace:*",
     "jose": "^6.2.14"
   }
 }
