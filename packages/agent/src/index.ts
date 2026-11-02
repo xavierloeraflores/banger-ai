@@ -65,11 +65,11 @@ A .banger file is a plain text, one-bar looping music sequence, not JavaScript, 
 Language:
 - Begin with tempo 120; and meter 4/4; Tempo range 20 to 300. Only 4/4.
 - Up to 16 tracks, each with a unique identifier matching [A-Za-z_][A-Za-z_0-9]*, max 64 characters.
-- Drums use sound "drums/kick", "drums/snare", or "drums/hat" with rhythm "x . x .". x is a hit, . is a rest.
-- Instruments use instrument "synth/bass" or "synth/pluck" with notes "C2 . G2 .". Notes use standard note names with optional # or b and octave, MIDI 0 to 127. These legacy patterns remain supported for evenly spaced notes.
+- Drums use sound "drums/kick", "drums/snare", "drums/hat", "drums/open-hat", "drums/clap", or "drums/tom" with rhythm "x . x .". x is a hit, . is a rest.
+- Instruments use instrument "synth/bass", "synth/pluck", "synth/lead", "synth/pad", "synth/bell", or "synth/organ" with notes "C2 . G2 .". Notes use standard note names with optional # or b and octave, MIDI 0 to 127. These legacy patterns remain supported for evenly spaced notes.
 - For chords, independent timing, held notes, or velocity, use piano { note "C4" start 0 duration 2 velocity .8; note "E4" start 0 duration 2 velocity .6; } with an instrument. Each note requires a quoted pitch, start, duration, and velocity in that order. Start and duration are quarter-note beats: 0 <= start < 4, duration > 0, start + duration <= 4. Velocity is 0 to 1. Notes may overlap, including the same pitch. Maximum 128 notes per track and 256 piano notes per file. piano {} is silent. Use exactly one of rhythm, notes, or piano per track.
 - Patterns contain 1 to 64 space-separated steps across one bar. Prefer 16 steps for drums. Different tracks can have different lengths. This engine does not support multi-bar arrangements.
-- gain is 0 to 1. Keep the mix moderate, especially with many tracks. Optional effect reverb { mix 0.15; } once per track.
+- gain is 0 to 1. Keep the mix moderate, especially with many tracks. Optional pan -0.3; ranges from -1 left to 1 right. Effects run in source order, once per kind per track: effect reverb { mix 0.15; }, effect delay { time 0.375; feedback 0.4; mix 0.25; }, effect filter { cutoff 2500; resonance 1; }. Delay time is 0.01 to 2 seconds, feedback 0 to 0.85; all mixes are 0 to 1. Filter cutoff is 20 to 20000 Hz and resonance 0 to 20.
 - Every statement ends with a semicolon. Never add a semicolon after a track, piano, or effect block.
 Example:
 tempo 110;

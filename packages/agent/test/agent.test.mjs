@@ -175,3 +175,11 @@ test('successive revisions of the same filename use the selected latest proposal
   const result = await runBangerAgent({ ...request, targetFile: 'loop.banger', targetVersion: 'generated', previousFiles: [{ name: 'loop.banger', source: proposal }] }, { model, name: 'test' });
   assert.equal(result.files[0].source, proposal.replace('90', '80'));
 });
+
+test('agent generation accepts the expanded musical vocabulary', () => {
+  const file = validateGeneratedFile('bells.banger', `track bells { instrument "synth/bell"; notes "C4 E4 G4 ."; pan -.3; effect filter { cutoff 2500; resonance 1; } effect delay { time .375; feedback .4; mix .25; } effect reverb { mix .2; } }`);
+  const track = compileMusic(file.source).tracks[0];
+  assert.equal(track.source.name, 'synth/bell');
+  assert.equal(track.pan, -.3);
+  assert.deepEqual(track.effects.map(effect => effect.kind), ['filter', 'delay', 'reverb']);
+});
