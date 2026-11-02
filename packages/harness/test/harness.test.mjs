@@ -145,3 +145,20 @@ test("CLI invokes the real project loop, emits events, validates config and runs
   assert.equal(spawned.status, 0, spawned.stderr);
   assert.match(spawned.stdout, /Usage: banger-agent/);
 });
+
+test('exact edits preserve literal replacement characters in music comments', async t => {
+  const { workspace } = await fixture(t);
+  const original = source + '\n// original';
+  await workspace.write('song.banger', original, source);
+  const revised = await workspace.edit('song.banger', '// original', '// literal $& and $` and $\u0027', original);
+  assert.equal(revised.source, source + '\n// literal $& and $` and $\u0027');
+});
+
+test('provider failure finish reasons cannot report task completion', async t => {
+  const { workspace } = await fixture(t);
+  for (const reason of ['error', 'content-filter', 'other']) {
+    const model = new MockLanguageModelV4({ doGenerate: response([{ type: 'text', text: 'Stopped.' }], reason) });
+    const result = await new ProjectSession({ workspace, selected: { model, name: 'test' } }).run('Revise my song');
+    assert.equal(result.status, 'incomplete');
+  }
+});

@@ -128,7 +128,7 @@ export class ProjectWorkspace {
 
   async edit(path: string, search: string, replacement: string, expectedSource: string, signal?: AbortSignal): Promise<ProjectFile> {
     if (!search || expectedSource.split(search).length !== 2) throw new Error("The edit must match exactly one occurrence. Read the file and provide a unique search string.");
-    return this.write(path, expectedSource.replace(search, replacement), expectedSource, signal);
+    return this.write(path, expectedSource.replace(search, () => replacement), expectedSource, signal);
   }
 
   async validate(paths?: string[]): Promise<Validation[]> {
