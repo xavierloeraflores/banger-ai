@@ -2,19 +2,22 @@ import { constants } from "node:fs";
 import { lstat, open, opendir, realpath, rename, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
-import { compileMusic } from "@banger/compiler";
+import { compileMusic, programDurationBeats } from "@banger/compiler";
 
 export const PROJECT_LIMITS = { fileBytes: 65536, files: 256, entries: 4096, depth: 12 } as const;
 export type ProjectFile = { path: string; source: string };
-export type Validation = { path: string; ok: true; tracks: number; tempo: number } | { path: string; ok: false; error: string };
+export type MusicSummary = { tracks: number; tempo: number; durationBeats: number; patterns: number; sections: number; buses: number };
+export type Validation = { path: string; ok: true } & MusicSummary | { path: string; ok: false; error: string };
 const ignored = new Set(["node_modules", ".git", "dist", ".next"]);
 const failure = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function validateSource(source: string): { tracks: number; tempo: number } {
+export function validateSource(source: string): MusicSummary {
   if (typeof source !== "string" || Buffer.byteLength(source, "utf8") > PROJECT_LIMITS.fileBytes || source.includes("\0")) throw new Error("Music files must be UTF-8 text under 64 KiB without null characters.");
   const program = compileMusic(source);
   if (!program.tracks.length) throw new Error("Add at least one track.");
-  return { tracks: program.tracks.length, tempo: program.tempo };
+  return { tracks: program.tracks.length, tempo: program.tempo, durationBeats: programDurationBeats(program),
+    patterns: program.tracks.reduce((count, track) => count + 1 + (track.patterns?.length ?? 0), 0),
+    sections: program.sections?.length ?? 0, buses: program.buses?.length ?? 0 };
 }
 
 export class ProjectWorkspace {

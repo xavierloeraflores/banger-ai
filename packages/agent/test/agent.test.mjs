@@ -217,3 +217,23 @@ test('a failed replacement batch leaves the latest source unchanged for repair',
   const result = await runBangerAgent(request, { model, name: 'test' });
   assert.equal(result.files[0].source, source.replace('tempo 120;', 'tempo 90;'));
 });
+
+test('proposal agent shares the full language reference and preserves arranged music through generation and revision', async () => {
+  const song = `track keys { instrument "synth/keys"; bars 2; notes "C4 G4";
+ pattern chorus { bars 4; piano { note "C4" start 0 duration 16 velocity .7; } }
+ effect distortion { amount .3; mix .2; } send room .1;
+ automation "pitch" { interpolation step; point 0 -12; point 8 0; }
+}
+bus room { effect reverb { mix 1; } }
+section chorus { bars 8; play keys chorus; }
+song { play chorus 2; }`;
+  const model = new MockLanguageModelV4({doGenerate:[response([call('song','arranged.banger',song)],'tool-calls'),response([{type:'text',text:'Created the song.'}])]});
+  const first = await runBangerAgent(request,{model,name:'test'});
+  assert.deepEqual(compileMusic(first.files[0].source),compileMusic(song));
+  const {BANGER_LANGUAGE_GUIDE,programDurationBeats} = await import('@banger/compiler');
+  assert.ok(model.doGenerateCalls[0].prompt.find(message=>message.role==='system').content.includes(BANGER_LANGUAGE_GUIDE));
+  const edit = new MockLanguageModelV4({doGenerate:[response([editCall('repeat','arranged.banger',[{oldText:'play chorus 2;',newText:'play chorus 3;'}])],'tool-calls'),response([{type:'text',text:'Repeated the chorus.'}])]});
+  const second = await runBangerAgent({...request,previousFiles:first.files,targetFile:'arranged.banger',targetVersion:'generated'},{model:edit,name:'test'});
+  assert.equal(second.files[0].source,first.files[0].source.replace('play chorus 2;','play chorus 3;'));
+  assert.equal(programDurationBeats(compileMusic(second.files[0].source)),96);
+});

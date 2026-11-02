@@ -162,3 +162,40 @@ test('provider failure finish reasons cannot report task completion', async t =>
     assert.equal(result.status, 'incomplete');
   }
 });
+
+test('project agent repairs a song reference and preserves patterns, routing and automation on follow-up', async t => {
+  const { workspace } = await fixture(t);
+  const song = `tempo 120;
+track kick { sound "drums/kick"; rhythm "x . x ."; }
+track keys { instrument "synth/keys"; bars 2; notes "C4 . G4 .";
+ pattern chorus { bars 4; piano { note "C4" start 0 duration 8 velocity .7; } }
+ groove { quantize .25; swing .2; humanize .01; seed 42; }
+ effect compressor { sidechain kick; }
+ effect filter { cutoff 1500; }
+ automation "filter.cutoff" { point 0 500; point 16 4000; }
+ output music; send space .2;
+}
+bus music { gain .8; effect eq { low -3; } }
+bus space { gain .5; effect reverb { mix 1; } }
+section verse { bars 4; play keys; play kick; }
+section chorus { bars 8; play keys chorus; play kick; }
+song { play verse 2; play chorus; }`;
+  const model = new MockLanguageModelV4({doGenerate:[
+    step(call('write_file',{path:'arranged.banger',source:song.replace('play keys chorus','play keys missing')},'bad-song')),
+    step(call('write_file',{path:'arranged.banger',source:song},'good-song')),
+    step(call('validate_project',{paths:['arranged.banger']})), finish('Created the arrangement.'),
+    step(call('edit_file',{path:'arranged.banger',search:'play chorus;',replacement:'play chorus 2;'})), finish('Repeated the chorus.'),
+  ]});
+  const session = new ProjectSession({workspace,selected:{model,name:'test'}});
+  const first = await session.run('Create a full song with a chorus, sidechain, buses and automation.');
+  assert.equal(first.status,'completed');
+  assert.deepEqual(first.validation[0],{path:'arranged.banger',ok:true,tracks:2,tempo:120,durationBeats:64,patterns:3,sections:2,buses:2});
+  assert.match(JSON.stringify(model.doGenerateCalls[1].prompt),/Unknown pattern/);
+  const prompt = model.doGenerateCalls[0].prompt.find(message=>message.role==='system').content;
+  const {BANGER_LANGUAGE_GUIDE} = await import('@banger/compiler');
+  assert.ok(prompt.includes(BANGER_LANGUAGE_GUIDE));
+  const second = await session.run('Repeat the chorus twice.');
+  assert.equal(second.status,'completed');
+  assert.equal(second.validation[0].durationBeats,96);
+  assert.equal((await workspace.read('arranged.banger')).source,song.replace('play chorus;','play chorus 2;'));
+});
