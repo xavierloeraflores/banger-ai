@@ -35,7 +35,8 @@ async function run(){
     if(request.headers['x-mpu-action']==='upload'){uploaded=bytes;return json({etag:'fixture-etag',partNumber:1});}
     return json({url:`https://fixture.private.blob.vercel-storage.com/${pathname}`,pathname,contentType:'audio/wav',contentDisposition:'attachment'});
    }
-   assert.equal(request.headers.authorization,'Bearer fixture-token');
+   assert.equal(request.headers.authorization,undefined,'Browser API requests use the same-origin session, not a pasted bearer token.');
+   if(url.pathname==='/api/session')return json({authenticated:true,signInEnabled:true,services:{storage:true}});
    if(url.pathname==='/api/projects')return json({projects:[{id:projectId,name:'Music project',revision:1}]});
    if(url.pathname===`/api/projects/${projectId}`)return json({projectId,revision:1,name:'Music project',files:url.searchParams.has('since')?[]:[{path:'song.banger',source}],deleted:[]});
    if(url.pathname.endsWith('/music'))return json({music:await store.list()});
@@ -56,6 +57,11 @@ async function run(){
   }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);return json({error:error.message},500);}
  });
  const web=createServer(async(request,response)=>{
+  if(request.url.startsWith('/api/')){
+    const parts=[];for await(const part of request)parts.push(part);
+    const upstream=await fetch(`http://127.0.0.1:${api.address().port}${request.url}`,{method:request.method,headers:request.headers,...(!['GET','HEAD'].includes(request.method)?{body:Buffer.concat(parts)}:{})});
+    response.writeHead(upstream.status,Object.fromEntries(upstream.headers));response.end(Buffer.from(await upstream.arrayBuffer()));return;
+  }
   const result=await serveApp(new Request(`banger://app${request.url}`),resolve('../www/out'));
   const headers=Object.fromEntries(result.headers);headers['content-security-policy']=headers['content-security-policy'].replace("connect-src 'self'",`connect-src 'self' http://127.0.0.1:${api.address().port} https://vercel.com`);response.writeHead(result.status,headers);
   let content=Buffer.from(await result.arrayBuffer());
@@ -84,9 +90,8 @@ async function run(){
  try{
   await window.loadURL(`http://127.0.0.1:${web.address().port}`);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(cloud){
-   await wait("document.querySelector('details.project-workspace input[type=url]')");await evaluate("document.querySelector('details.project-workspace').open=true");
-   await fill('details.project-workspace input[type=url]',`http://127.0.0.1:${api.address().port}`);await fill('details.project-workspace input[type=password]','fixture-token');await click('Connect cloud projects');
-   await wait("document.querySelector('details.project-workspace select')");await fill('details.project-workspace select',projectId);
+   await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
+   await wait("document.querySelector('details.project-workspace select')");
   }
   await click('ElevenLabs');await wait("document.querySelector('#studio-tab-elevenlabs').getAttribute('aria-selected')==='true'");
   assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),true);

@@ -18,9 +18,10 @@ const api=createServer(async(request,response)=>{
   response.setHeader('Access-Control-Allow-Methods','GET, POST, PATCH, OPTIONS');
   response.setHeader('Content-Type','application/json');
   if(request.method==='OPTIONS'){response.end();return;}
-  assert.equal(request.headers.authorization,'Bearer fixture-token');
+  assert.equal(request.headers.authorization,undefined,'Browser API requests use the same-origin session, not a pasted bearer token.');
   const url=new URL(request.url,'http://localhost');
   const json=(body,status=200)=>{response.statusCode=status;response.end(JSON.stringify(body));};
+  if(url.pathname==='/api/session'){json({authenticated:true,signInEnabled:true,services:{storage:true}});return;}
   if(url.pathname==='/api/projects'){json({projects:[{id:projectId,name:'Cloud fixture',revision}]});return;}
   if(url.pathname.endsWith('/music')){json({music:[]});return;}
   if(url.pathname.endsWith('/jobs')){json({jobs:[]});return;}
@@ -34,6 +35,11 @@ const api=createServer(async(request,response)=>{
   json({projectId,name:'Cloud fixture',revision,files:Number(url.searchParams.get('since'))===revision?[]:[{path:'song.banger',source:saved}],deleted:[]});
 });
 const web=createServer(async(request,response)=>{
+  if(request.url.startsWith('/api/')){
+    const parts=[];for await(const part of request)parts.push(part);
+    const upstream=await fetch(`http://127.0.0.1:${api.address().port}${request.url}`,{method:request.method,headers:request.headers,...(!['GET','HEAD'].includes(request.method)?{body:Buffer.concat(parts)}:{})});
+    response.writeHead(upstream.status,Object.fromEntries(upstream.headers));response.end(Buffer.from(await upstream.arrayBuffer()));return;
+  }
   const result=await serveApp(new Request(`banger://app${request.url}`),resolve('../www/out'));
   const headers=Object.fromEntries(result.headers);headers['content-security-policy']=headers['content-security-policy'].replace("connect-src 'self'",`connect-src 'self' http://127.0.0.1:${api.address().port}`);response.writeHead(result.status,headers);response.end(Buffer.from(await result.arrayBuffer()));
 });
@@ -50,11 +56,9 @@ try {
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   await wait("document.querySelector('details.project-workspace')");
   await evaluate("window.confirm=()=>true;document.querySelector('details.project-workspace').open=true");
-  await fill('details.project-workspace input[type=url]',`http://127.0.0.1:${api.address().port}`);
-  await fill('details.project-workspace input[type=password]','fixture-token');
-  await click('Connect cloud projects');console.log('Connecting cloud fixture');
+  assert.equal(await evaluate("document.querySelector('details.project-workspace input[type=url]')"),null);
   await wait("document.querySelector('details.project-workspace select')");
-  await fill('details.project-workspace select',projectId);
+
   await wait("document.querySelector('#cloud-source')?.value.includes('tempo 120')");
   await fill('#cloud-source',source.replace('120','100'));
   revision=2;saved=source.replace('120','90');

@@ -39,10 +39,10 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
         const session=await cloudRequest<{authenticated:boolean;signInEnabled:boolean;services:{storage:boolean}}>({url:''},'/session');
         if(cancelled)return;setSignInEnabled(session.signInEnabled);setStorageReady(session.services.storage);
         if(session.authenticated){
-          setConnection({url:''});
           if(session.services.storage){const list=await cloudRequest<{projects:typeof projects}>({url:''},'/projects');if(cancelled)return;setProjects(list.projects);
             if(list.projects[0]){const next=await cloudRequest<CloudSnapshot>({url:''},`/projects/${list.projects[0].id}`);if(!cancelled)adopt(next);}
           }else setNotice('Project storage is being configured. You can still use the local studio.');
+          if(!cancelled)setConnection({url:''});
         }
       }catch(error){if(!cancelled)setNotice(message(error));}finally{if(!cancelled)setChecking(false);}
     })();return()=>{cancelled=true;};

@@ -126,7 +126,7 @@ async function route(request:Request,context:{params:Promise<{path:string[]}>}) 
     else { console.error('API request failed', error instanceof Error ? error.name : 'UnknownError'); response=json({error:'The service could not complete the request.'},500); }
   }
   response.headers.set('Cache-Control','private, no-store'); response.headers.set('Vary','Origin');
-  if (origin && (same || allowed.includes(origin))) { response.headers.set('Access-Control-Allow-Origin',origin); response.headers.set('Access-Control-Allow-Headers','Authorization, Content-Type'); response.headers.set('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, OPTIONS'); }
+  if (origin && (same || allowed.includes(origin))) { response.headers.set('Access-Control-Allow-Origin',origin); response.headers.set('Access-Control-Allow-Headers','Authorization, Content-Type'); response.headers.set('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, DELETE, OPTIONS'); }
   return response;
 }
-export {route as GET,route as POST,route as PATCH,route as PUT,route as OPTIONS};
+export {route as GET,route as POST,route as PATCH,route as PUT,route as DELETE,route as OPTIONS};

@@ -15,11 +15,23 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   await new Promise<void>(resolve=>jwks.listen(0,'127.0.0.1',resolve));
   const available=createServer();await new Promise<void>(resolve=>available.listen(0,'127.0.0.1',resolve));
   const port=(available.address() as {port:number}).port;await new Promise<void>(resolve=>available.close(()=>resolve()));
-  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,NODE_ENV:'production',ELEVENLABS_API_KEY:'',AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'},stdio:['ignore','pipe','pipe']});
+  const webPassword=randomUUID()+randomUUID();
+  const webOrigin=`http://127.0.0.1:${port}`;
+  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,NODE_ENV:'production',APP_ORIGIN:webOrigin,BANGER_WEB_PASSWORD:webPassword,BANGER_SESSION_SECRET:randomUUID()+randomUUID(),BANGER_WEB_USER:user,ELEVENLABS_API_KEY:'',AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'},stdio:['ignore','pipe','pipe']});
   let output='';child.stdout.on('data',data=>{output+=data;});child.stderr.on('data',data=>{output+=data;});
   t.after(async()=>{child.kill('SIGTERM');await new Promise<void>(resolve=>jwks.close(()=>resolve()));await db().end();});
   for(let tries=0;tries<100;tries++){if(output.includes('Ready'))break;if(child.exitCode!==null)throw new Error(output);await new Promise(resolve=>setTimeout(resolve,100));}
   assert.match(output,/Ready/);
+  const page=await fetch(webOrigin);assert.equal(page.status,200);const html=await page.text();assert.match(html,/studio-tab-elevenlabs/);assert.ok(!html.includes(webPassword));
+  assert.equal((await fetch(`${webOrigin}/banger-sidechain.js`)).status,200);
+  assert.equal((await(await fetch(`${webOrigin}/api/session`)).json()).authenticated,false);
+  const login=await fetch(`${webOrigin}/api/session`,{method:'POST',headers:{Origin:webOrigin,'Content-Type':'application/json'},body:JSON.stringify({password:webPassword})});
+  assert.equal(login.status,200);const cookie=login.headers.get('set-cookie')!;assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);
+  const sessionHeaders={Cookie:cookie.split(';')[0]!};
+  assert.equal((await(await fetch(`${webOrigin}/api/session`,{headers:sessionHeaders})).json()).authenticated,true);
+  const ownProjects=await fetch(`${webOrigin}/api/projects`,{headers:sessionHeaders});assert.equal(ownProjects.status,200);assert.ok((await ownProjects.json()).projects.some((p:{id:string})=>p.id===project.projectId));
+  for(const origin of [undefined,'https://attacker.example.test'])assert.equal((await fetch(`${webOrigin}/api/projects`,{method:'POST',headers:{...sessionHeaders,...(origin?{Origin:origin}:{}),'Content-Type':'application/json'},body:'{}'})).status,403);
+  const logout=await fetch(`${webOrigin}/api/session`,{method:'DELETE',headers:{...sessionHeaders,Origin:webOrigin}});assert.equal(logout.status,200);assert.match(logout.headers.get('set-cookie')!,/Max-Age=0/);
   const token=await new SignJWT({}).setProtectedHeader({alg:'RS256',kid:'http'}).setIssuer('http-test').setAudience('banger').setSubject(user).setExpirationTime('5m').sign(privateKey);
   const request=(path:string,method='GET',input?:unknown,headers:Record<string,string>={})=>fetch(`http://127.0.0.1:${port}/api${path}`,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...headers},...(input?{body:JSON.stringify(input)}:{})});
   assert.equal((await fetch(`http://127.0.0.1:${port}/api/projects`)).status,401);

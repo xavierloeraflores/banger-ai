@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3001",
+    "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start --port 3001",
+    "start": "cross-env NODE_ENV=production next start --hostname 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "pnpm sandbox:bundle && tsx --test test/*.test.ts",
