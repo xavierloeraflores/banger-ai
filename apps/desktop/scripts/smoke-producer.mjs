@@ -92,18 +92,29 @@ export async function smokeProducer(window, directory) {
   assert.deepEqual(initial.map(track => track.steps.length), [16, 16, 16, 16]);
   assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "120");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
-  const originalLevels = await evaluate("[...document.querySelectorAll('.producer-track-mix input')].map(input => input.value)");
+  assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 0, 'Track editors start collapsed.');
+  assert.equal(await evaluate("document.querySelectorAll('.producer-song-tools details[open]').length"), 0, 'Song tools start collapsed.');
+  assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 52)"), 'Collapsed tracks form a compact rack.');
+  await click('[aria-label="Edit kick"]');
+  await waitFor("document.querySelector('[aria-label=\"kick gain\"]').checkVisibility()", 'track controls expand');
+  await click('[aria-label="Edit bass"]');
+  assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 1, 'Only one track editor opens at a time.');
+  await click('[aria-label="Close bass editor"]');
+  assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), 'Edit bass', 'Closing restores focus to the track.');
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource, 'Opening editors does not edit the project.');
+
+  const originalLevels = await evaluate("[...document.querySelectorAll('.producer-track-gain input')].map(input => input.value)");
   for (const name of ["kick", "snare"]) {
     await click(`[aria-label="Mute ${name}"]`);
     await waitFor(`document.querySelector('[aria-label="Mute ${name}"]')?.getAttribute('aria-pressed') === 'true'`, `${name} muted`);
-    assert.equal(await evaluate(`document.querySelector('[aria-label="Mute ${name}"]').textContent`), "Unmute");
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Mute ${name}"]').title`), `Unmute ${name}`);
   }
   await click('[aria-label="Mute kick"]');
   await waitFor(`document.querySelector('[aria-label="Mute kick"]')?.getAttribute('aria-pressed') === 'false'`, "kick unmuted");
   assert.equal(await evaluate(`document.querySelector('[aria-label="Mute snare"]').getAttribute('aria-pressed')`), "true", "Unmuting one track must leave another muted.");
   await click('[aria-label="Mute snare"]');
   await waitFor(`document.querySelector('[aria-label="Mute snare"]')?.getAttribute('aria-pressed') === 'false'`, "snare unmuted");
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-track-mix input')].map(input => input.value)"), originalLevels, "Mute toggles must preserve every volume slider.");
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-track-gain input')].map(input => input.value)"), originalLevels, "Mute toggles must preserve every volume slider.");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource, "Mute toggles must preserve saved track gains.");
   assert.equal(initial[0].steps[1], "false");
   await click('.producer-track:first-child .producer-step:nth-child(2)');

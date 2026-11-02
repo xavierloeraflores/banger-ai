@@ -7,7 +7,7 @@ export function SongArrangement({ program, disabled, section, onChange }: { prog
   const timeline = program.timeline ?? [];
   const [chosen, setChosen] = useState("");
   const update = (index: number, next: MusicSection) => onChange({ ...program, sections: sections.map((item, i) => i === index ? next : item) });
-  return <details className="studio-arrangement" open>
+  return <details className="studio-arrangement">
     <summary>Song arrangement · {programDurationBeats(program) / 4} bars</summary>
     <fieldset disabled={disabled}>
       <p>Sections choose which track patterns play. Add sections to the timeline to build the song.</p>

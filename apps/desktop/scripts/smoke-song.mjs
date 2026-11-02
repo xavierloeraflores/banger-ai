@@ -43,6 +43,7 @@ async function run(window) {
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     assert.equal(await evaluate('typeof window.bangerProjects'), web ? 'undefined' : 'object');
     await apply('tempo 240; track kick { sound "drums/kick"; rhythm "x . x ."; gain .5; } track keys { instrument "synth/keys"; bars 2; piano { note "C4" start 0 duration 1 velocity .7; note "G4" start 5 duration 1 velocity .6; } gain .4; }');
+    await click('Edit keys');
     const base = (await program()).tracks[1].pianoRoll;
     await text('Duplicate pattern', "document.querySelectorAll('.producer-track')[1]");
     assert.equal((await program()).tracks[1].patterns[0].bars, 2);
@@ -54,6 +55,7 @@ async function run(window) {
     assert.equal((await program()).tracks[1].patterns[0].pianoRoll[1].start, 5, 'Late phrase note survives.');
     await text('Quantize notes', "document.querySelectorAll('.producer-track')[1]");
     await set('keys timing quantize', .25, 'HTMLSelectElement'); await set('keys swing', .2); await set('keys humanize', .025); await set('keys humanize seed', 97);
+    await evaluate("document.querySelector('.studio-arrangement summary').click()");
     await text('+ Add section'); await set('section_1 section bars', 3); await set('section_1 keys pattern', 'pattern:pattern_1', 'HTMLSelectElement'); await text('Append section');
     await text('+ Add section'); await set('section_2 section bars', 1); await set('Section to append', 'section_2', 'HTMLSelectElement'); await text('Append section');
     await set('Timeline 1 repeats', 2);
@@ -116,6 +118,7 @@ async function run(window) {
     await evaluate("document.querySelector('.studio-arrangement').scrollIntoView({block:'start'})");
     await delay(150);
     await writeFile('/tmp/banger-song-studio.png', (await window.webContents.capturePage()).toPNG());
+    await click('Edit keys');
     await evaluate("document.querySelectorAll('.piano-roll')[0].scrollIntoView({block:'center'})");
     await delay(150);
     await writeFile('/tmp/banger-song-piano.png', (await window.webContents.capturePage()).toPNG());
