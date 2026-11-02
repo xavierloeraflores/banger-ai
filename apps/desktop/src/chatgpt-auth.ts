@@ -1,3 +1,5 @@
+import { ChatGPTError } from "./chatgpt-errors.js";
+export { ChatGPTError, publicChatGPTError } from "./chatgpt-errors.js";
 import { randomUUID } from "node:crypto";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -32,13 +34,13 @@ export async function completedResponse(response: Response): Promise<unknown> {
   function event(block: string) {
     const data = block.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
     if (!data || data === "[DONE]") return;
-    const value = JSON.parse(data) as { type?: string; response?: { status?: string; error?: { code?: string } } };
+    const value = JSON.parse(data) as { type?: string; code?: string; response?: { status?: string; error?: { code?: string } } };
     if (value.type === "error" || value.type === "response.failed" || value.type === "response.incomplete") {
-      const code = value.response?.error?.code;
+      const code = value.response?.error?.code ?? value.code;
       if (code === "subscription_sharing_usage_limit_exceeded" || code === "subscription_sharing_usage_unavailable") {
-        throw new Error("ChatGPT plan usage is unavailable or at its limit. Review ChatGPT Settings → Usage, then try again.");
+        throw new ChatGPTError("usage");
       }
-      throw new Error("ChatGPT could not complete this response. Try again.");
+      throw new ChatGPTError("incomplete");
     }
     if (value.type === "response.completed") {
       if (!value.response || value.response.status !== "completed") throw new Error("ChatGPT returned an invalid completion.");
@@ -55,7 +57,7 @@ export async function completedResponse(response: Response): Promise<unknown> {
       if (done) break;
     }
     if (pending.trim()) event(pending);
-    if (!completed) throw new Error("ChatGPT disconnected before completing the response. Try again.");
+    if (!completed) throw new ChatGPTError("interrupted");
     return output;
   } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
 }
@@ -110,8 +112,20 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
     if (!sharing(account)) throw new Error("Allow Banger to use your ChatGPT plan when signing in.");
     if (account.tokens.expiresAt <= Date.now() + 60_000) {
       if (!account.tokens.refreshToken) throw new Error("Your ChatGPT session expired. Sign in again.");
-      const raw = await exchangeToken(new URLSearchParams({ grant_type: "refresh_token", client_id: account.clientId,
-        refresh_token: account.tokens.refreshToken, resource: RESOURCE }), fetcher);
+      let raw: unknown;
+      try {
+        raw = await exchangeToken(new URLSearchParams({ grant_type: "refresh_token", client_id: account.clientId,
+          refresh_token: account.tokens.refreshToken, resource: RESOURCE }), fetcher);
+      } catch (error) {
+        if (error instanceof ChatGPTError && error.code === "reauthorize") {
+          // An invalid grant cannot be retried. Retain the registration for reauthorization.
+          delete account.tokens;
+          account.models = [];
+          if (saved.activeAccountId === account.id) saved.selected = false;
+          await persist(saved);
+        }
+        throw error;
+      }
       const next = parseTokens(raw, account.tokens);
       if (next.idToken && next.idToken !== account.tokens.idToken) {
         const identity = await (options.verify ?? verifyIdentity)(next.idToken, account.clientId);
@@ -246,7 +260,17 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
           const response = await fetcher(`${RESOURCE}/responses`, { ...init, headers,
             body: JSON.stringify({ ...body, store: false, stream: true }), redirect: "error",
             signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000), ...(init.signal ? [init.signal] : [])]) });
-          if (!response.ok) return response;
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null) as { error?: { code?: string } } | null;
+            const code = payload?.error?.code;
+            const diagnostics = { status: response.status, providerCode: code,
+              requestId: response.headers.get("x-request-id") ?? response.headers.get("openai-request-id") ?? undefined };
+            if (code === "subscription_sharing_unsupported_capability") throw new ChatGPTError("unsupported", diagnostics);
+            if (code === "subscription_sharing_usage_unavailable" || response.status === 429) throw new ChatGPTError("usage", diagnostics);
+            if (response.status === 401) throw new ChatGPTError("reauthorize", diagnostics);
+            if (response.status === 403) throw new ChatGPTError("access", diagnostics);
+            throw new ChatGPTError("unavailable", diagnostics);
+          }
           const output = await completedResponse(response);
           return new Response(JSON.stringify(output), { status: 200, headers: { "Content-Type": "application/json" } });
         } finally { requests.delete(controller); }
