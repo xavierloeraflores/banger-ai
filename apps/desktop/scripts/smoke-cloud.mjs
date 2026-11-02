@@ -22,6 +22,7 @@ const api=createServer(async(request,response)=>{
   const url=new URL(request.url,'http://localhost');
   const json=(body,status=200)=>{response.statusCode=status;response.end(JSON.stringify(body));};
   if(url.pathname==='/api/projects'){json({projects:[{id:projectId,name:'Cloud fixture',revision}]});return;}
+  if(url.pathname.endsWith('/music')){json({music:[]});return;}
   if(url.pathname.endsWith('/jobs')){json({jobs:[]});return;}
   if(url.pathname.endsWith('/artifacts')){json({artifacts:[]});return;}
   if(request.method==='PATCH'){

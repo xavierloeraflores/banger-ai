@@ -22,7 +22,9 @@
     "smoke:local": "electron scripts/smoke-local.mjs",
     "smoke:song": "electron scripts/smoke-song.mjs",
     "smoke:song:web": "electron scripts/smoke-song.mjs --web",
-    "smoke:cloud": "electron scripts/smoke-cloud.mjs"
+    "smoke:cloud": "electron scripts/smoke-cloud.mjs",
+    "smoke:music": "electron scripts/smoke-music.mjs",
+    "smoke:music:web": "electron scripts/smoke-music.mjs --web"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",

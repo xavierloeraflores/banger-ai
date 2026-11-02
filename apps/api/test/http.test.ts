@@ -37,4 +37,16 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   for(let tries=0;tries<50;tries++){const current=await (await request(`/jobs/${job.id}`)).json();if(current.status==='awaiting_provider')break;await new Promise(resolve=>setTimeout(resolve,100));}
   const pending=await (await request(`/jobs/${job.id}`)).json();assert.equal(pending.status,'awaiting_provider');assert.equal(pending.progress,0);
   const replay=await (await request(`/projects/${project.projectId}/jobs`,'POST',submission)).json();assert.equal(replay.id,job.id);
+  const musicId=randomUUID(),version={id:musicId,version:1,name:'Song',songId:'provider-song',plan:{chunks:[{text:'[Verse]\nWords',durationMs:4000,positiveStyles:['piano']}]},audioId:artifact,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
+  await db().query('INSERT INTO music_sessions(id,project_id,source_artifact_id,revision,current_version) VALUES($1,$2,$3,1,$4)',[musicId,project.projectId,artifact,version]);
+  await db().query('INSERT INTO music_versions(music_id,revision,document_path,document) VALUES($1,1,$2,$3)',[musicId,`fixture/${musicId}`,version]);
+  assert.deepEqual(await (await request(`/music/${musicId}`)).json(),version);
+  assert.equal((await (await request(`/projects/${project.projectId}/music`)).json()).music[0].id,musicId);
+  assert.equal((await (await request(`/music/${musicId}/versions`)).json()).versions[0].document.version,1);
+  assert.equal((await request(`/music/${musicId}/actions`,'POST',{idempotencyKey:randomUUID(),action:{operation:'generate',baseVersion:2,indices:[0]}})).status,409);
+  assert.equal((await request(`/music/${musicId}/actions`,'POST',{idempotencyKey:randomUUID(),action:{operation:'generate',baseVersion:1,indices:[20]}})).status,400);
+  const musicJob=await request(`/music/${musicId}/actions`,'POST',{idempotencyKey:randomUUID(),action:{operation:'lyrics',baseVersion:1,indices:[0],prompt:'hope'}});assert.equal(musicJob.status,202);
+  const stranger=await new SignJWT({}).setProtectedHeader({alg:'RS256',kid:'http'}).setIssuer('http-test').setAudience('banger').setSubject('stranger').setExpirationTime('5m').sign(privateKey);
+  assert.equal((await request(`/music/${musicId}`,'GET',undefined,{Authorization:`Bearer ${stranger}`})).status,404);
+
 });

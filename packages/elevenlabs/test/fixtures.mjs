@@ -8,5 +8,5 @@ export function wav(){
 }
 export function fixtureProvider(){
  const calls={analyze:0,lyrics:0,generate:0};
- return {calls,async analyze(){calls.analyze++;return {songId:'original-song',plan:globalThis.structuredClone(fixturePlan)};},async lyrics(plan,_prompt,indices){calls.lyrics++;const next=globalThis.structuredClone(plan);for(const index of indices)next.chunks[index].text='[Chorus]\nThe morning lights our way';return next;},async generate(version){calls.generate++;return {songId:`generated-${calls.generate}`,plan:globalThis.structuredClone(version.plan),providerPlan:globalThis.structuredClone(version.plan),audio:Buffer.from('ID3fixture-audio')};}};
+ return {calls,async analyze(){calls.analyze++;return {songId:'original-song',plan:globalThis.structuredClone(fixturePlan)};},async lyrics(plan,_prompt,indices){calls.lyrics++;const next=globalThis.structuredClone(plan);for(const index of indices)next.chunks[index].text=next.chunks[index].text.split('\n')[0]+'\nThe morning lights our way';return next;},async generate(version){calls.generate++;return {songId:`generated-${calls.generate}`,plan:globalThis.structuredClone(version.plan),providerPlan:globalThis.structuredClone(version.plan),audio:Buffer.from('ID3fixture-audio')};}};
 }

@@ -32,9 +32,9 @@ const musicObjects:MusicObjects={
 export async function runElevenStep(job: Job, injected?: MusicProvider, objects:MusicObjects=musicObjects) {
   const input=elevenInput.parse(job.input);
   const key=process.env.ELEVENLABS_API_KEY;
-  if(!injected && !key) {await checkpoint(job,'awaiting-provider',0,{},'awaiting_provider',null,'Set ELEVENLABS_API_KEY on the backend to process this song.');return;}
-  const provider=injected ?? new ElevenMusic(key!);
   const analyze='artifactId' in input;
+  if(!injected && !key && (analyze || input.action.operation!=='edit')) {await checkpoint(job,'awaiting-provider',0,{},'awaiting_provider',null,'Set ELEVENLABS_API_KEY on the backend to process this song.');return;}
+  const provider=()=>injected ?? new ElevenMusic(key!);
   const session=analyze ? undefined : await getMusic(job.user_id,input.musicId);
   const source=await getArtifact(job.user_id,analyze?input.artifactId:session!.source_artifact_id,true);
   if(source.project_id!==job.project_id || source.status!=='ready')throw new ApiError(400,'The source WAV is unavailable.');
@@ -53,7 +53,7 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
       let output:Uint8Array|undefined;
       if(analyze) {
         const audio=await objects.read(source.pathname);
-        const result=await provider.analyze(audio,'source.wav');
+        const result=await provider().analyze(audio,'source.wav');
         version={id:musicId,version:1,name:'Uploaded song',songId:result.songId,plan:result.plan,audioId:source.id,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
       } else {
         const result=await performMusicAction(provider,session!.current_version!,input.action,job.id);version=result.version;output=result.audio;

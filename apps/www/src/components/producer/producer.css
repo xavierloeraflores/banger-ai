@@ -393,3 +393,8 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .project-workspace ul { max-height: 28rem; overflow: auto; padding-left: 1.25rem; }
 .project-workspace li { margin-block: .6rem; }
 .project-workspace li button { margin-inline: .3rem; }
+.music-workshop audio { display: block; width: min(100%, 40rem); margin-block: 1rem; }
+.music-chunks { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,24rem),1fr)); gap: 1rem; margin-block: 1rem; }
+.music-chunk { border: 1px solid #343745; border-radius: .6rem; padding: 1rem; }
+.music-chunk input[type=checkbox] { display: inline-block; width: auto; margin-right: .5rem; }
+.music-chunk textarea { min-height: 8rem; }

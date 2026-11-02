@@ -86,12 +86,13 @@ pnpm fullbuild
 pnpm --filter @banger/elevenlabs test
 pnpm --filter @banger/desktop test
 pnpm --filter @banger/desktop smoke:music
+pnpm --filter @banger/desktop smoke:music:web
 pnpm --filter @banger/desktop smoke:cloud
 pnpm --filter @banger/desktop smoke
 pnpm verify:audio
 ```
 
-API tests cover PostgreSQL concurrency and permissions, JWT verification, upload authorization, job leases, and a bundled harness editing a real local filesystem with a fixture model. The cloud browser smoke uses an HTTP API fixture and renders a real WAV. These checks do not substitute for a deployment test against Vercel Sandbox and private Blob with production credentials.
+API tests cover PostgreSQL concurrency and permissions, JWT verification, upload authorization, job leases, and a bundled harness editing a real local filesystem with a fixture model. The music smoke tests use fixture provider responses, decode and play a synthesized MP3, and verify byte-exact downloads in desktop and browser modes. The cloud browser smoke uses an HTTP API fixture and renders a real WAV. These checks do not substitute for a deployment test against Vercel Sandbox and private Blob with production credentials.
 
 ## Local desktop music
 

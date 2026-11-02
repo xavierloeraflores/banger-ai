@@ -1,5 +1,6 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {MusicWorkshop} from './music-workshop';
 import {compileMusic} from '@banger/compiler';
 import {Button} from '@banger/shadcn';
 import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnection,type CloudJob,type CloudSnapshot} from '@/lib/cloud-projects';
@@ -28,6 +29,8 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
   const pollBusy=useRef(false);
   useEffect(()=>{current.current={snapshot,path,source,draftBase};},[snapshot,path,source,draftBase]);
   const projectId=snapshot?.projectId;
+  const revision=snapshot?.revision;
+  const cloudMusicContext=useMemo(()=>connection&&projectId&&revision!==undefined?{...connection,projectId,revision}:undefined,[connection,projectId,revision]);
   const file=snapshot?.files.find(file=>file.path===path);
   const dirty=draftBase !== null;
   useEffect(()=>()=>{if(playing) URL.revokeObjectURL(playing);},[playing]);
@@ -96,6 +99,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
         <option value="">Choose project</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}
       </select></label>
       {snapshot && <>
+        <MusicWorkshop cloud={cloudMusicContext} studioFile={studioFile}/>
         <p>Saved revision {snapshot.revision}{dirty ? ` · Draft based on revision ${draftBase}` : ''}</p>
         <label>Cloud music file<select disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
           <option value="" disabled>Choose a file</option>{snapshot.files.map(file=><option key={file.path}>{file.path}</option>)}
@@ -120,7 +124,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
           <Button type="submit" disabled={busy || dirty || !prompt.trim()}>Run cloud agent</Button>
         </form>
         <ul aria-label="Cloud jobs">{jobs.map(job=><li key={job.id}>
-          {job.kind === 'agent' ? 'Project agent' : 'ElevenLabs'}: {job.status === 'awaiting_provider' ? 'Awaiting provider integration' : job.stage} <progress max={100} value={job.progress} aria-label={`${job.kind} progress`} /> {job.progress}%
+          {job.kind === 'agent' ? 'Project agent' : 'ElevenLabs'}: {job.status === 'awaiting_provider' ? 'ElevenLabs configuration required' : job.stage} <progress max={100} value={job.progress} aria-label={`${job.kind} progress`} /> {job.progress}%
           {job.error && <p>{job.error}</p>}
           {job.activity.length>0 && <details><summary>Agent activity</summary><ol>{job.activity.map((entry,index)=><li key={index}>{entry}</li>)}</ol></details>}
           {job.result?.candidateAvailable && <Button disabled={busy} onClick={()=>{if(!discard())return;void action(async()=>{
@@ -128,12 +132,12 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
             const blob=new Blob([JSON.stringify(candidate,null,2)],{type:'application/json'});const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='agent-candidate.json';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),60000);
             setNotice('Downloaded the agent candidate files for comparison. The saved revision is unchanged.');
           });}}>Download conflicting agent files</Button>}
-          {job.status==='awaiting_provider' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/jobs/${job.id}/resume`,'POST',{});setNotice('Checking provider availability.');})}>Check provider availability</Button>}
+          {job.status==='awaiting_provider' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/jobs/${job.id}/resume`,'POST',{});setNotice('Checking provider availability.');})}>Retry after configuring ElevenLabs</Button>}
         </li>)}</ul>
         <ul aria-label="Cloud audio">{artifacts.map(artifact=><li key={artifact.id}>{artifact.kind} · revision {artifact.revision} · {artifact.status}
           {artifact.status==='ready' && <><Button disabled={busy} onClick={()=>void action(async()=>setPlaying(await audioUrl(connection,artifact.id)))}>Listen</Button>
             <Button disabled={busy} onClick={()=>void action(async()=>{const link=document.createElement('a');link.href=await audioUrl(connection,artifact.id);link.download=`${artifact.id}.${artifact.kind==='wav'?'wav':'audio'}`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),60000);})}>Download audio</Button>
-            {artifact.kind==='wav' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/projects/${snapshot.projectId}/jobs`,'POST',{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('Submission saved. ElevenLabs processing will be available when its integration is added.');})}>Submit to ElevenLabs</Button>}
+            {artifact.kind==='wav' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/projects/${snapshot.projectId}/jobs`,'POST',{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('WAV submitted for composition analysis. Open the ElevenLabs song workshop to edit its lyrics.');})}>Submit to ElevenLabs</Button>}
           </>}
         </li>)}</ul>
         {playing && <audio controls src={playing} aria-label="Cloud audio preview" />}

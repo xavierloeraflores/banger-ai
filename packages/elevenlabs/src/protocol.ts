@@ -56,3 +56,9 @@ export function inpaintingPlan(version: MusicVersion, indices: number[]): Provid
     return indices.includes(index) ? structuredClone(chunk) : { songId: version.songId, range };
   }) };
 }
+
+export function validateMusicAction(version:MusicVersion, action:MusicAction) {
+  if(version.version!==action.baseVersion)throw new Error('This composition changed. Reload it before editing.');
+  if(action.operation==='edit')applyLyrics(version.plan,action.edits);
+  else validateIndices(version.plan,action.indices);
+}

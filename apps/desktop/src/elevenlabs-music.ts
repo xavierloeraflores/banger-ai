@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
+import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, validateMusicAction, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
 export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? '')) {
   let queue:Promise<unknown>=Promise.resolve();
@@ -85,7 +85,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
       uuid(key);const action=musicActionSchema.parse(input),hash=fingerprint({id,action});
       const existing=await prior(key,hash);if(existing)return existing;
       const base=await get(id);
-      if(base.version!==action.baseVersion)throw new Error('This composition changed. Reload it before editing.');
+      validateMusicAction(base,action);
       return launch(id,key,()=>performMusicAction(provider,base,action,key),base.version,hash,action.operation!=='edit');
     },
     async audio(id:string,version?:number){

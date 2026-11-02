@@ -22,6 +22,7 @@ import { AutomationEditor } from "./automation-editor";
 import { TrackRouting, LevelMeter } from "./mixer-routing";
 import { MixerView } from "./mixer-view";
 import { AudioExport } from "./audio-export";
+import { MusicWorkshop } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
 import type { CloudBinding } from "@/lib/cloud-projects";
 import { SoundDesign } from "./sound-design";
@@ -462,6 +463,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
         <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
           {view === "byok" && <ByokSettings />}
         </div>
+        <MusicWorkshop studioFile={{ name: fileName, source }} />
         <CloudProjectWorkspace studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
           if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
           loadGeneratedFile(file, sourceRevision); setCloudBinding(binding);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { musicActionSchema } from "@banger/elevenlabs/protocol";
+import { musicActionSchema, validateMusicAction } from "@banger/elevenlabs/protocol";
 import { db, transaction } from "./db";
 import { authorize } from "./projects";
 import { ApiError, id, pathSchema } from "./domain";
@@ -34,9 +34,10 @@ export async function enqueue(user: string, project: string, kind: Job["kind"], 
         const artifact = await client.query("SELECT 1 FROM artifacts WHERE id=$1 AND project_id=$2 AND kind='wav' AND status='ready'", [eleven.artifactId, project]);
         if (!artifact.rowCount) throw new ApiError(400, "Choose an uploaded WAV from this project.");
       } else {
-        const music = (await client.query("SELECT revision FROM music_sessions WHERE id=$1 AND project_id=$2", [eleven.musicId,project])).rows[0];
+        const music = (await client.query("SELECT revision,current_version FROM music_sessions WHERE id=$1 AND project_id=$2", [eleven.musicId,project])).rows[0];
         if (!music) throw new ApiError(404, "Music session not found.");
         if (music.revision !== eleven.action.baseVersion) throw new ApiError(409, "This song changed. Reload its composition plan.");
+        try{validateMusicAction(music.current_version,eleven.action);}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid composition action.');}
         const pending = await client.query("SELECT 1 FROM jobs WHERE project_id=$1 AND input->>'musicId'=$2 AND status IN ('queued','running') LIMIT 1", [project,eleven.musicId]);
         if (pending.rowCount) throw new ApiError(409, "Wait for the current song operation to finish.");
       }

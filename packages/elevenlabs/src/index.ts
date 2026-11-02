@@ -19,17 +19,27 @@ export function validateWav(bytes: Uint8Array, forMusic = true) {
   if (bytes.byteLength < 44 || bytes.byteLength > MAX_WAV_BYTES) throw new Error('Choose a WAV between 44 bytes and 100 MiB.');
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (buffer.toString('ascii',0,4) !== 'RIFF' || buffer.toString('ascii',8,12) !== 'WAVE' || buffer.readUInt32LE(4) + 8 !== buffer.length) throw new Error('Choose a complete RIFF/WAVE file.');
-  let format = false, durationMs = 0, bytesPerSecond = 0;
+  let format = false, durationMs = 0, bytesPerSecond = 0, blockAlign=0;
   for (let offset = 12; offset + 8 <= buffer.length;) {
     const kind = buffer.toString('ascii',offset,offset+4), size = buffer.readUInt32LE(offset+4), start = offset+8;
     if (start + size > buffer.length) throw new Error('The WAV contains a truncated chunk.');
     if (kind === 'fmt ') {
-      if (size < 16 || ![1,3,65534].includes(buffer.readUInt16LE(start))) throw new Error('Use an uncompressed PCM or float WAV.');
-      const channels=buffer.readUInt16LE(start+2), rate=buffer.readUInt32LE(start+4);
+      if (format || size < 16) throw new Error('Invalid WAV format chunk.');
+      let encoding=buffer.readUInt16LE(start);
+      if (encoding===65534) {
+        if(size<40 || buffer.readUInt16LE(start+16)<22 || buffer.subarray(start+28,start+40).toString('hex')!=='00001000800000aa00389b71')throw new Error('Unsupported extensible WAV format.');
+        encoding=buffer.readUInt32LE(start+24);
+      }
+      if(![1,3].includes(encoding))throw new Error('Use an uncompressed PCM or float WAV.');
+      const channels=buffer.readUInt16LE(start+2),rate=buffer.readUInt32LE(start+4),bits=buffer.readUInt16LE(start+14),alignment=buffer.readUInt16LE(start+12);
       if (channels<1 || channels>8 || rate<8000 || rate>192000) throw new Error('Unsupported WAV channel count or sample rate.');
-      bytesPerSecond=buffer.readUInt32LE(start+8);format=true;
+      if(!(encoding===3?[32,64]:[8,16,24,32]).includes(bits)||alignment!==channels*bits/8||buffer.readUInt32LE(start+8)!==rate*alignment)throw new Error('The WAV sample layout is inconsistent.');
+      bytesPerSecond=rate*alignment;blockAlign=alignment;format=true;
     }
-    if (kind === 'data' && format && bytesPerSecond) durationMs += size / bytesPerSecond * 1000;
+    if (kind === 'data') {
+      if(!format || size%blockAlign!==0)throw new Error('The WAV contains incomplete audio frames.');
+      durationMs += size / bytesPerSecond * 1000;
+    }
     offset=start+size+(size%2);
   }
   if (!format || durationMs<=0) throw new Error('Choose a WAV with nonempty audio data.');
