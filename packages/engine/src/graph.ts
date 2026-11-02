@@ -48,9 +48,11 @@ export class MixerGraph {
     for (const bus of program.buses ?? []) this.buses.set(bus.name, this.strip(bus.gain, bus.pan, bus.effects));
     for (const track of program.tracks) this.tracks.set(track.name, this.strip(track.gain, track.pan, track.effects));
     const destination = (name?: string): AudioNode => name ? this.buses.get(name)!.input : this.master;
+    const hasSolo = program.tracks.some(track => track.solo);
     for (const track of program.tracks) {
       const strip = this.tracks.get(track.name)!;
-      const audible = this.keep(context.createGain()); audible.gain.value = solo === undefined || solo === track.name ? 1 : 0;
+      const audible = this.keep(context.createGain());
+      audible.gain.value = !track.muted && (!hasSolo || track.solo) && (solo === undefined || solo === track.name) ? 1 : 0;
       strip.output.connect(audible).connect(destination(track.output));
       for (const send of track.sends ?? []) { const gain = this.keep(context.createGain()); gain.gain.value = send.gain; audible.connect(gain).connect(destination(send.bus)); }
     }

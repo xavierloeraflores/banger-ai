@@ -10,6 +10,7 @@ export function serializeMusic(program: MusicProgram): string {
   const pitches = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const pitch = (midi: number) => `${pitches[midi % 12]}${Math.floor(midi / 12) - 1}`;
   const lines = [`tempo ${program.tempo};`, 'meter 4/4;'];
+  if (program.chainEnabled !== undefined) lines.push(`chain ${program.chainEnabled ? 'on' : 'off'};`);
   const phrase = (pattern: Pick<MusicPattern, 'bars' | 'steps' | 'pianoRoll'>, source: MusicTrack['source'], indent: string): void => {
     if (pattern.bars !== undefined) lines.push(`${indent}bars ${pattern.bars};`);
     if (pattern.pianoRoll === undefined) {
@@ -36,6 +37,8 @@ export function serializeMusic(program: MusicProgram): string {
     }
     if (track.groove !== undefined) lines.push(`  groove { ${Object.entries(track.groove).filter(([, value]) => value !== undefined).map(([key, value]) => `${key} ${value};`).join(' ')} }`);
     if (track.output !== undefined) lines.push(`  output ${track.output};`);
+    if (track.muted !== undefined) lines.push(`  mute ${track.muted ? 'on' : 'off'};`);
+    if (track.solo !== undefined) lines.push(`  solo ${track.solo ? 'on' : 'off'};`);
     mixer(track); lines.push('}');
   }
   for (const bus of program.buses ?? []) { lines.push('', `bus ${bus.name} {`); mixer(bus); lines.push('}'); }

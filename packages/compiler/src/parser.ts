@@ -82,6 +82,13 @@ class Parser {
           this.expect(';');
           break;
         }
+        case 'chain': {
+          if (declarations.has('chain')) this.error('Chain is already declared', token);
+          declarations.add('chain');
+          const state = this.identifier();
+          if (state.text !== 'on' && state.text !== 'off') this.error('Chain must be on or off', state);
+          program.chainEnabled = state.text === 'on'; this.expect(';'); break;
+        }
         case 'meter': {
           if (declarations.has('meter')) this.error('Meter is already declared', token);
           declarations.add('meter');
@@ -261,6 +268,11 @@ class Parser {
       const property = this.identifier();
       if (!['effect', 'pattern', 'send', 'automation'].includes(property.text) && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
       seen.add(property.text);
+      if (property.text === 'mute' || property.text === 'solo') {
+        const state = this.identifier();
+        if (state.text !== 'on' && state.text !== 'off') this.error('Mute and solo must be on or off', state);
+        track[property.text === 'mute' ? 'muted' : 'solo'] = state.text === 'on'; this.expect(';'); continue;
+      }
       if (this.mixerProperty(track, property)) continue;
       switch (property.text) {
         case 'sound': case 'instrument': {

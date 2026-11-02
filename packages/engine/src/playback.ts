@@ -21,7 +21,7 @@ export class BangerPlayer {
     let position = this.positions.get(program);
     if (!position) {
       const beats = programDurationBeats(program), sections: (string | undefined)[] = [];
-      for (const entry of program.timeline ?? []) { const section = program.sections!.find(section => section.name === entry.section)!; for (let bar = 0; bar < section.bars * (entry.repeats ?? 1); bar++) sections.push(section.name); }
+      for (const entry of program.chainEnabled === false ? [] : program.timeline ?? []) { const section = program.sections!.find(section => section.name === entry.section)!; for (let bar = 0; bar < section.bars * (entry.repeats ?? 1); bar++) sections.push(section.name); }
       position = { beats, sections }; this.positions.set(program, position);
     }
     return position;

@@ -21,6 +21,8 @@ export interface MusicSection { name: string; bars: number; tracks: { track: str
 export interface TimelineEntry { section: string; repeats?: number }
 export interface ResolvedClip { track: string; pattern?: string; startBeat: number; durationBeats: number; section?: string }
 export interface MusicTrack {
+  muted?: boolean;
+  solo?: boolean;
   bars?: number;
   patterns?: MusicPattern[];
   groove?: Groove;
@@ -37,6 +39,8 @@ export interface MusicTrack {
   effects?: MusicEffect[];
 }
 export interface MusicProgram {
+  chainEnabled?: boolean;
+  activePattern?: string;
   sections?: MusicSection[];
   timeline?: TimelineEntry[];
   buses?: MusicBus[];
@@ -151,6 +155,8 @@ export function validateGroove(groove: Groove): void {
 export function validateMusicProgram(value: unknown): asserts value is MusicProgram {
   if (!value || typeof value !== 'object') fail('Expected a music program');
   const program = value as MusicProgram;
+  if (program.chainEnabled !== undefined && typeof program.chainEnabled !== 'boolean') fail('Chain enabled must be a boolean');
+  if (program.activePattern !== undefined) name(program.activePattern);
   range(program.tempo, MUSIC_LIMITS.minTempo, MUSIC_LIMITS.maxTempo, 'Tempo');
   if (program.meter?.numerator !== 4 || program.meter?.denominator !== 4) fail('Only 4/4 meter is supported');
   array(program.tracks, MUSIC_LIMITS.tracks, 'Tracks');
@@ -159,6 +165,8 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
   const buses = uniqueNames(program.buses ?? []);
   let totalNotes = 0;
   for (const track of program.tracks) {
+    if (track.muted !== undefined && typeof track.muted !== 'boolean') fail('Track mute must be a boolean');
+    if (track.solo !== undefined && typeof track.solo !== 'boolean') fail('Track solo must be a boolean');
     if (!track.source || !((track.source.kind === 'sound' && SOUND_NAMES.includes(track.source.name)) ||
       (track.source.kind === 'instrument' && INSTRUMENT_NAMES.includes(track.source.name)))) fail(`Invalid source for '${track.name}'`);
     totalNotes += validatePattern(track, track.source);
@@ -213,14 +221,14 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
     return Math.ceil(duration / patternDurationBeats(pattern)) * events;
   };
   let events = 0;
-  if (program.timeline) {
+  if (program.timeline && program.chainEnabled !== false) {
     for (const entry of program.timeline) {
       const section = program.sections!.find(section => section.name === entry.section)!;
       for (const binding of section.tracks) events += count(program.tracks.find(track => track.name === binding.track)!, binding.pattern, section.bars * 4) * (entry.repeats ?? 1);
     }
   } else {
-    const duration = Math.max(4, ...program.tracks.map(patternDurationBeats));
-    for (const track of program.tracks) events += count(track, undefined, duration);
+    const duration = Math.max(4, ...program.tracks.map(track => patternDurationBeats(resolvePattern(track, activePatternName(program, track)))));
+    for (const track of program.tracks) events += count(track, activePatternName(program, track), duration);
   }
   if (events > MUSIC_LIMITS.expandedEvents) fail(`Arrangement supports at most ${MUSIC_LIMITS.expandedEvents} expanded events`);
 }
@@ -274,8 +282,12 @@ export function resolvePattern(track: MusicTrack, patternName?: string): MusicPa
 }
 export function programDurationBeats(program: MusicProgram): number {
   validateMusicProgram(program);
-  if (!program.timeline) return Math.max(4, ...program.tracks.map(patternDurationBeats));
+  if (!program.timeline || program.chainEnabled === false) return Math.max(4, ...program.tracks.map(track => patternDurationBeats(resolvePattern(track, activePatternName(program, track)))));
   return program.timeline.reduce((sum, entry) => sum + program.sections!.find(section => section.name === entry.section)!.bars * 4 * (entry.repeats ?? 1), 0);
+}
+/** A global launch falls back to a track's base phrase when that pattern is absent. */
+export function activePatternName(program: MusicProgram, track: MusicTrack): string | undefined {
+  return track.patterns?.some(pattern => pattern.name === program.activePattern) ? program.activePattern : undefined;
 }
 /** Expand bounded phrase repetitions. Clip durations truncate the final phrase at a section boundary. */
 export function resolveArrangement(program: MusicProgram): ResolvedClip[] {
@@ -286,7 +298,10 @@ export function resolveArrangement(program: MusicProgram): ResolvedClip[] {
     const length = patternDurationBeats(resolvePattern(track, binding.pattern));
     for (let offset = 0; offset < duration; offset += length) clips.push({ ...binding, startBeat: start + offset, durationBeats: Math.min(length, duration - offset), ...(section === undefined ? {} : { section }) });
   };
-  if (!program.timeline) for (const track of program.tracks) add({ track: track.name }, 0, programDurationBeats(program));
+  if (!program.timeline || program.chainEnabled === false) for (const track of program.tracks) {
+    const pattern = activePatternName(program, track);
+    add({ track: track.name, ...(pattern === undefined ? {} : { pattern }) }, 0, programDurationBeats(program));
+  }
   else {
     let start = 0;
     for (const entry of program.timeline) {
