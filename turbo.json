@@ -12,12 +12,16 @@
         "dist/**",
         ".next/**",
         "!.next/cache/**",
-        "!.next/dev/**"
+        "!.next/dev/**",
+        "out/**"
       ]
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "dependsOn": [
+        "^build"
+      ]
     },
     "lint": {
       "dependsOn": [
@@ -26,8 +30,21 @@
     },
     "typecheck": {
       "dependsOn": [
+        "^build",
         "^typecheck"
       ]
+    },
+    "@banger/desktop#build": {
+      "dependsOn": [
+        "@banger/www#build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@banger/desktop#dev": {
+      "cache": false,
+      "persistent": true
     }
   }
 }
