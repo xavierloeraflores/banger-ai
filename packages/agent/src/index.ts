@@ -91,6 +91,9 @@ export async function runBangerAgent(request: ChatRequest, selected: { model: La
   const input = parseChatRequest(request);
   const files = new Map<string, BangerFile>();
   const knownFiles = new Map(input.previousFiles.map(file => [file.name, file]));
+  if (input.targetVersion === "generated" && (!input.targetFile || !knownFiles.has(input.targetFile))) {
+    throw new Error("The selected proposal is no longer in this chat. Select it again.");
+  }
   if (!(input.targetVersion === "generated" && input.targetFile === input.currentFile.name && knownFiles.has(input.targetFile))) {
     knownFiles.set(input.currentFile.name, input.currentFile);
   }

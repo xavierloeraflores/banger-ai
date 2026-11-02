@@ -34,8 +34,13 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
     latestFiles.delete(file.name);
     latestFiles.set(file.name, file);
   }
+  const selectedTarget = targetFile && latestFiles.has(targetFile) ? targetFile : null;
   const availableFiles = [...latestFiles.values()].slice(-4);
-  const selectedTarget = targetFile && availableFiles.some(file => file.name === targetFile) ? targetFile : null;
+  // An older card remains editable even after newer proposals fill the context window.
+  if (selectedTarget && !availableFiles.some(file => file.name === selectedTarget)) {
+    availableFiles.shift();
+    availableFiles.push(latestFiles.get(selectedTarget)!);
+  }
 
   useEffect(() => {
     let active = true;
