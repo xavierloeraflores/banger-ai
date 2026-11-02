@@ -44,7 +44,7 @@ export interface MusicProgram {
   meter: { numerator: 4; denominator: 4 };
   tracks: MusicTrack[];
 }
-export const MUSIC_LIMITS = Object.freeze({ minTempo: 20, maxTempo: 300, tracks: 16, steps: 64, notes: 128, totalNotes: 4096, sourceLength: 65536, patterns: 32, bars: 64, sections: 64, timeline: 128, songBars: 1024, buses: 8, sends: 8, curves: 16, points: 128 });
+export const MUSIC_LIMITS = Object.freeze({ minTempo: 20, maxTempo: 300, tracks: 16, steps: 64, notes: 128, totalNotes: 4096, sourceLength: 65536, patterns: 32, bars: 64, sections: 64, timeline: 128, songBars: 1024, buses: 8, sends: 8, curves: 16, points: 128, expandedEvents: 65536 });
 export const SOUND_NAMES: readonly SoundName[] = ['drums/kick', 'drums/snare', 'drums/hat', 'drums/clap', 'drums/tom', 'drums/open-hat'];
 export const INSTRUMENT_NAMES: readonly InstrumentName[] = ['synth/bass', 'synth/pluck', 'synth/lead', 'synth/pad', 'synth/bell', 'synth/organ', 'synth/keys'];
 export const isTrackName = (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z_][A-Za-z_0-9]{0,63}$/.test(name);
@@ -206,6 +206,23 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
     }
     if (bars > MUSIC_LIMITS.songBars) fail(`Song supports at most ${MUSIC_LIMITS.songBars} bars`);
   }
+  // Count an upper bound without allocating the expanded arrangement or note events.
+  const count = (track: MusicTrack, patternName: string | undefined, duration: number): number => {
+    const pattern = resolvePattern(track, patternName);
+    const events = pattern.pianoRoll?.length ?? pattern.steps.filter(step => step !== null).length;
+    return Math.ceil(duration / patternDurationBeats(pattern)) * events;
+  };
+  let events = 0;
+  if (program.timeline) {
+    for (const entry of program.timeline) {
+      const section = program.sections!.find(section => section.name === entry.section)!;
+      for (const binding of section.tracks) events += count(program.tracks.find(track => track.name === binding.track)!, binding.pattern, section.bars * 4) * (entry.repeats ?? 1);
+    }
+  } else {
+    const duration = Math.max(4, ...program.tracks.map(patternDurationBeats));
+    for (const track of program.tracks) events += count(track, undefined, duration);
+  }
+  if (events > MUSIC_LIMITS.expandedEvents) fail(`Arrangement supports at most ${MUSIC_LIMITS.expandedEvents} expanded events`);
 }
 
 export function copyMusicProgram(program: MusicProgram): MusicProgram {

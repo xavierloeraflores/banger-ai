@@ -127,15 +127,15 @@ test('legacy notes retain their model and source format alongside piano tracks',
   }
 });
 
-test('bounds piano voices across tracks and round trips a full program', () => {
-  const track = name => `track ${name} { instrument "synth/pluck"; piano { ${'note "C4" start 0 duration 4 velocity 1;'.repeat(128)} } }`;
-  const program = compileMusic(track('one') + track('two'));
-  assert.deepEqual(compileMusic(serializeMusic(program)), program);
-  assert.throws(() => compileMusic(track('one') + track('two') + track('three')), /256 piano notes/);
-  program.tracks.push({ ...program.tracks[0], name: 'three' });
-  assert.throws(() => serializeMusic(program), /256 piano notes/);
+test('bounds total piano notes across base and named phrases', () => {
+  const program = compileMusic('track keys { instrument "synth/keys"; piano {} }');
+  const note = { midi: 60, start: 0, duration: 1, velocity: .5 };
+  program.tracks[0].pianoRoll = Array.from({length: 128}, () => ({...note}));
+  program.tracks[0].patterns = Array.from({length: 31}, (_, i) => ({name: `p${i}`, steps: [], pianoRoll: Array.from({length:128}, () => ({...note}))}));
+  validateMusicProgram(program);
+  program.tracks[0].patterns.push({name: 'tooMany', steps: [], pianoRoll: [{...note}]});
+  assert.throws(() => validateMusicProgram(program), /4096 piano notes/);
 });
-
 
 test('new sound palette, panning and ordered effects round trip without losing parameters', async () => {
   const { SOUND_NAMES, INSTRUMENT_NAMES } = await import('../dist/index.js');
