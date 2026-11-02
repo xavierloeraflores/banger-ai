@@ -1,8 +1,9 @@
 "use client";
 
+import "./audio-worklet";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
-import { BangerPlayer } from "@banger/engine";
+import { BangerPlayer, type MeterSnapshot, type PlaybackState } from "@banger/engine";
 
 const idle = { playing: false, bar: 0, step: -1, phase: 0, tempo: 120, hasPendingUpdate: false };
 
@@ -12,7 +13,8 @@ export function usePlayer(program: MusicProgram) {
   const generation = useRef(0);
   const pending = useRef(false);
   const audioError = useRef<string | null>(null);
-  const [state, setState] = useState(idle);
+  const [state, setState] = useState<PlaybackState>(idle);
+  const [meters, setMeters] = useState<MeterSnapshot>({ master: { peak: 0, rms: 0 }, tracks: {}, buses: {} });
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,6 +23,7 @@ export function usePlayer(program: MusicProgram) {
     player.current = instance;
     const timer = window.setInterval(() => {
       const current = instance.state;
+      setMeters(instance.meters);
       setState(previous => {
         const next = { ...current, tempo: current.tempo ?? latestProgram.current.tempo };
         return previous.playing === next.playing && previous.bar === next.bar && previous.phase === next.phase && previous.tempo === next.tempo && previous.hasPendingUpdate === next.hasPendingUpdate ? previous : next;
@@ -84,5 +87,5 @@ export function usePlayer(program: MusicProgram) {
     setState({ ...idle, tempo: latestProgram.current.tempo });
   }, []);
 
-  return { state, starting, error, play, stop };
+  return { state, meters, starting, error, play, stop };
 }

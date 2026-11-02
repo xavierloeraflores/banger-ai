@@ -1,30 +1,46 @@
 import { compileMusic } from './parser.js';
-import { validateMusicProgram, type MusicProgram } from './model.js';
+import { validateMusicProgram, type MusicProgram, type MusicTrack, type MusicBus, type MusicPattern } from './model.js';
 export { compileMusic } from './parser.js';
 export { CompileError, type Position } from './lexer.js';
-export { copyMusicProgram, pianoNotes, validateMusicProgram, MUSIC_LIMITS, SOUND_NAMES, INSTRUMENT_NAMES } from './model.js';
-export type { MusicProgram, MusicTrack, PianoNote, Step, SoundName, InstrumentName, ReverbEffect, DelayEffect, FilterEffect, MusicEffect } from './model.js';
+export * from './model.js';
+export { BANGER_LANGUAGE_GUIDE } from './language.js';
 
 export function serializeMusic(program: MusicProgram): string {
   validateMusicProgram(program);
   const pitches = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const pitch = (midi: number) => `${pitches[midi % 12]}${Math.floor(midi / 12) - 1}`;
   const lines = [`tempo ${program.tempo};`, 'meter 4/4;'];
-  for (const track of program.tracks) {
-    const pattern = track.steps.map(step => step === null ? '.' : step.kind === 'hit' ? 'x' : `${pitches[step.midi % 12]}${Math.floor(step.midi / 12) - 1}`).join(' ');
-    lines.push('', `track ${track.name} {`, `  ${track.source.kind} ${JSON.stringify(track.source.name)};`,
-      ...(track.pianoRoll === undefined
-        ? [`  ${track.source.kind === 'sound' ? 'rhythm' : 'notes'} ${JSON.stringify(pattern)};`]
-        : ['  piano {', ...track.pianoRoll.map(note => `    note ${JSON.stringify(pitch(note.midi))} start ${note.start} duration ${note.duration} velocity ${note.velocity};`), '  }']),
-      `  gain ${track.gain};`);
-    if (track.pan !== undefined) lines.push(`  pan ${track.pan};`);
-    for (const effect of track.effects ?? []) {
-      if (effect.kind === 'reverb') lines.push(`  effect reverb { mix ${effect.mix}; }`);
-      else if (effect.kind === 'delay') lines.push(`  effect delay { mix ${effect.mix}; time ${effect.time}; feedback ${effect.feedback}; }`);
-      else lines.push(`  effect filter { cutoff ${effect.cutoff}; resonance ${effect.resonance}; }`);
+  const phrase = (pattern: Pick<MusicPattern, 'bars' | 'steps' | 'pianoRoll'>, source: MusicTrack['source'], indent: string): void => {
+    if (pattern.bars !== undefined) lines.push(`${indent}bars ${pattern.bars};`);
+    if (pattern.pianoRoll === undefined) {
+      const steps = pattern.steps.map(step => step === null ? '.' : step.kind === 'hit' ? 'x' : pitch(step.midi)).join(' ');
+      lines.push(`${indent}${source.kind === 'sound' ? 'rhythm' : 'notes'} ${JSON.stringify(steps)};`);
+    } else lines.push(`${indent}piano {`, ...pattern.pianoRoll.map(note => `${indent}  note ${JSON.stringify(pitch(note.midi))} start ${note.start} duration ${note.duration} velocity ${note.velocity};`), `${indent}}`);
+  };
+  const mixer = (item: MusicBus | MusicTrack): void => {
+    lines.push(`  gain ${item.gain};`);
+    if (item.pan !== undefined) lines.push(`  pan ${item.pan};`);
+    for (const effect of item.effects ?? []) lines.push(`  effect ${effect.kind} { ${Object.entries(effect).filter(([key, value]) => key !== 'kind' && value !== undefined).map(([key, value]) => `${key} ${value};`).join(' ')} }`);
+    for (const send of item.sends ?? []) lines.push(`  send ${send.bus} ${send.gain};`);
+    for (const curve of item.automation ?? []) {
+      lines.push(`  automation ${JSON.stringify(curve.target)} {`);
+      if (curve.interpolation !== undefined) lines.push(`    interpolation ${curve.interpolation};`);
+      lines.push(...curve.points.map(point => `    point ${point.beat} ${point.value};`), '  }');
     }
-    lines.push('}');
+  };
+  for (const track of program.tracks) {
+    lines.push('', `track ${track.name} {`, `  ${track.source.kind} ${JSON.stringify(track.source.name)};`);
+    phrase(track, track.source, '  ');
+    for (const pattern of track.patterns ?? []) {
+      lines.push(`  pattern ${pattern.name} {`); phrase(pattern, track.source, '    '); lines.push('  }');
+    }
+    if (track.groove !== undefined) lines.push(`  groove { ${Object.entries(track.groove).filter(([, value]) => value !== undefined).map(([key, value]) => `${key} ${value};`).join(' ')} }`);
+    if (track.output !== undefined) lines.push(`  output ${track.output};`);
+    mixer(track); lines.push('}');
   }
+  for (const bus of program.buses ?? []) { lines.push('', `bus ${bus.name} {`); mixer(bus); lines.push('}'); }
+  for (const section of program.sections ?? []) lines.push('', `section ${section.name} {`, `  bars ${section.bars};`, ...section.tracks.map(binding => `  play ${binding.track}${binding.pattern === undefined ? '' : ` ${binding.pattern}`};`), '}');
+  if (program.timeline !== undefined) lines.push('', 'song {', ...program.timeline.map(entry => `  play ${entry.section}${entry.repeats === undefined ? '' : ` ${entry.repeats}`};`), '}');
   return `${lines.join('\n')}\n`;
 }
 

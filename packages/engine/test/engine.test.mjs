@@ -11,7 +11,7 @@ class Param {
   exponentialRampToValueAtTime(value, time) { assert.ok(value > 0); this.events.push({ value, time }); }
 }
 class Node {
-  gain = new Param(); frequency = new Param(); detune = new Param(); delayTime = new Param(); Q = new Param(); pan = new Param(); connections = []; starts = []; stops = [];
+  offset = new Param(); threshold = new Param(); ratio = new Param(); attack = new Param(); release = new Param(); knee = new Param(); gain = new Param(); frequency = new Param(); detune = new Param(); delayTime = new Param(); Q = new Param(); pan = new Param(); connections = []; starts = []; stops = [];
   constructor(context, kind) { this.context = context; this.kind = kind; context.nodes.push(this); }
   connect(node) { this.connections.push(node); return node; }
   disconnect() { this.connections = []; }
@@ -24,6 +24,8 @@ class Context {
   constructor() { this.destination = new Node(this, 'destination'); Context.instances.push(this); }
   async resume() { this.state = 'running'; }
   async close() { this.closeCalls++; this.state = 'closed'; }
+  createConstantSource() { return new Node(this, 'constant'); }
+  createWaveShaper() { return new Node(this, 'shaper'); }
   createGain() { return new Node(this, 'gain'); }
   createDynamicsCompressor() { return new Node(this, 'compressor'); }
   createBiquadFilter() { return new Node(this, 'filter'); }
@@ -292,7 +294,7 @@ test('ordered filter, feedback delay, reverb and stereo pan connect and clean up
   assert.ok(node('filter').connections.includes(node('delay')));
   const feedback = node('delay').connections.find(n => n.connections.includes(node('delay')));
   assert.equal(feedback.gain.value, .45);
-  assert.ok(feedback.gain.events.some(e => e.value === 0 && e.time < bar.cleanupAt));
+  assert.equal(feedback.gain.events.length, 0, 'persistent feedback survives bar boundaries');
   assert.ok(bar.cleanupAt > 4);
   bar.dispose(); renderer.dispose(); assert.ok(context.nodes.every(n => !n.connections.length));
 });
@@ -301,7 +303,7 @@ test('delay tails are bounded and zero mixes avoid effect node allocation', () =
   const context = new Context(), renderer = new AudioRenderer(context);
   const bar = renderer.renderBar(compileMusic(`track a { sound "drums/open-hat"; rhythm "x";
     effect delay { time 2; feedback .85; mix 1; } effect reverb { mix 0; } }`), 0);
-  assert.ok(bar.cleanupAt <= 10.7);
+  assert.ok(bar.cleanupAt <= 116.7);
   assert.equal(context.nodes.filter(n => n.kind === 'convolver').length, 0);
   renderer.dispose();
 });
@@ -317,4 +319,65 @@ test('player stop disconnects feedback graphs and cancels all layered voices', a
   assert.ok(context.sources.every(s => s.stops.length >= 2 && !s.connections.length));
   assert.ok(context.nodes.filter(n => ['delay', 'filter', 'panner'].includes(n.kind)).every(n => !n.connections.length));
   await player.dispose(); assert.ok(context.nodes.every(n => !n.connections.length));
+});
+
+test('arranged phrases preserve sustained notes, named patterns and deterministic groove', async () => {
+  const { eventsForSong, songDuration } = await import('../dist/index.js');
+  const program = chords(), track = program.tracks[0];
+  track.bars = 2; track.pianoRoll = [{ midi: 60, start: 3, duration: 5, velocity: .8 }];
+  track.patterns = [{ name: 'up', bars: 2, steps: [], pianoRoll: [{ midi: 72, start: 0, duration: 8, velocity: .5 }] }];
+  track.groove = { humanize: .01, seed: 45 };
+  program.sections = [{ name: 'a', bars: 2, tracks: [{ track: track.name }] }, { name: 'b', bars: 2, tracks: [{ track: track.name, pattern: 'up' }] }];
+  program.timeline = [{ section: 'a' }, { section: 'b', repeats: 2 }];
+  const events = eventsForSong(program);
+  assert.equal(songDuration(program), 12); assert.equal(events.length, 3);
+  assert.deepEqual(events, eventsForSong(program)); assert.equal(events[1].step.midi, 72);
+  assert.equal(eventsForBar(program, 2, 1).length, 0, 'sustained note is not retriggered in second bar');
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const first = renderer.renderBar(program, 0, -Infinity, 0), second = renderer.renderBar(program, 2, -Infinity, 1);
+  assert.ok(first.cleanupAt >= 4.5); assert.equal(context.sources.length, 1);
+  first.dispose(); assert.ok(context.nodes.some(node => node.connections.length));
+  second.dispose(); renderer.dispose(); assert.ok(context.nodes.every(node => !node.connections.length));
+});
+
+test('automation continues through bars and zero initial gain still schedules voices', () => {
+  const program = song(), track = program.tracks[0]; track.bars = 2; track.gain = 0;
+  track.automation = [{ target: 'gain', points: [{ beat: 0, value: 0 }, { beat: 8, value: 1 }] }];
+  const context = new Context(), renderer = new AudioRenderer(context);
+  renderer.renderBar(program, 0, -Infinity, 0); renderer.renderBar(program, 2, -Infinity, 1);
+  assert.equal(context.sources.length, 4);
+  const automated = context.nodes.find(node => node.gain.events.some(event => event.time === 4 && event.value === 1));
+  assert.ok(automated.gain.events.some(event => event.time === 2 && event.value === .5));
+  renderer.dispose();
+});
+
+test('automated zero-mix delays allocate effects and retain maximum automated tail', () => {
+  const program = song(); program.tracks[0].effects = [{ kind: 'delay', time: .1, feedback: 0, mix: 0 }];
+  program.tracks[0].automation = [
+    { target: 'delay.mix', points: [{ beat: 0, value: 0 }, { beat: 4, value: 1 }] },
+    { target: 'delay.time', points: [{ beat: 0, value: .1 }, { beat: 4, value: 1 }] },
+    { target: 'delay.feedback', points: [{ beat: 0, value: 0 }, { beat: 4, value: .8 }] },
+  ];
+  const context = new Context(), renderer = new AudioRenderer(context), bar = renderer.renderBar(program, 0);
+  assert.ok(context.nodes.some(node => node.kind === 'delay')); assert.ok(bar.cleanupAt > 25); renderer.dispose();
+});
+
+
+test('cached schedule handles 1024 bars without rereading source patterns on subsequent bars', () => {
+  const program = song(); program.tracks[0].steps = Array.from({ length: 64 }, () => ({ kind: 'hit' }));
+  program.sections = [{ name: 'long', bars: 64, tracks: [{ track: 'kick' }] }]; program.timeline = [{ section: 'long', repeats: 16 }];
+  const context = new Context(), renderer = new AudioRenderer(context);
+  const first = renderer.renderBar(program, 0);
+  Object.defineProperty(program.tracks[0], 'steps', { get() { throw new Error('Pattern reread after cached schedule'); } });
+  const started = performance.now();
+  for (let bar = 1; bar < 100; bar++) renderer.renderBar(program, bar * 2, -Infinity, bar).dispose();
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 1000, `Cached scheduling took ${elapsed}ms`); first.dispose(); renderer.dispose();
+});
+
+test('silent sections retain their timeline labels in transport state', async t => {
+  environment(t); const player = new BangerPlayer(), program = song();
+  program.sections = [{ name: 'silence', bars: 1, tracks: [] }, { name: 'beat', bars: 1, tracks: [{ track: 'kick' }] }];
+  program.timeline = [{ section: 'silence' }, { section: 'beat' }];
+  await player.start(program); assert.equal(player.state.section, 'silence'); assert.equal(player.state.songBar, 1); await player.dispose();
 });

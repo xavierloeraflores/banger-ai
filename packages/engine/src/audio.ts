@@ -1,127 +1,103 @@
-import type { MusicProgram, MusicTrack } from '@banger/compiler';
-import { barDuration, eventsForBar } from './events.js';
+import { programDurationBeats, type MusicProgram } from '@banger/compiler';
+import { barDuration, eventsForSong, songDuration, type MusicEvent } from './events.js';
 import { instruments } from './instruments.js';
-import { createDrums, createImpulse } from './sounds.js';
+import { createDrums } from './sounds.js';
+import { MixerGraph, scheduleCurve, silentMeters, type MeterSnapshot } from './graph.js';
 export interface RenderedBar { cleanupAt: number; dispose(): void }
+interface GraphEntry { graph: MixerGraph; handles: number }
 export class AudioRenderer {
   private readonly drums;
-  private readonly impulse;
-  private readonly master: GainNode;
-  private readonly compressor: DynamicsCompressorNode;
   private readonly active = new Set<RenderedBar>();
+  private readonly graphs = new Map<MusicProgram, GraphEntry>();
   private disposed = false;
-  constructor(private readonly context: BaseAudioContext) {
-    this.drums = createDrums(context);
-    this.impulse = createImpulse(context);
-    this.master = context.createGain();
-    this.master.gain.value = .6;
-    this.compressor = context.createDynamicsCompressor();
-    this.master.connect(this.compressor).connect(context.destination);
-  }
-  renderBar(program: MusicProgram, start: number, skipBefore = -Infinity): RenderedBar {
-    if (this.disposed) throw new Error('Audio renderer has been disposed');
-    const events = eventsForBar(program, start);
-    const context = this.context, nodes: AudioNode[] = [], sources = new Set<AudioScheduledSourceNode>();
-    const inputs = new Map<MusicTrack, GainNode>();
-    let tail = .7;
-    for (const track of program.tracks) {
-      const input = context.createGain();
-      input.gain.value = track.gain;
-      inputs.set(track, input); nodes.push(input);
-      let output: AudioNode = input;
-      let trackTail = .7;
-      for (const effect of track.effects ?? []) {
-        if (effect.kind === 'filter') {
-          const filter = context.createBiquadFilter();
-          filter.type = 'lowpass'; filter.frequency.value = Math.min(effect.cutoff, context.sampleRate / 2);
-          filter.Q.value = effect.resonance;
-          output.connect(filter); output = filter; nodes.push(filter);
-        } else if (effect.mix > 0) {
-          const dry = context.createGain(), wet = context.createGain(), sum = context.createGain();
-          dry.gain.value = 1 - effect.mix; wet.gain.value = effect.mix;
-          output.connect(dry).connect(sum);
-          if (effect.kind === 'reverb') {
-            const convolver = context.createConvolver(); convolver.buffer = this.impulse;
-            output.connect(convolver).connect(wet).connect(sum);
-            nodes.push(convolver); trackTail += 1.2;
-          } else {
-            const delay = context.createDelay(2), feedback = context.createGain();
-            delay.delayTime.value = effect.time; feedback.gain.value = effect.feedback;
-            output.connect(delay).connect(wet).connect(sum);
-            delay.connect(feedback).connect(delay);
-            // Fade long feedback tails to silence before reclaiming the graph.
-            const delayTail = Math.min(8, effect.time * (effect.feedback === 0 ? 1 : Math.ceil(Math.log(.001) / Math.log(effect.feedback))));
-            const end = start + barDuration(program) + trackTail + delayTail;
-            wet.gain.setValueAtTime(effect.mix, Math.max(start, end - .05));
-            wet.gain.linearRampToValueAtTime(0, end);
-            feedback.gain.setValueAtTime(0, end);
-            trackTail += delayTail; nodes.push(delay, feedback);
-          }
-          output = sum; nodes.push(dry, wet, sum);
-        }
-      }
-      if (track.pan !== undefined) {
-        const panner = context.createStereoPanner(); panner.pan.value = track.pan;
-        output.connect(panner); output = panner; nodes.push(panner);
-      }
-      output.connect(this.master);
-      tail = Math.max(tail, trackTail);
+  private readonly schedules = new WeakMap<MusicProgram, { beats: number; events: MusicEvent[]; bars: MusicEvent[][] }>();
+  private schedule(program: MusicProgram) {
+    let schedule = this.schedules.get(program);
+    if (!schedule) {
+      const events = eventsForSong(program), beats = programDurationBeats(program), bars = Array.from({ length: beats / 4 }, () => [] as MusicEvent[]);
+      for (const event of events) bars[Math.floor(event.beat / 4)].push(event);
+      schedule = { beats, events, bars }; this.schedules.set(program, schedule);
     }
+    return schedule;
+  }
+  constructor(private readonly context: BaseAudioContext, private readonly solo?: string) { this.drums = createDrums(context); }
+  get meters(): MeterSnapshot {
+    const result = silentMeters();
+    for (const { graph } of this.graphs.values()) {
+      const meter = graph.meters; result.master.peak = Math.max(result.master.peak, meter.master.peak); result.master.rms = Math.hypot(result.master.rms, meter.master.rms);
+      Object.assign(result.tracks, meter.tracks); Object.assign(result.buses, meter.buses);
+    }
+    return result;
+  }
+  renderBar(program: MusicProgram, start: number, skipBefore = -Infinity, barIndex = 0): RenderedBar {
+    if (!Number.isFinite(start) || start < 0 || !Number.isInteger(barIndex) || barIndex < 0) throw new RangeError('Invalid bar start or index');
+    const schedule = this.schedule(program), beat = barIndex * 4 % schedule.beats;
+    const events = schedule.bars[beat / 4].map(event => ({ ...event, time: start + (event.beat - beat) * 60 / program.tempo }));
+    return this.render(program, events, start, beat, beat + 4, barDuration(program), skipBefore);
+  }
+  renderSong(program: MusicProgram, start = 0): RenderedBar { if (!Number.isFinite(start) || start < 0) throw new RangeError('Invalid song start'); const schedule = this.schedule(program); return this.render(program, schedule.events.map(event => ({ ...event, time: start + event.time })), start, 0, schedule.beats, songDuration(program), -Infinity); }
+  private render(program: MusicProgram, events: MusicEvent[], start: number, fromBeat: number, toBeat: number, duration: number, skipBefore: number): RenderedBar {
+    if (this.disposed) throw new Error('Audio renderer has been disposed');
+    let entry = this.graphs.get(program);
+    if (!entry) { entry = { graph: new MixerGraph(this.context, program, this.solo), handles: 0 }; this.graphs.set(program, entry); }
+    entry.handles++;
+    const graph = entry.graph, context = this.context, nodes = new Set<AudioNode>(), sources = new Set<AudioScheduledSourceNode>();
+    const seconds = 60 / program.tempo, origin = start - fromBeat * seconds;
+    graph.automate(origin, fromBeat, toBeat);
     let cancelled = false;
     const rendered: RenderedBar = {
-      cleanupAt: start + barDuration(program) + tail,
+      cleanupAt: Math.max(start + duration, ...events.map(event => event.time + event.duration)) + graph.tail,
       dispose: () => {
-        if (cancelled) return;
-        cancelled = true;
-        for (const source of sources) { source.onended = null; source.stop(); source.disconnect(); }
-        sources.clear();
-        for (const node of nodes) node.disconnect();
-        this.active.delete(rendered);
+        if (cancelled) return; cancelled = true;
+        for (const source of sources) { source.onended = null; try { source.stop(); } catch { /* Already ended. */ } source.disconnect(); }
+        sources.clear(); for (const node of nodes) node.disconnect(); nodes.clear(); this.active.delete(rendered);
+        if (--entry.handles === 0) { graph.dispose(); this.graphs.delete(program); }
       },
     };
     this.active.add(rendered);
     try {
       for (const event of events) {
-        if (event.time < skipBefore || event.track.gain === 0 || event.velocity === 0) continue;
-        const input = inputs.get(event.track)!;
+        if (event.time < skipBefore || event.velocity === 0 || event.track.gain === 0 && !event.track.automation?.some(curve => curve.target === 'gain')) continue;
+        const input = graph.tracks.get(event.track.name)!.input;
         const register = (source: AudioScheduledSourceNode, envelope?: GainNode) => {
           sources.add(source);
-          source.onended = () => { source.disconnect(); envelope?.disconnect(); sources.delete(source); };
+          source.onended = () => { source.disconnect(); envelope?.disconnect(); if (envelope) nodes.delete(envelope); sources.delete(source); };
           source.start(event.time);
         };
+        const pitch = event.track.automation?.find(curve => curve.target === 'pitch');
+        const automatePitch = (parameter: AudioParam, base: number, end: number) => {
+          parameter.value = base;
+          if (!pitch) return;
+          const offset = origin + event.clipStartBeat * seconds, from = (event.time - offset) / seconds, to = Math.min(event.clipDurationBeats, (end - offset) / seconds);
+          const shifted = { ...pitch, points: pitch.points.map(point => ({ ...point, value: point.value * 100 + base })) };
+          scheduleCurve(parameter, shifted, offset, seconds, from, to);
+        };
         if (event.track.source.kind === 'sound') {
-          const sample = context.createBufferSource();
-          sample.buffer = this.drums[event.track.source.name];
-          sample.connect(input); register(sample);
+          const sample = context.createBufferSource(); sample.buffer = this.drums[event.track.source.name];
+          const envelope = context.createGain(); envelope.gain.value = event.velocity; nodes.add(envelope);
+          const minimumPitch = Math.min(0, ...pitch?.points.map(point => point.value) ?? []);
+          automatePitch(sample.detune, 0, event.time + sample.buffer.duration * 2 ** (-minimumPitch / 12)); sample.connect(envelope).connect(input); register(sample, envelope);
         } else if (event.step.kind === 'note') {
           const instrument = instruments[event.track.source.name];
           const duration = event.sustained ? event.duration : Math.min(event.duration * .85, instrument.gate);
           for (const voice of instrument.voices) {
-            const oscillator = context.createOscillator();
-            oscillator.type = voice.type;
+            const oscillator = context.createOscillator(); oscillator.type = voice.type;
             oscillator.frequency.value = Math.min(context.sampleRate / 2, 440 * 2 ** ((event.step.midi - 69) / 12) * voice.ratio);
-            oscillator.detune.value = voice.detune;
-            const envelope = context.createGain(); nodes.push(envelope);
-            const attack = Math.min(instrument.attack, duration / 4);
-            const peak = instrument.peak * voice.level * event.velocity;
-            envelope.gain.setValueAtTime(0, event.time);
-            envelope.gain.linearRampToValueAtTime(peak, event.time + attack);
+            automatePitch(oscillator.detune, voice.detune, event.time + duration + instrument.release);
+            const envelope = context.createGain(); nodes.add(envelope);
+            const attack = Math.min(instrument.attack, duration / 4), peak = instrument.peak * voice.level * event.velocity;
+            envelope.gain.setValueAtTime(0, event.time); envelope.gain.linearRampToValueAtTime(peak, event.time + attack);
             if (event.sustained) {
               envelope.gain.linearRampToValueAtTime(peak * instrument.sustain, event.time + Math.max(attack, Math.min(.08, duration / 2)));
               envelope.gain.setValueAtTime(peak * instrument.sustain, event.time + duration);
             } else envelope.gain.exponentialRampToValueAtTime(Math.min(.025, peak * .1), event.time + duration);
             envelope.gain.linearRampToValueAtTime(0, event.time + duration + instrument.release);
-            oscillator.connect(envelope).connect(input);
-            register(oscillator, envelope); oscillator.stop(event.time + duration + instrument.release);
+            oscillator.connect(envelope).connect(input); register(oscillator, envelope); oscillator.stop(event.time + duration + instrument.release);
           }
         }
       }
     } catch (error) { rendered.dispose(); throw error; }
     return rendered;
   }
-  dispose(): void {
-    if (this.disposed) return;
-    for (const bar of this.active) bar.dispose();
-    this.master.disconnect(); this.compressor.disconnect(); this.disposed = true;
-  }
+  dispose(): void { if (this.disposed) return; for (const bar of this.active) bar.dispose(); this.disposed = true; }
 }
