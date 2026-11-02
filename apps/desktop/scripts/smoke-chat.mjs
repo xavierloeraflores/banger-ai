@@ -62,6 +62,32 @@ async function exercise(window, desktop) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await waitFor("document.querySelector('#producer-source')?.value");
+  const openChat = async () => {
+    await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+    await waitFor("document.querySelector('#ai-chat-dialog').matches(':modal')");
+  };
+  const closeChat = async () => {
+    await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+    await waitFor("!document.querySelector('#ai-chat-dialog').open");
+  };
+  assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').open"), false);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.ai-chat-launcher')).position"), "fixed");
+  await openChat();
+  await waitFor("document.activeElement.id === 'ai-chat-prompt'");
+  await input("ai-chat-prompt", "Keep this draft");
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  await waitFor("!document.querySelector('#ai-chat-dialog').open");
+  await waitFor("document.activeElement.getAttribute('aria-label') === 'Open AI chat'");
+  await openChat();
+  assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "Keep this draft");
+  // Native modal focus cannot escape into the studio controls.
+  for (let index = 0; index < 12; index++) {
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+    await delay(10);
+    assert.equal(await evaluate("document.activeElement === document.body || document.querySelector('#ai-chat-dialog').contains(document.activeElement)"), true);
+  }
   if (!desktop) {
     await evaluate(`(() => {
       const fixture = ${chatFixture.toString()};
@@ -90,6 +116,7 @@ async function exercise(window, desktop) {
   await input("ai-chat-prompt", "Create two loops");
   await click("Send");
   await waitFor("document.querySelector('.ai-chat-footer [role=alert]')?.textContent.includes('BYOK')");
+  await closeChat();
   await click("BYOK");
   await waitFor("!document.querySelector('.byok-form fieldset').disabled");
   await input("byok-model", "anthropic/test-model");
@@ -97,6 +124,7 @@ async function exercise(window, desktop) {
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=status]')");
   await click("Sequencer");
+  await openChat();
   await waitFor("document.querySelector('.ai-chat-heading-actions').textContent.includes('your key')");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");
@@ -114,7 +142,10 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource);
   // Edits made after generation require an explicit decision before loading.
   const newer = `${originalSource}\n// newer manual edit\n`;
+  await closeChat();
+  await click("Raw .banger");
   await input("producer-source", newer);
+  await openChat();
   await evaluate("void (window.confirm = () => false)");
   await click("Load in studio");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), newer);
@@ -129,16 +160,32 @@ async function exercise(window, desktop) {
   const recorded = desktop ? calls : await evaluate("window.__chatCalls");
   assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("slow-loop.banger"));
   assert.ok(JSON.stringify(recorded.at(-2).prompt).includes("Make the second loop softer"));
+  assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').scrollHeight === document.querySelector('#ai-chat-dialog').clientHeight"), true);
   await writeFile(join(tmpdir(), desktop ? "banger-chat-desktop.png" : "banger-chat-web.png"), (await window.webContents.capturePage()).toPNG());
   await input("ai-chat-prompt", "slow request");
   await click("Send");
   await waitFor("document.querySelector('.ai-chat-working')");
   await delay(100);
+  await closeChat();
+  await openChat();
+  assert.equal(await evaluate("Boolean(document.querySelector('.ai-chat-working'))"), true);
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 4);
   await click("New chat");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
+  // The popup stays inside a narrow viewport, and its backdrop dismisses it.
+  window.setContentSize(390, 700);
+  await delay(100);
+  assert.equal(await evaluate(`(() => {
+    const bounds = document.querySelector('#ai-chat-dialog').getBoundingClientRect();
+    return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight;
+  })()`), true);
+  await writeFile(join(tmpdir(), desktop ? "banger-chat-modal-mobile-desktop.png" : "banger-chat-modal-mobile-web.png"), (await window.webContents.capturePage()).toPNG());
+  window.webContents.sendInputEvent({ type: "mouseDown", x: 2, y: 2, button: "left", clickCount: 1 });
+  window.webContents.sendInputEvent({ type: "mouseUp", x: 2, y: 2, button: "left", clickCount: 1 });
+  await waitFor("!document.querySelector('#ai-chat-dialog').open");
+  await waitFor("document.activeElement.getAttribute('aria-label') === 'Open AI chat'");
 }
 
 async function run(desktop) {
@@ -147,7 +194,7 @@ async function run(desktop) {
     const web = new BrowserWindow({ width: 1100, height: 900, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
     await web.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await exercise(web, false);
-    console.log("Chat smoke passed on desktop and static web: missing key, Gateway adapter, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
+    console.log("Chat smoke passed on desktop and static web: modal opening, Escape, focus containment and restoration, draft and request persistence, mobile bounds, backdrop dismissal, missing key, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally {
     clearTimeout(timeout);

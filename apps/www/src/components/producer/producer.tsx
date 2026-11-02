@@ -238,17 +238,6 @@ export function Producer() {
           </Button>
           <IconButton aria-label="Stop playback" variant="secondary" onClick={playback.stop} disabled={!playback.state.playing && !playback.starting}><span aria-hidden="true">■</span></IconButton>
         </div>
-        <label className="producer-tempo" htmlFor="producer-tempo">
-          <Input id="producer-tempo" type="number" inputMode="numeric" min={20} max={300} step={1} value={tempoDraft} disabled={draft || fileBusy}
-            onChange={event => setTempoDraft(event.target.value)}
-            onBlur={() => {
-              const tempo = Number(tempoDraft);
-              if (!Number.isFinite(tempo) || tempo < 20 || tempo > 300 || !edit({ ...program, tempo })) setTempoDraft(String(program.tempo));
-              else setTempoDraft(String(tempo));
-            }}
-            onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />
-          <span>BPM</span>
-        </label>
         <div className="producer-meter"><strong>4/4</strong><span>1 bar loop</span></div>
         <div className="producer-position" aria-label={playback.state.playing ? `Bar ${playback.state.bar}, step ${playback.state.step + 1}` : "Stopped"}>
           <span className={playback.state.playing ? "producer-live-dot is-playing" : "producer-live-dot"} />
@@ -276,7 +265,23 @@ export function Producer() {
         </div>
         <div id="studio-panel-sequencer" role="tabpanel" aria-labelledby="studio-tab-sequencer" hidden={view !== "sequencer"} tabIndex={0}>
           <Panel className="producer-sequencer" aria-labelledby="sequence-title">
-            <div className="producer-panel-heading"><div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Step sequencer</h1></div><span className="producer-tag">1 BAR</span></div>
+            <div className="producer-panel-heading">
+              <div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Step sequencer</h1></div>
+              <div className="producer-sequence-controls">
+                <label className="producer-tempo" htmlFor="producer-tempo">
+                  <Input id="producer-tempo" type="number" inputMode="numeric" min={20} max={300} step={1} value={tempoDraft} disabled={draft || fileBusy}
+                    onChange={event => setTempoDraft(event.target.value)}
+                    onBlur={() => {
+                      const tempo = Number(tempoDraft);
+                      if (!Number.isFinite(tempo) || tempo < 20 || tempo > 300 || !edit({ ...program, tempo })) setTempoDraft(String(program.tempo));
+                      else setTempoDraft(String(tempo));
+                    }}
+                    onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+                  <span>BPM</span>
+                </label>
+                <span className="producer-tag">1 BAR</span>
+              </div>
+            </div>
             {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
             <div className="producer-sequence-scroll">
               <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / ONE BAR</span><span>LEVEL</span></div>
