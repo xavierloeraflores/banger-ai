@@ -77,3 +77,52 @@ test('all MIDI notes survive serialization', () => {
     assert.deepEqual(compileMusic(serializeMusic(program)), program);
   }
 });
+
+test('piano chords, fractional beats, velocities and silent rolls round trip', () => {
+  const program = compileMusic(`let offset = 1 / 3;
+    track chords { instrument "synth/pluck"; piano {
+      note "C4" start 0 duration 2 velocity .8;
+      note "Eb4" start 0 duration 1 velocity .4;
+      note "G4" start offset duration .5 velocity 0;
+      note "G9" start 3 duration 1 velocity 1;
+    } gain .5; effect reverb { mix .2; } }
+    track silent { piano {} instrument "synth/bass"; }
+    ${drum('x . x .')}`);
+  assert.deepEqual(program.tracks[0].pianoRoll.map(n => n.midi), [60, 63, 67, 127]);
+  assert.equal(program.tracks[0].pianoRoll[2].start, 1 / 3);
+  assert.deepEqual(compileMusic(serializeMusic(program)), program);
+  const copy = copyMusicProgram(program);
+  copy.tracks[0].pianoRoll[0].velocity = .1;
+  assert.equal(program.tracks[0].pianoRoll[0].velocity, .8);
+  assert.match(serializeMusic(program), /piano \{\n  \}/);
+});
+
+test('rejects malformed piano notes, mixed patterns, invalid timing and excessive voices', () => {
+  const roll = body => `track a { instrument "synth/pluck"; piano { ${body} } }`;
+  const note = 'note "C4" start 0 duration 1 velocity .8;';
+  for (const body of [note.replace('start 0', 'start -1'), note.replace('start 0', 'start 4'),
+    note.replace('duration 1', 'duration 0'), note.replace('duration 1', 'duration 5'),
+    note.replace('duration 1', 'duration 1e999'), note.replace('velocity .8', 'velocity 2'),
+    note.replace('C4', 'C10'), note.replace(' velocity .8', ''), note.repeat(129)])
+    assert.throws(() => compileMusic(roll(body)), CompileError);
+  for (const source of [roll(note).replace('instrument "synth/pluck"', 'sound "drums/hat"'),
+    roll(note).replace('piano {', 'notes "C4"; piano {'), roll(note).replace('} }', '} notes "C4"; }')])
+    assert.throws(() => compileMusic(source), CompileError);
+  const valid = compileMusic(roll(note));
+  for (const change of [n => n.start = NaN, n => n.duration = Infinity, n => n.midi = 1.5, n => n.velocity = -1]) {
+    const bad = copyMusicProgram(valid); change(bad.tracks[0].pianoRoll[0]);
+    assert.throws(() => serializeMusic(bad), RangeError);
+  }
+});
+
+test('legacy notes retain their model and source format alongside piano tracks', async () => {
+  const { pianoNotes } = await import('../dist/index.js');
+  for (let length = 1; length <= 64; length++) {
+    const old = compileMusic(`track bass { instrument "synth/bass"; notes "${Array(length).fill('C2').join(' ')}"; }`);
+    assert.equal(old.tracks[0].pianoRoll, undefined);
+    assert.match(serializeMusic(old), /notes "/);
+    assert.deepEqual(compileMusic(serializeMusic(old)), old);
+    old.tracks[0].pianoRoll = pianoNotes(old.tracks[0]); old.tracks[0].steps = [];
+    assert.deepEqual(compileMusic(serializeMusic(old)), old);
+  }
+});

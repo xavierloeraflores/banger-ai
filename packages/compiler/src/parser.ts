@@ -1,5 +1,5 @@
 import { CompileError, tokenize, type Token } from './lexer.js';
-import { INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type ReverbEffect, type SoundName, type Step } from './model.js';
+import { validatePianoNote, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type ReverbEffect, type SoundName, type Step } from './model.js';
 type Value = string | number;
 const pitchClasses: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
@@ -102,15 +102,48 @@ class Parser {
     }
     return program;
   }
+  private pitch(word: string, token: Token): number {
+    const match = /^([A-G])([#b]?)(-?\d)$/.exec(word);
+    if (!match) this.error(`Invalid note '${word}'`, token);
+    const midi = (Number(match[3]) + 1) * 12 + pitchClasses[match[1]] + (match[2] === '#' ? 1 : match[2] === 'b' ? -1 : 0);
+    if (midi < 0 || midi > 127) this.error(`Note '${word}' is outside MIDI range 0 to 127`, token);
+    return midi;
+  }
+  private piano(): PianoNote[] {
+    this.expect('{');
+    const notes: PianoNote[] = [];
+    while (this.token.text !== '}') {
+      const token = this.expect('note');
+      if (notes.length >= MUSIC_LIMITS.notes) this.error('Piano rolls support at most 128 notes', token);
+      const midi = this.pitch(this.string(this.expression(), token), token);
+      this.expect('start'); const start = this.number(this.expression(), token);
+      this.expect('duration'); const duration = this.number(this.expression(), token);
+      this.expect('velocity'); const velocity = this.unit(this.expression(), token);
+      this.expect(';');
+      const note = { midi, start, duration, velocity };
+      try { validatePianoNote(note); }
+      catch (error) { this.error((error as Error).message, token); }
+      notes.push(note);
+    }
+    this.expect('}');
+    if (this.tokens[this.cursor].text === ';') this.take();
+    return notes;
+  }
   private track(name: Token): MusicTrack {
     this.expect('{');
     let source: MusicTrack['source'] | undefined, steps: Step[] | undefined, patternKind: string | undefined;
+    let pianoRoll: PianoNote[] | undefined;
     let gain = 1;
     const seen = new Set<string>(), effects: ReverbEffect[] = [];
     while (this.token.text !== '}') {
       const property = this.identifier();
       if (seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
       seen.add(property.text);
+      if (property.text === 'piano') {
+        if (steps) this.error('A track can have only one pattern', property);
+        pianoRoll = this.piano(); steps = []; patternKind = 'piano';
+        continue;
+      }
       if (property.text === 'effect') {
         this.expect('reverb'); this.expect('{');
         let mix = 0.2;
@@ -149,10 +182,7 @@ class Parser {
               if (word !== 'x') this.error(`Invalid rhythm token '${word}'`, valueToken);
               return { kind: 'hit' };
             }
-            const match = /^([A-G])([#b]?)(-?\d)$/.exec(word);
-            if (!match) this.error(`Invalid note '${word}'`, valueToken);
-            const midi = (Number(match[3]) + 1) * 12 + pitchClasses[match[1]] + (match[2] === '#' ? 1 : match[2] === 'b' ? -1 : 0);
-            if (midi < 0 || midi > 127) this.error(`Note '${word}' is outside MIDI range 0 to 127`, valueToken);
+            const midi = this.pitch(word, valueToken);
             return { kind: 'note', midi };
           });
           break;
@@ -164,8 +194,8 @@ class Parser {
     this.expect('}');
     if (this.tokens[this.cursor].text === ';') this.take();
     if (!source || !steps) this.error('A track requires a source and a pattern', name);
-    if ((source.kind === 'sound') !== (patternKind === 'rhythm')) this.error('Use rhythm with sound, and notes with instrument', name);
-    return { name: name.text, source, steps, gain, ...(effects.length ? { effects } : {}) };
+    if ((source.kind === 'sound') !== (patternKind === 'rhythm')) this.error('Use rhythm with sound, and notes or piano with instrument', name);
+    return { name: name.text, source, steps, gain, ...(pianoRoll === undefined ? {} : { pianoRoll }), ...(effects.length ? { effects } : {}) };
   }
 }
 
