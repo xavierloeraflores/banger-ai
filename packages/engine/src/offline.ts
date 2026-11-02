@@ -21,7 +21,7 @@ export function encodeWav(buffer: AudioBuffer): ArrayBuffer {
 }
 function tailLength(program: MusicProgram): number {
   // Sum bus tails conservatively, including send chains. Same length for all stems.
-  return .7 + Math.max(0, ...program.tracks.map(track => effectTail(track.effects, track.automation))) + (program.buses ?? []).reduce((sum, bus) => sum + effectTail(bus.effects, bus.automation), 0);
+  return Math.max(.7, ...program.tracks.filter(track => track.source.kind === 'sound').map(track => .65 * 2 ** (-Math.min(0, ...(track.automation ?? []).filter(curve => curve.target === 'pitch').flatMap(curve => curve.points.map(point => point.value))) / 12))) + Math.max(0, ...program.tracks.map(track => effectTail(track.effects, track.automation))) + (program.buses ?? []).reduce((sum, bus) => sum + effectTail(bus.effects, bus.automation), 0);
 }
 async function render(program: MusicProgram, options: RenderOptions, solo?: string): Promise<RenderedAudio> {
   const sampleRate = options.sampleRate ?? 44100, tailSeconds = options.tailSeconds ?? tailLength(program);
@@ -29,7 +29,7 @@ async function render(program: MusicProgram, options: RenderOptions, solo?: stri
   if (!Number.isFinite(tailSeconds) || tailSeconds < 0 || tailSeconds > 300) throw new RangeError('Tail must be between 0 and 300 seconds');
   const duration = songDuration(program) + tailSeconds;
   const length = Math.ceil(duration * sampleRate);
-  if (length * 2 * 4 > 512 * 1024 * 1024) throw new RangeError('Render exceeds 512 MiB. Shorten the song or lower the sample rate.');
+  if (length * 2 * 6 > 512 * 1024 * 1024) throw new RangeError('Render exceeds 512 MiB. Shorten the song or lower the sample rate.');
   const context = new OfflineAudioContext(2, length, sampleRate); await prepareAudio(context);
   const renderer = new AudioRenderer(context, solo);
   try { renderer.renderSong(program); const buffer = await context.startRendering(); return { buffer, wav: encodeWav(buffer), duration: buffer.duration, tailSeconds }; }
@@ -40,6 +40,8 @@ export function renderWav(program: MusicProgram, options: RenderOptions = {}): P
  * drive sidechains. Nonlinear bus processing means stems need not sum to the mix. */
 export async function renderStems(program: MusicProgram, options: RenderOptions = {}): Promise<Record<string, RenderedAudio>> {
   const song = copyMusicProgram(program), stems: Record<string, RenderedAudio> = Object.create(null);
+  const frames = Math.ceil((songDuration(song) + (options.tailSeconds ?? tailLength(song))) * (options.sampleRate ?? 44100));
+  if (frames * 2 * 6 * song.tracks.length > 512 * 1024 * 1024) throw new RangeError('Stems exceed 512 MiB combined. Export individual stems or lower the sample rate.');
   for (const track of song.tracks) stems[track.name] = await render(song, options, track.name);
   return stems;
 }

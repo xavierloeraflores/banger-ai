@@ -1,5 +1,5 @@
 import { programDurationBeats, type MusicProgram } from '@banger/compiler';
-import { barDuration, eventsForBar, eventsForSong, songDuration, type MusicEvent } from './events.js';
+import { barDuration, eventsForSong, songDuration, type MusicEvent } from './events.js';
 import { instruments } from './instruments.js';
 import { createDrums } from './sounds.js';
 import { MixerGraph, scheduleCurve, silentMeters, type MeterSnapshot } from './graph.js';
@@ -10,6 +10,16 @@ export class AudioRenderer {
   private readonly active = new Set<RenderedBar>();
   private readonly graphs = new Map<MusicProgram, GraphEntry>();
   private disposed = false;
+  private readonly schedules = new WeakMap<MusicProgram, { beats: number; events: MusicEvent[]; bars: MusicEvent[][] }>();
+  private schedule(program: MusicProgram) {
+    let schedule = this.schedules.get(program);
+    if (!schedule) {
+      const events = eventsForSong(program), beats = programDurationBeats(program), bars = Array.from({ length: beats / 4 }, () => [] as MusicEvent[]);
+      for (const event of events) bars[Math.floor(event.beat / 4)].push(event);
+      schedule = { beats, events, bars }; this.schedules.set(program, schedule);
+    }
+    return schedule;
+  }
   constructor(private readonly context: BaseAudioContext, private readonly solo?: string) { this.drums = createDrums(context); }
   get meters(): MeterSnapshot {
     const result = silentMeters();
@@ -20,10 +30,12 @@ export class AudioRenderer {
     return result;
   }
   renderBar(program: MusicProgram, start: number, skipBefore = -Infinity, barIndex = 0): RenderedBar {
-    const beat = barIndex * 4 % programDurationBeats(program);
-    return this.render(program, eventsForBar(program, start, barIndex), start, beat, beat + 4, barDuration(program), skipBefore);
+    if (!Number.isFinite(start) || start < 0 || !Number.isInteger(barIndex) || barIndex < 0) throw new RangeError('Invalid bar start or index');
+    const schedule = this.schedule(program), beat = barIndex * 4 % schedule.beats;
+    const events = schedule.bars[beat / 4].map(event => ({ ...event, time: start + (event.beat - beat) * 60 / program.tempo }));
+    return this.render(program, events, start, beat, beat + 4, barDuration(program), skipBefore);
   }
-  renderSong(program: MusicProgram, start = 0): RenderedBar { return this.render(program, eventsForSong(program, start), start, 0, programDurationBeats(program), songDuration(program), -Infinity); }
+  renderSong(program: MusicProgram, start = 0): RenderedBar { if (!Number.isFinite(start) || start < 0) throw new RangeError('Invalid song start'); const schedule = this.schedule(program); return this.render(program, schedule.events.map(event => ({ ...event, time: start + event.time })), start, 0, schedule.beats, songDuration(program), -Infinity); }
   private render(program: MusicProgram, events: MusicEvent[], start: number, fromBeat: number, toBeat: number, duration: number, skipBefore: number): RenderedBar {
     if (this.disposed) throw new Error('Audio renderer has been disposed');
     let entry = this.graphs.get(program);
@@ -63,7 +75,8 @@ export class AudioRenderer {
         if (event.track.source.kind === 'sound') {
           const sample = context.createBufferSource(); sample.buffer = this.drums[event.track.source.name];
           const envelope = context.createGain(); envelope.gain.value = event.velocity; nodes.add(envelope);
-          automatePitch(sample.detune, 0, event.time + sample.buffer.duration); sample.connect(envelope).connect(input); register(sample, envelope);
+          const minimumPitch = Math.min(0, ...pitch?.points.map(point => point.value) ?? []);
+          automatePitch(sample.detune, 0, event.time + sample.buffer.duration * 2 ** (-minimumPitch / 12)); sample.connect(envelope).connect(input); register(sample, envelope);
         } else if (event.step.kind === 'note') {
           const instrument = instruments[event.track.source.name];
           const duration = event.sustained ? event.duration : Math.min(event.duration * .85, instrument.gate);
