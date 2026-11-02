@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
+import { ChatGPTError } from "./chatgpt-errors.js";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 
 export const ISSUER = "https://auth.openai.com";
@@ -14,8 +15,8 @@ export type TokenSet = { accessToken: string; refreshToken?: string; idToken?: s
 export async function verifyIdentity(token: string, clientId: string, nonce?: string, keys: JWTVerifyGetKey = jwks): Promise<Identity> {
   const { payload } = await jwtVerify(token, keys, {
     issuer: ISSUER, audience: clientId, algorithms: ["RS256"], requiredClaims: ["sub", "exp", "iat"], clockTolerance: 5,
-  });
-  if (!payload.sub || (nonce !== undefined && payload.nonce !== nonce)) throw new Error("ChatGPT identity could not be verified.");
+  }).catch(() => { throw new ChatGPTError("identity"); });
+  if (!payload.sub || (nonce !== undefined && payload.nonce !== nonce)) throw new ChatGPTError("identity");
   return { subject: payload.sub, ...(typeof payload.email === "string" ? { email: payload.email } : {}),
     ...(typeof payload.name === "string" ? { name: payload.name } : {}) };
 }
@@ -25,7 +26,7 @@ export function parseTokens(value: unknown, previous?: TokenSet): TokenSet {
   if (!data || typeof data.access_token !== "string" || !data.access_token ||
     typeof data.token_type !== "string" || data.token_type.toLowerCase() !== "bearer" ||
     typeof data.expires_in !== "number" || !Number.isFinite(data.expires_in) || data.expires_in <= 0 ||
-    (data.scope !== undefined && typeof data.scope !== "string")) throw new Error("ChatGPT returned an invalid token response.");
+    (data.scope !== undefined && typeof data.scope !== "string")) throw new ChatGPTError("invalidTokens");
   return { accessToken: data.access_token, expiresAt: Date.now() + data.expires_in * 1000,
     refreshToken: typeof data.refresh_token === "string" && data.refresh_token ? data.refresh_token : previous?.refreshToken,
     idToken: typeof data.id_token === "string" && data.id_token ? data.id_token : previous?.idToken,
@@ -37,8 +38,15 @@ export async function exchangeToken(body: URLSearchParams, fetcher: typeof fetch
   const response = await fetcher(TOKEN, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body, signal: AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]), redirect: "error" });
   if (!response.ok) {
-    if (response.status === 400 || response.status === 401) throw new Error("ChatGPT authorization expired or was revoked. Sign in again.");
-    throw new Error("ChatGPT sign-in is unavailable. Try again in a moment.");
+    const payload = await response.json().catch(() => null) as { error?: string | { code?: string } } | null;
+    const code = typeof payload?.error === "string" ? payload.error : payload?.error?.code;
+    const diagnostics = { status: response.status, providerCode: code,
+      requestId: response.headers.get("x-request-id") ?? response.headers.get("openai-request-id") ?? undefined };
+    if (code && ["invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "refresh_token_invalidated", "refresh_token_reused"].includes(code)) {
+      throw new ChatGPTError("reauthorize", diagnostics);
+    }
+    if (code === "invalid_client") throw new ChatGPTError("client", diagnostics);
+    throw new ChatGPTError("unavailable", diagnostics);
   }
   return response.json() as Promise<unknown>;
 }
@@ -102,12 +110,14 @@ export async function authorize(options: {
     if (!options.account) url.searchParams.set("agent_name_hint", "Banger");
     if (options.account?.tokens?.idToken) url.searchParams.set("id_token_hint", options.account.tokens.idToken);
     if (options.account?.email) url.searchParams.set("login_hint", options.account.email);
+    // An explicit reconnect after declining plan permission must request consent again.
+    if (options.account?.tokens && !options.account.tokens.scopes.includes("chatgpt.tokens.use.direct")) url.searchParams.set("prompt", "consent");
     signal.throwIfAborted();
     await options.openExternal(url.toString());
     const { code, clientId } = await callback;
     const tokens = parseTokens(await exchangeToken(new URLSearchParams({ grant_type: "authorization_code", client_id: clientId,
       code, code_verifier: verifier, redirect_uri: redirectUri, resource: RESOURCE }), fetcher, signal));
-    if (!tokens.idToken) throw new Error("ChatGPT did not return a verifiable identity. Sign in again.");
+    if (!tokens.idToken) throw new ChatGPTError("noIdentity");
     const identity = await (options.verify ?? verifyIdentity)(tokens.idToken, clientId, nonce);
     if (options.account && identity.subject !== options.account.subject) throw new Error("This is a different ChatGPT account. Add it as a new account instead.");
     signal.throwIfAborted();

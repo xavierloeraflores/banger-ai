@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runBangerAgent } from "@banger/agent";
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from "jose";
-import { createChatGPTAuth, completedResponse } from "../dist/chatgpt-auth.js";
+import { createChatGPTAuth, completedResponse, publicChatGPTError } from "../dist/chatgpt-auth.js";
 import { verifyIdentity, authorize, ISSUER, TOKEN, RESOURCE, SCOPES } from "../dist/chatgpt-oauth.js";
 
 const keys = await generateKeyPair("RS256");
@@ -41,7 +41,7 @@ async function fixture(t) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, "accounts.enc"), encryption = cipher();
   const authorizations = [], calls = [];
-  let subject = "user-1", issued = "oaiapp_test1", scopes = SCOPES, inference, revoke = true;
+  let subject = "user-1", issued = "oaiapp_test1", scopes = SCOPES, inference, revoke = true, refreshError;
   const options = { verify,
     async openExternal(value) {
       const url = new URL(value); authorizations.push(url);
@@ -63,6 +63,7 @@ async function fixture(t) {
           return Response.json({ access_token: "secret-access", refresh_token: "secret-refresh", id_token: idToken, token_type: "Bearer", expires_in: 3600, scope: scopes });
         }
         assert.equal(form.get("refresh_token"), "secret-refresh");
+        if (refreshError) return Response.json({ error: refreshError }, { status: refreshError === "temporarily_unavailable" ? 503 : 400 });
         return Response.json({ access_token: "refreshed-access", refresh_token: "rotated-refresh", token_type: "Bearer", expires_in: 3600 });
       }
       if (url === `${RESOURCE}/models`) return Response.json({ models: [
@@ -80,7 +81,7 @@ async function fixture(t) {
   };
   const auth = createChatGPTAuth(path, encryption, options); t.after(() => auth.dispose());
   return { auth, path, encryption, options, authorizations, calls,
-    configure(value) { ({ subject = subject, issued = issued, scopes = scopes, inference = inference, revoke = revoke } = value); },
+    configure(value) { ({ subject = subject, issued = issued, scopes = scopes, inference = inference, revoke = revoke, refreshError = refreshError } = value); },
     async saved() { return JSON.parse(encryption.decrypt(await readFile(path))); },
     async save(value) { await writeFile(path, encryption.encrypt(JSON.stringify(value))); },
   };
@@ -120,6 +121,8 @@ test("valid identity without granted plan scope cannot perform inference", async
   await assert.rejects(f.auth.select(true), /Allow Banger/);
   await assert.rejects(f.auth.model(), /Select ChatGPT/);
   assert.equal(f.calls.some(call => call.url.endsWith("/responses")), false);
+  await f.auth.signIn(result.activeAccountId);
+  assert.equal(f.authorizations.at(-1).searchParams.get("prompt"), "consent");
 });
 
 test("returning sign-in rejects a changed verified identity without overwriting saved credentials", async t => {
@@ -220,7 +223,7 @@ test("response reader handles fragmented SSE and rejects failed, incomplete and 
   assert.deepEqual(await completedResponse(stream([{ type: "response.completed", response: expected }], true)), expected);
   await assert.rejects(completedResponse(stream([{ type: "response.output_text.delta", delta: "unfinished" }])), /before completing/);
   await assert.rejects(completedResponse(stream([{ type: "response.failed", response: { error: { code: "subscription_sharing_usage_limit_exceeded" } } }])), /at its limit/);
-  await assert.rejects(completedResponse(stream([{ type: "response.incomplete" }])), /could not complete/);
+  await assert.rejects(completedResponse(stream([{ type: "response.incomplete" }])), /did not complete/);
 });
 
 
@@ -250,4 +253,40 @@ test("the real music agent completes a namespaced tool loop with stateless ChatG
   const result = await runBangerAgent({ currentFile: { name: "Untitled.banger", source: "" }, previousFiles: [], messages: [{ role: "user", content: "Make a simple beat." }] }, await f.auth.model());
   assert.equal(turn, 2); assert.equal(result.files.length, 1); assert.equal(result.files[0].name, "song.banger");
   assert.equal(result.text, "Added a kick pattern.");
+});
+
+
+test("invalid refresh grants clear credentials and cannot loop, while transient errors retain the session", async t => {
+  for (const refreshError of ["invalid_grant", "refresh_token_reused", "temporarily_unavailable"]) {
+    const f = await fixture(t); await f.auth.signIn(); const saved = await f.saved();
+    saved.accounts[0].tokens.expiresAt = 0; await f.save(saved); f.configure({ refreshError });
+    await assert.rejects(f.auth.model(), error => {
+      assert.match(publicChatGPTError(error), refreshError !== "temporarily_unavailable" ? /revoked/ : /unavailable/); return true;
+    });
+    const after = await f.saved();
+    assert.equal(Boolean(after.accounts[0].tokens), refreshError === "temporarily_unavailable");
+    assert.equal(after.accounts[0].clientId, "oaiapp_test1");
+    if (refreshError !== "temporarily_unavailable") {
+      assert.equal(after.selected, false);
+      await assert.rejects(f.auth.select(true), /Sign in/);
+      assert.equal(f.calls.filter(call => call.url === TOKEN && new URLSearchParams(call.init.body).get("grant_type") === "refresh_token").length, 1);
+    }
+  }
+});
+
+test("real agent failures retain safe ChatGPT usage and session recovery messages", async t => {
+  for (const response of [
+    () => new Response("private provider diagnostic", { status: 429 }),
+    () => stream([{ type: "response.failed", response: { error: { code: "subscription_sharing_usage_limit_exceeded" } } }]),
+    () => new Response("private provider diagnostic", { status: 401 }),
+  ]) {
+    const f = await fixture(t); await f.auth.signIn(); f.configure({ inference: response });
+    await assert.rejects(runBangerAgent({ currentFile: { name: "Untitled.banger", source: "" }, previousFiles: [],
+      messages: [{ role: "user", content: "Make a beat." }] }, await f.auth.model()), error => {
+      const message = publicChatGPTError(error);
+      assert.match(message, /at its limit|revoked/);
+      assert.equal(message.includes("BYOK"), false); assert.equal(message.includes("private provider"), false); return true;
+    });
+  }
+  assert.equal(publicChatGPTError(new Error("secret-value")).includes("secret-value"), false);
 });
