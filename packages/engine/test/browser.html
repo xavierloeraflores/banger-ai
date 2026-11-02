@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Banger audio verification</title>
+<script type="importmap">{"imports":{"@banger/compiler":"/packages/compiler/dist/index.js"}}</script>
+<button id="run">Run audio checks</button>
+<pre id="results">Ready</pre>
+<script type="module">
+import { compileMusic, createDefaultProgram } from '/packages/compiler/dist/index.js';
+import { AudioRenderer, BangerPlayer } from '/packages/engine/dist/index.js';
+const results = document.querySelector('#results');
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const rms = (data, from, to) => Math.sqrt(data.slice(from, to).reduce((sum, sample) => sum + sample * sample, 0) / (to - from));
+document.querySelector('#run').onclick = async () => {
+  results.textContent = 'Running';
+  const player = new BangerPlayer();
+  try {
+    await player.start(createDefaultProgram());
+    await sleep(400);
+    assert(player.state.playing && player.state.step > 0, 'Live audio clock did not advance');
+    const update = createDefaultProgram(); update.tempo = 240; player.update(update);
+    assert(player.state.hasPendingUpdate, 'Update did not queue');
+    await sleep(1900);
+    assert(player.state.tempo === 240 && player.state.bar >= 2, 'Bar update did not apply');
+    player.stop(); assert(!player.state.playing, 'Stop failed');
+    await player.start(createDefaultProgram());
+    await sleep(100);
+    await player.dispose();
+    results.textContent = 'PASS live start, step, bar update, stop, restart, dispose\n';
+    for (const name of ['drums/kick', 'drums/snare', 'drums/hat', 'synth/bass', 'synth/pluck']) {
+      const context = new OfflineAudioContext(2, 44100, 44100), renderer = new AudioRenderer(context);
+      const drum = name.startsWith('drums/');
+      const program = compileMusic(`track test { ${drum ? 'sound' : 'instrument'} "${name}"; ${drum ? 'rhythm "x"' : 'notes "A4"'}; gain .7; effect reverb { mix .2; } }`);
+      renderer.renderBar(program, .05);
+      const buffer = await context.startRendering(), data = buffer.getChannelData(0);
+      assert(data.every(Number.isFinite), `${name} emitted nonfinite samples`);
+      const energy = rms(data, 2205, 15000);
+      assert(energy > .001 && energy < 1, `${name} has invalid energy ${energy}`);
+      results.textContent += `PASS ${name} actual render RMS ${energy.toFixed(5)}\n`;
+      renderer.dispose();
+    }
+    const context = new OfflineAudioContext(1, 44100 * 2, 44100), renderer = new AudioRenderer(context);
+    const program = compileMusic('track kick { sound "drums/kick"; rhythm "x x x x"; gain .8; }');
+    renderer.renderBar(program, 0, .75);
+    const buffer = await context.startRendering(), data = buffer.getChannelData(0);
+    assert(rms(data, 0, 40000) === 0, 'Missed events played a catch-up burst');
+    assert(rms(data, 45000, 55000) > .001, 'Future event was not scheduled');
+    renderer.dispose();
+    results.textContent += 'PASS actual render skips missed events and plays future events\nALL CHECKS PASSED';
+  } catch (error) { await player.dispose(); results.textContent += `\nFAIL ${error.stack}`; }
+};
+</script>
