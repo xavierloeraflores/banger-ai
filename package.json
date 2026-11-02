@@ -12,7 +12,9 @@
     "build": "turbo run build",
     "fullbuild": "cross-env NODE_ENV=production turbo run build",
     "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "verify:audio": "pnpm --filter @banger/desktop exec electron ../../packages/engine/test/render.cjs",
+    "verify:song": "pnpm --filter @banger/desktop exec electron ../../scripts/verify-song.mjs"
   },
   "devDependencies": {
     "turbo": "^2.11.10",
