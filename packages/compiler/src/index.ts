@@ -1,1 +1,30 @@
-export {};
+import { compileMusic } from './parser.js';
+import { validateMusicProgram, type MusicProgram } from './model.js';
+export { compileMusic } from './parser.js';
+export { CompileError, type Position } from './lexer.js';
+export { copyMusicProgram, validateMusicProgram, MUSIC_LIMITS, SOUND_NAMES, INSTRUMENT_NAMES } from './model.js';
+export type { MusicProgram, MusicTrack, Step, SoundName, InstrumentName, ReverbEffect } from './model.js';
+
+export function serializeMusic(program: MusicProgram): string {
+  validateMusicProgram(program);
+  const pitches = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const lines = [`tempo ${program.tempo};`, 'meter 4/4;'];
+  for (const track of program.tracks) {
+    const pattern = track.steps.map(step => step === null ? '.' : step.kind === 'hit' ? 'x' : `${pitches[step.midi % 12]}${Math.floor(step.midi / 12) - 1}`).join(' ');
+    lines.push('', `track ${track.name} {`, `  ${track.source.kind} ${JSON.stringify(track.source.name)};`,
+      `  ${track.source.kind === 'sound' ? 'rhythm' : 'notes'} ${JSON.stringify(pattern)};`, `  gain ${track.gain};`);
+    for (const effect of track.effects ?? []) lines.push(`  effect reverb { mix ${effect.mix}; }`);
+    lines.push('}');
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+export function createDefaultProgram(): MusicProgram {
+  return compileMusic(`tempo 120;
+meter 4/4;
+track kick { sound "drums/kick"; rhythm "x . . . . . . . x . . . . . . ."; gain 0.8; }
+track snare { sound "drums/snare"; rhythm ". . . . x . . . . . . . x . . ."; gain 0.55; }
+track hats { sound "drums/hat"; rhythm "x . x . x . x . x . x . x . x ."; gain 0.3; }
+track bass { instrument "synth/bass"; notes "C2 . . . . . . . G1 . . . . . . ."; gain 0.45; }
+`);
+}
