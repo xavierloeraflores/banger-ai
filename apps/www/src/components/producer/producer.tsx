@@ -216,7 +216,7 @@ export function Producer() {
             onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />
           <span>BPM</span>
         </label>
-        <div className="producer-meter"><strong>4/4</strong><span>1 bar · 1/16 grid</span></div>
+        <div className="producer-meter"><strong>4/4</strong><span>1 bar loop</span></div>
         <div className="producer-position" aria-label={playback.state.playing ? `Bar ${playback.state.bar}, step ${playback.state.step + 1}` : "Stopped"}>
           <span className={playback.state.playing ? "producer-live-dot is-playing" : "producer-live-dot"} />
           <span>{playback.state.playing ? `${String(Math.max(1, playback.state.bar)).padStart(2, "0")}.${String(playback.state.step + 1).padStart(2, "0")}` : "01.01"}</span>
@@ -227,10 +227,10 @@ export function Producer() {
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
       <div className="producer-workspace" id="studio">
         <Panel className="producer-sequencer" aria-labelledby="sequence-title">
-          <div className="producer-panel-heading"><div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Make a little noise.</h1></div><span className="producer-tag">16 STEP</span></div>
+          <div className="producer-panel-heading"><div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Step sequencer</h1></div><span className="producer-tag">1 BAR</span></div>
           {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
           <div className="producer-sequence-scroll">
-            <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><div>{Array.from({ length: 16 }, (_, i) => <span key={i} className={i % 4 === 0 ? "is-beat" : ""}>{String(i + 1).padStart(2, "0")}</span>)}</div><span>LEVEL</span></div>
+            <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / ONE BAR</span><span>LEVEL</span></div>
             <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
               {program.tracks.map((track, index) => (
                 <div className={`producer-track${muted.has(index) || (solo.size > 0 && !solo.has(index)) ? " is-muted" : ""}`} key={index}>
@@ -253,7 +253,7 @@ export function Producer() {
                     {track.steps.map((step, stepIndex) => <StepButton key={stepIndex} active={step !== null} current={playback.state.playing && Math.floor(playback.state.phase * track.steps.length) === stepIndex} accent="var(--producer-lime)"
                       data-current={playback.state.playing && Math.floor(playback.state.phase * track.steps.length) === stepIndex} className="producer-step" aria-label={`${track.name}, step ${stepIndex + 1}, ${step ? step.kind === "note" ? noteName(step.midi) : "hit" : "rest"}`} aria-pressed={step !== null}
                       onClick={() => editTrack(index, { ...track, steps: track.steps.map((item, i) => i !== stepIndex ? item : item ? null : track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }) })}>
-                      <span>{step?.kind === "note" ? noteName(step.midi) : step ? "●" : ""}</span>
+                      <span className="producer-step-index" aria-hidden="true">{stepIndex + 1}</span><span className="producer-step-tone">{step?.kind === "note" ? noteName(step.midi) : step ? "●" : ""}</span>
                     </StepButton>)}
                   </div>
                   <div className="producer-track-mix">
@@ -275,7 +275,7 @@ export function Producer() {
           </div>
           {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
           <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>{program.tracks.length} tracks · Click a step to toggle</span></div>
-          <p className="producer-mix-note">Mute and solo are listening controls. Saved files keep each track's original gain. Sequencer edits rewrite source formatting.</p>
+          <p className="producer-mix-note">Mute and solo are listening controls. Saved files keep the original track gains. Sequencer edits rewrite source formatting.</p>
         </Panel>
 
         <Panel className="producer-editor" aria-labelledby="source-title">

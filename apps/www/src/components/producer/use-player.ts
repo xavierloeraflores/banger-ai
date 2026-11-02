@@ -11,6 +11,7 @@ export function usePlayer(program: MusicProgram) {
   const latestProgram = useRef(program);
   const generation = useRef(0);
   const pending = useRef(false);
+  const audioError = useRef<string | null>(null);
   const [state, setState] = useState(idle);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +21,11 @@ export function usePlayer(program: MusicProgram) {
     player.current = instance;
     const timer = window.setInterval(() => {
       const current = instance.state;
-      setState({ ...current, tempo: current.tempo ?? latestProgram.current.tempo });
+      setState(previous => {
+        const next = { ...current, tempo: current.tempo ?? latestProgram.current.tempo };
+        return previous.playing === next.playing && previous.bar === next.bar && previous.phase === next.phase && previous.tempo === next.tempo && previous.hasPendingUpdate === next.hasPendingUpdate ? previous : next;
+      });
+      setError(audioError.current);
     }, 25);
     return () => {
       generation.current += 1;
@@ -38,9 +43,9 @@ export function usePlayer(program: MusicProgram) {
     if (!instance?.state.playing) return;
     try {
       instance.update(program);
-      setError(null);
+      audioError.current = null;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not update playback.");
+      audioError.current = cause instanceof Error ? cause.message : "Could not update playback.";
     }
   }, [program]);
 
@@ -51,7 +56,7 @@ export function usePlayer(program: MusicProgram) {
     const requestedProgram = latestProgram.current;
     pending.current = true;
     setStarting(true);
-    setError(null);
+    audioError.current = null;
     try {
       await instance.start(requestedProgram);
       if (request !== generation.current || player.current !== instance) {
@@ -62,7 +67,7 @@ export function usePlayer(program: MusicProgram) {
       setState({ ...instance.state, tempo: instance.state.tempo ?? requestedProgram.tempo });
     } catch (cause) {
       if (request === generation.current) {
-        setError(cause instanceof Error ? cause.message : "Could not start audio.");
+        audioError.current = cause instanceof Error ? cause.message : "Could not start audio.";
       }
     } finally {
       // Keep Play locked until a cancelled start has actually settled.
