@@ -300,3 +300,35 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .project-workspace-actions { margin-top: .75rem; }
 .project-workspace-events { max-height: 240px; overflow: auto; font: .8rem/1.6 monospace; overflow-wrap: anywhere; }
 .project-workspace-notice { white-space: pre-wrap; }
+
+/* Song studio */
+.studio-arrangement, .studio-buses, .studio-export, .studio-automation { margin: 12px 0; border: 1px solid var(--producer-border, #30332d); border-radius: 8px; padding: 12px; }
+.studio-arrangement summary, .studio-buses summary, .studio-export summary, .studio-automation summary { cursor: pointer; font-weight: 600; }
+.studio-arrangement fieldset, .studio-buses fieldset, .studio-export fieldset { border: 0; min-width: 0; padding: 12px 0 0; }
+.studio-arrangement p, .studio-export p, .studio-automation p { color: var(--producer-muted, #959b90); font-size: 12px; }
+.studio-inline, .studio-pattern-controls, .studio-routing, .studio-sends { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.studio-inline label, .studio-pattern-controls label, .studio-routing label, .studio-sends label, .studio-section label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.studio-pattern-controls, .studio-routing, .studio-meter, .studio-automation { grid-column: 1 / -1; }
+.studio-pattern-controls input[type=number], .studio-section input, .studio-timeline input, .studio-automation-points input { width: 85px; }
+.studio-pattern-controls input[type=range], .studio-sends input[type=range] { width: 100px; }
+.studio-sections { display: flex; gap: 12px; overflow-x: auto; padding: 12px 0; }
+.studio-section { display: grid; gap: 10px; min-width: 250px; padding: 12px; background: #171b17; border-radius: 6px; }
+.studio-section label { justify-content: space-between; }
+.studio-section[data-playing=true], .studio-timeline li[data-playing=true] { outline: 1px solid var(--producer-lime); }
+.studio-timeline { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0; list-style: none; }
+.studio-timeline li { display: flex; flex-shrink: 0; align-items: center; gap: 8px; padding: 10px; border: 1px solid #3b4337; border-radius: 6px; }
+.studio-meter { display: flex; gap: 12px; align-items: center; font-size: 12px; color: #aab4a4; }
+.studio-meter meter { width: 140px; height: 12px; accent-color: var(--producer-lime); }
+.studio-meter output { min-width: 50px; }
+.producer > .studio-meter { margin: 8px 30px; }
+.studio-bus { padding: 12px; margin: 12px 0; border: 1px solid #3b4337; }
+.studio-automation { min-width: 0; }
+.studio-automation-lane { padding: 12px 0; }
+.studio-automation-lane svg { display: block; width: 100%; height: 130px; margin: 12px 0; background: #171b17; cursor: crosshair; border: 1px solid #3b4337; }
+.studio-automation-lane polyline { fill: none; stroke: var(--producer-lime); stroke-width: 2; }
+.studio-automation-lane circle { fill: var(--producer-lime); }
+.studio-curve-grid { fill: none; stroke: #343e30; stroke-width: 1; }
+.studio-automation-points { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.studio-export-status { min-height: 18px; }
+.piano-ruler > div { display: flex; }
+.piano-ruler > div > span { flex: 1; }
