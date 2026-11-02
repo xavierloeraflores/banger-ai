@@ -96,7 +96,7 @@ async function exercise(window, desktop) {
   await input("byok-key", "fake-chat-key");
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=status]')");
-  await evaluate("document.querySelector('[aria-label=\"Close AI settings\"]').click()");
+  await click("Sequencer");
   await waitFor("document.querySelector('.ai-chat-heading-actions').textContent.includes('your key')");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");

@@ -39,7 +39,7 @@ async function exercise(window, desktop) {
   })()`);
   await waitFor("document.querySelector('#producer-source')?.value");
   await click("BYOK");
-  await waitFor("document.querySelector('.byok-dialog')?.open && !document.querySelector('.byok-form fieldset').disabled");
+  await waitFor("document.querySelector('#studio-tab-byok')?.getAttribute('aria-selected') === 'true' && !document.querySelector('.byok-form fieldset').disabled");
   assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), 5);
   const providers = ["Vercel AI Gateway", "Anthropic", "OpenAI", "Meta Muse", "Grok"];
   for (const name of providers) {
@@ -61,8 +61,8 @@ async function exercise(window, desktop) {
     assert.equal(JSON.stringify(await evaluate("window.bangerAI.load()")).includes("fake-smoke-key"), false);
     assert.equal(JSON.parse((await safeStorage.decryptStringAsync(bytes)).result).providers.grok.key, "fake-smoke-key");
   }
-  await evaluate("document.querySelector('[aria-label=\"Close AI settings\"]').click()");
-  assert.equal(await evaluate("document.activeElement.textContent"), "BYOK");
+  await click("Sequencer");
+  assert.equal(await evaluate("document.querySelector('#byok-key')"), null);
   await window.loadURL("banger://app/");
   await waitFor("document.querySelector('#producer-source')?.value");
   await click("BYOK");
@@ -76,8 +76,8 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('.byok-feedback [role=\"status\"]')?.textContent === 'Grok key removed.'");
   assert.equal(await evaluate("document.querySelector('#byok-key').required"), true);
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === 'Remove key').disabled"), true);
-  await evaluate("document.querySelector('.byok-dialog').dispatchEvent(new Event('cancel', { cancelable: true }))");
-  assert.equal(await evaluate("document.querySelector('.byok-dialog').open"), false);
+  await click("Sequencer");
+  assert.equal(await evaluate("document.querySelector('#studio-panel-byok').hidden"), true);
 }
 
 async function run(desktopWindow) {
@@ -87,7 +87,7 @@ async function run(desktopWindow) {
     await webWindow.loadURL("banger://app/");
     await exercise(webWindow, false);
     webWindow.destroy();
-    console.log("BYOK smoke passed: five providers, masked keys, save/replace/remove, reload persistence, encrypted desktop storage, web session storage, mobile layout, and focus restoration.");
+    console.log("BYOK smoke passed: five providers, masked keys, save/replace/remove, reload persistence, encrypted desktop storage, web session storage, mobile layout, and tab navigation.");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

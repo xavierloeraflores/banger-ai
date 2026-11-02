@@ -11,10 +11,17 @@ import {
 import { Button, IconButton, Input, Panel, Range, Select, StepButton } from "@banger/shadcn";
 import { openProject, saveProject } from "@/lib/project-files";
 import { usePlayer } from "./use-player";
-import { ByokMenu } from "./byok-menu";
+import { ByokSettings } from "./byok-menu";
 import { AIChat } from "./ai-chat";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
+
+const studioViews = [
+  { id: "sequencer", label: "Sequencer" },
+  { id: "source", label: "Raw .banger" },
+  { id: "byok", label: "BYOK" },
+] as const;
+type StudioView = typeof studioViews[number]["id"];
 
 const sounds = [
   ["drums/kick", "Kick"],
@@ -37,6 +44,7 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer() {
+  const [view, setView] = useState<StudioView>("sequencer");
   const [program, setProgram] = useState<MusicProgram>(() => createDefaultProgram());
   const [appliedSource, setAppliedSource] = useState(() => serializeMusic(program));
   const [source, setSource] = useState(appliedSource);
@@ -216,7 +224,6 @@ export function Producer() {
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : "Local project"}</span></div>
         <div className="producer-file-actions">
-          <ByokMenu />
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
           <Button variant="secondary" onClick={save} disabled={fileBusy}>Save .banger</Button>
         </div>
@@ -250,68 +257,90 @@ export function Producer() {
 
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
       <div className="producer-workspace" id="studio">
-        <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
-        <Panel className="producer-sequencer" aria-labelledby="sequence-title">
-          <div className="producer-panel-heading"><div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Step sequencer</h1></div><span className="producer-tag">1 BAR</span></div>
-          {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
-          <div className="producer-sequence-scroll">
-            <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / ONE BAR</span><span>LEVEL</span></div>
-            <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
-              {program.tracks.map((track, index) => (
-                <div className={`producer-track${muted.has(index) || (solo.size > 0 && !solo.has(index)) ? " is-muted" : ""}`} key={index}>
-                  <div className="producer-track-identity">
-                    <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
-                    <div className="producer-track-fields">
-                      <Input className="producer-track-name" key={track.name} defaultValue={track.name} aria-label={`Track ${index + 1} name`} title="Use letters, numbers, and underscores. Start with a letter or underscore."
-                        onBlur={event => {
-                          if (event.target.value === track.name) return;
-                          if (!editTrack(index, { ...track, name: event.target.value })) event.target.value = track.name;
-                        }}
-                        onKeyDown={event => {
-                          if (event.key === "Escape") event.currentTarget.value = track.name;
-                          if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
-                        }} />
-                      <Select value={track.source.name} aria-label={`${track.name} sound`} onChange={event => changeSound(index, event.target.value)}>{sounds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+        <div className="producer-tabs" role="tablist" aria-label="Studio views">
+          {studioViews.map((item, index) => <button key={item.id} type="button" role="tab"
+            id={`studio-tab-${item.id}`} aria-controls={`studio-panel-${item.id}`} aria-selected={view === item.id}
+            tabIndex={view === item.id ? 0 : -1} onClick={() => setView(item.id)}
+            onKeyDown={event => {
+              const nextIndex = event.key === "ArrowRight" ? (index + 1) % studioViews.length
+                : event.key === "ArrowLeft" ? (index + studioViews.length - 1) % studioViews.length
+                : event.key === "Home" ? 0 : event.key === "End" ? studioViews.length - 1 : null;
+              if (nextIndex === null) return;
+              event.preventDefault();
+              const next = studioViews[nextIndex]!;
+              setView(next.id);
+              document.getElementById(`studio-tab-${next.id}`)?.focus();
+            }}>{item.label}</button>)}
+        </div>
+        <div id="studio-panel-sequencer" role="tabpanel" aria-labelledby="studio-tab-sequencer" hidden={view !== "sequencer"} tabIndex={0}>
+          <Panel className="producer-sequencer" aria-labelledby="sequence-title">
+            <div className="producer-panel-heading"><div><p className="producer-eyebrow">Pattern 01</p><h1 id="sequence-title">Step sequencer</h1></div><span className="producer-tag">1 BAR</span></div>
+            {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
+            <div className="producer-sequence-scroll">
+              <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / ONE BAR</span><span>LEVEL</span></div>
+              <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
+                {program.tracks.map((track, index) => (
+                  <div className={`producer-track${muted.has(index) || (solo.size > 0 && !solo.has(index)) ? " is-muted" : ""}`} key={index}>
+                    <div className="producer-track-identity">
+                      <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
+                      <div className="producer-track-fields">
+                        <Input className="producer-track-name" key={track.name} defaultValue={track.name} aria-label={`Track ${index + 1} name`} title="Use letters, numbers, and underscores. Start with a letter or underscore."
+                          onBlur={event => {
+                            if (event.target.value === track.name) return;
+                            if (!editTrack(index, { ...track, name: event.target.value })) event.target.value = track.name;
+                          }}
+                          onKeyDown={event => {
+                            if (event.key === "Escape") event.currentTarget.value = track.name;
+                            if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
+                          }} />
+                        <Select value={track.source.name} aria-label={`${track.name} sound`} onChange={event => changeSound(index, event.target.value)}>{sounds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+                      </div>
+                    </div>
+                    <div className="producer-step-grid" style={{ "--track-steps": track.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
+                      {track.steps.map((step, stepIndex) => <StepButton key={stepIndex} active={step !== null} current={playback.state.playing && Math.floor(playback.state.phase * track.steps.length) === stepIndex} accent="var(--producer-lime)"
+                        data-current={playback.state.playing && Math.floor(playback.state.phase * track.steps.length) === stepIndex} className="producer-step" aria-label={`${track.name}, step ${stepIndex + 1}, ${step ? step.kind === "note" ? noteName(step.midi) : "hit" : "rest"}`} aria-pressed={step !== null}
+                        onClick={() => editTrack(index, { ...track, steps: track.steps.map((item, i) => i !== stepIndex ? item : item ? null : track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }) })}>
+                        <span className="producer-step-index" aria-hidden="true">{stepIndex + 1}</span><span className="producer-step-tone">{step?.kind === "note" ? noteName(step.midi) : step ? "●" : ""}</span>
+                      </StepButton>)}
+                    </div>
+                    <div className="producer-track-mix">
+                      <Range min={0} max={1} step={0.01} value={track.gain} aria-label={`${track.name} gain`} aria-valuetext={`${Math.round(track.gain * 100)} percent`} onChange={event => editTrack(index, { ...track, gain: Number(event.target.value) })} />
+                      <output aria-label={`${track.name} level`}>{Math.round(track.gain * 100)}%</output>
+                    </div>
+                    <div className="producer-track-options">
+                      <Button variant={muted.has(index) ? "primary" : "ghost"} aria-pressed={muted.has(index)} aria-label={`Mute ${track.name}`} onClick={() => toggle(muted, index, setMuted)}>M</Button>
+                      <Button variant={solo.has(index) ? "primary" : "ghost"} aria-pressed={solo.has(index)} aria-label={`Solo ${track.name}`} onClick={() => toggle(solo, index, setSolo)}>S</Button>
+                      {track.source.kind === "instrument" && <Select aria-label={`${track.name} pitch for new steps`} value={pitch[index] ?? 36} onChange={event => setPitch({ ...pitch, [index]: Number(event.target.value) })}>
+                        {Array.from({ length: 49 }, (_, i) => i + 24).map(midi => <option key={midi} value={midi}>{noteName(midi)}</option>)}
+                      </Select>}
+                      <span className="producer-track-length">{track.steps.length} steps</span>
+                      <IconButton variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>×</IconButton>
                     </div>
                   </div>
-                  <div className="producer-step-grid" style={{ "--track-steps": track.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
-                    {track.steps.map((step, stepIndex) => <StepButton key={stepIndex} active={step !== null} current={playback.state.playing && Math.floor(playback.state.phase * track.steps.length) === stepIndex} accent="var(--producer-lime)"
-                      data-current={playback.state.playing && Math.floor(playback.state.phase * track.steps.length) === stepIndex} className="producer-step" aria-label={`${track.name}, step ${stepIndex + 1}, ${step ? step.kind === "note" ? noteName(step.midi) : "hit" : "rest"}`} aria-pressed={step !== null}
-                      onClick={() => editTrack(index, { ...track, steps: track.steps.map((item, i) => i !== stepIndex ? item : item ? null : track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }) })}>
-                      <span className="producer-step-index" aria-hidden="true">{stepIndex + 1}</span><span className="producer-step-tone">{step?.kind === "note" ? noteName(step.midi) : step ? "●" : ""}</span>
-                    </StepButton>)}
-                  </div>
-                  <div className="producer-track-mix">
-                    <Range min={0} max={1} step={0.01} value={track.gain} aria-label={`${track.name} gain`} aria-valuetext={`${Math.round(track.gain * 100)} percent`} onChange={event => editTrack(index, { ...track, gain: Number(event.target.value) })} />
-                    <output aria-label={`${track.name} level`}>{Math.round(track.gain * 100)}%</output>
-                  </div>
-                  <div className="producer-track-options">
-                    <Button variant={muted.has(index) ? "primary" : "ghost"} aria-pressed={muted.has(index)} aria-label={`Mute ${track.name}`} onClick={() => toggle(muted, index, setMuted)}>M</Button>
-                    <Button variant={solo.has(index) ? "primary" : "ghost"} aria-pressed={solo.has(index)} aria-label={`Solo ${track.name}`} onClick={() => toggle(solo, index, setSolo)}>S</Button>
-                    {track.source.kind === "instrument" && <Select aria-label={`${track.name} pitch for new steps`} value={pitch[index] ?? 36} onChange={event => setPitch({ ...pitch, [index]: Number(event.target.value) })}>
-                      {Array.from({ length: 49 }, (_, i) => i + 24).map(midi => <option key={midi} value={midi}>{noteName(midi)}</option>)}
-                    </Select>}
-                    <span className="producer-track-length">{track.steps.length} steps</span>
-                    <IconButton variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>×</IconButton>
-                  </div>
-                </div>
-              ))}
-            </fieldset>
-          </div>
-          {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
-          <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>{program.tracks.length} tracks · Click a step to toggle</span></div>
-          <p className="producer-mix-note">Mute and solo are listening controls. Saved files keep the original track gains. Sequencer edits rewrite source formatting.</p>
-        </Panel>
+                ))}
+              </fieldset>
+            </div>
+            {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
+            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>{program.tracks.length} tracks · Click a step to toggle</span></div>
+            <p className="producer-mix-note">Mute and solo are listening controls. Saved files keep the original track gains. Sequencer edits rewrite source formatting.</p>
+          </Panel>
 
-        <Panel className="producer-editor" aria-labelledby="source-title">
-          <div className="producer-editor-heading"><div><p className="producer-eyebrow">The source</p><h2 id="source-title">{fileName}</h2></div><span className={`producer-source-status${result.error ? " has-error" : ""}`}>{result.error ? "Check source" : draft ? "Unapplied" : "In sync"}</span></div>
-          <label className="producer-sr-only" htmlFor="producer-source">Banger source code</label>
-          <textarea id="producer-source" ref={editor} value={source} disabled={fileBusy} onChange={event => writeSource(event.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" aria-invalid={Boolean(result.error)} aria-describedby="producer-source-help producer-diagnostics"
-            onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); apply(); } }} />
-          <div className="producer-editor-actions"><Button variant="primary" disabled={!draft || !result.program || fileBusy} onClick={apply}>Apply source</Button><Button variant="ghost" disabled={!draft || fileBusy} onClick={() => { writeSource(appliedSource); setNotice("Draft reverted to the current sequence."); }}>Revert draft</Button><span>⌘ / Ctrl + Enter</span></div>
-          <div id="producer-diagnostics" className={result.error ? "producer-diagnostics has-error" : "producer-diagnostics"} role="status">{result.error ?? (draft ? "Source is valid. Apply it to update the sequence." : "Compiled. The source and sequence match.")}</div>
-          <p id="producer-source-help" className="producer-source-help">Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
-        </Panel>
+        </div>
+        <div id="studio-panel-source" role="tabpanel" aria-labelledby="studio-tab-source" hidden={view !== "source"} tabIndex={0}>
+          <Panel className="producer-editor" aria-labelledby="source-title">
+            <div className="producer-editor-heading"><div><p className="producer-eyebrow">The source</p><h2 id="source-title">{fileName}</h2></div><span className={`producer-source-status${result.error ? " has-error" : ""}`}>{result.error ? "Check source" : draft ? "Unapplied" : "In sync"}</span></div>
+            <label className="producer-sr-only" htmlFor="producer-source">Banger source code</label>
+            <textarea id="producer-source" ref={editor} value={source} disabled={fileBusy} onChange={event => writeSource(event.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" aria-invalid={Boolean(result.error)} aria-describedby="producer-source-help producer-diagnostics"
+              onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); apply(); } }} />
+            <div className="producer-editor-actions"><Button variant="primary" disabled={!draft || !result.program || fileBusy} onClick={apply}>Apply source</Button><Button variant="ghost" disabled={!draft || fileBusy} onClick={() => { writeSource(appliedSource); setNotice("Draft reverted to the current sequence."); }}>Revert draft</Button><span>⌘ / Ctrl + Enter</span></div>
+            <div id="producer-diagnostics" className={result.error ? "producer-diagnostics has-error" : "producer-diagnostics"} role="status">{result.error ?? (draft ? "Source is valid. Apply it to update the sequence." : "Compiled. The source and sequence match.")}</div>
+            <p id="producer-source-help" className="producer-source-help">Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
+          </Panel>
+        </div>
+        <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
+          {view === "byok" && <ByokSettings />}
+        </div>
+        <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} />
       </div>
       <footer className="producer-footer"><span>banger / music in plain text</span><span role="status">{notice ?? "One bar. Start somewhere."}</span></footer>
     </main>

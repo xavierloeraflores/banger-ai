@@ -1,12 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Input } from "@banger/shadcn";
 import { AI_PROVIDERS, aiSettingsBridge, type AISettings, type ProviderId } from "@/lib/ai-providers";
 
-export function ByokMenu() {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
+export function ByokSettings() {
   const pending = useRef(false);
   const [settings, setSettings] = useState<AISettings>({ activeProvider: null, providers: {} });
   const [provider, setProvider] = useState<ProviderId>("vercel");
@@ -30,23 +28,21 @@ export function ByokMenu() {
     setNotice("");
   }
 
-  async function open() {
-    if (pending.current) return;
-    dialog.current?.showModal();
-    setDesktop(Boolean(window.bangerAI));
-    setLoaded(false);
-    setError(null);
-    setNotice("");
-    pending.current = true;
-    setBusy(true);
-    try {
-      const next = await aiSettingsBridge().load();
+  useEffect(() => {
+    let active = true;
+    void aiSettingsBridge().load().then(next => {
+      if (!active) return;
+      setDesktop(Boolean(window.bangerAI));
       setSettings(next);
-      select(next.activeProvider ?? "vercel", next);
+      const id = next.activeProvider ?? "vercel";
+      setProvider(id);
+      setModel(next.providers[id]?.model ?? "");
       setLoaded(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not load AI settings."); }
-    finally { pending.current = false; setBusy(false); }
-  }
+    }).catch(cause => {
+      if (active) setError(cause instanceof Error ? cause.message : "Could not load AI settings.");
+    });
+    return () => { active = false; };
+  }, []);
 
   async function update(remove = false) {
     if (pending.current) return;
@@ -67,21 +63,9 @@ export function ByokMenu() {
     finally { pending.current = false; setBusy(false); }
   }
 
-  function close() {
-    if (pending.current) return;
-    dialog.current?.close();
-    setKey("");
-    setVisible(false);
-    trigger.current?.focus();
-  }
-
-  return <>
-    <Button ref={trigger} variant="ghost" aria-haspopup="dialog" onClick={() => void open()}>BYOK</Button>
-    <dialog ref={dialog} className="byok-dialog" aria-labelledby="byok-title" aria-describedby="byok-description"
-      onCancel={event => { event.preventDefault(); close(); }}>
+  return <section className="byok-settings" aria-labelledby="byok-title" aria-describedby="byok-description">
       <div className="byok-heading">
         <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">Bring your own key</h2></div>
-        <Button variant="ghost" aria-label="Close AI settings" disabled={busy} onClick={close}>×</Button>
       </div>
       <p id="byok-description" className="byok-description">Select your own key and model for AI chat.</p>
       <div className="byok-layout">
@@ -117,10 +101,9 @@ export function ByokMenu() {
         </form>
       </div>
       <div className="byok-feedback" aria-live="polite">
-        {busy && !loaded && <p>Loading settings…</p>}
+        {!loaded && !error && <p>Loading settings…</p>}
         {error && <p className="has-error" role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
       </div>
-    </dialog>
-  </>;
+    </section>;
 }

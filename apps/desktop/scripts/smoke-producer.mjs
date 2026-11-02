@@ -50,6 +50,7 @@ export async function smokeProducer(window, directory) {
     })()`);
   }
   async function editSource(source) {
+    await clickText("Raw .banger");
     await evaluate(`(() => {
       const editor = document.querySelector('#producer-source');
       if (!editor || editor.disabled) throw new Error('Source editor is unavailable.');
@@ -62,6 +63,7 @@ export async function smokeProducer(window, directory) {
     await waitFor(`!${applyButton}?.disabled && document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'false'`, "valid draft");
     await clickText("Apply source");
     await waitFor(`document.querySelector('#producer-tempo')?.value === ${JSON.stringify(String(tempo))} && document.querySelector('.producer-source-status')?.textContent === 'In sync'`, "applied source");
+    await clickText("Sequencer");
     const grid = await evaluate(gridSnapshot);
     assert.deepEqual(grid.map(track => track.name), names);
     assert.deepEqual(grid.map(track => track.steps.length), lengths);
@@ -77,6 +79,13 @@ export async function smokeProducer(window, directory) {
 
   await waitFor("document.querySelectorAll('.producer-track').length === 4 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 3);
+  assert.equal(await evaluate("document.querySelectorAll('[role=tabpanel]:not([hidden])').length"), 1);
+  await evaluate("document.querySelector('#studio-tab-sequencer').focus()");
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Right" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Right" });
+  await waitFor("document.activeElement.id === 'studio-tab-source' && !document.querySelector('#studio-panel-source').hidden", "keyboard tab navigation");
+  await clickText("Sequencer");
   const initial = await evaluate(gridSnapshot);
   assert.deepEqual(initial.map(track => track.name), ["kick", "snare", "hats", "bass"]);
   assert.deepEqual(initial.map(track => track.steps.length), [16, 16, 16, 16]);
@@ -94,12 +103,18 @@ export async function smokeProducer(window, directory) {
   const audioDeadline = Date.now() + 3_000;
   while (!window.webContents.isCurrentlyAudible() && Date.now() < audioDeadline) await setTimeout(25);
   assert.equal(window.webContents.isCurrentlyAudible(), true, "Real Web Audio output must become audible.");
+  await clickText("Raw .banger");
+  assert.equal(await evaluate("document.querySelector('.producer-transport-state').textContent"), "Playing");
+  await clickText("Sequencer");
   await click('[aria-label="Stop playback"]');
   await waitFor("document.querySelector('.producer-position')?.getAttribute('aria-label') === 'Stopped' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length === 0", "stopped playhead");
 
   const beforeInvalid = await evaluate(gridSnapshot);
   await editSource("tempo nope;");
   await waitFor(`document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'true' && ${applyButton}?.disabled`, "invalid draft diagnostic");
+  await clickText("Sequencer");
+  await clickText("Raw .banger");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), "tempo nope;");
   assert.deepEqual(await evaluate(gridSnapshot), beforeInvalid, "Invalid source must preserve the applied sequence.");
   assert.equal(await evaluate("document.querySelector('.producer-tracks').disabled"), true);
   await applySource(mixedLengthSource, 137, ["smoke_kick", "smoke_bass"], [8, 3]);
