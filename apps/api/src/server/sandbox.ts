@@ -31,12 +31,12 @@ export async function runAgentStep(job: Job) {
     await checkpoint(job, 'editing', 25, { started: true, sandbox: name, startedAt: Date.now() });
     return;
   }
-  const sandbox = await Sandbox.get({ name });
+  const sandbox = typeof job.checkpoint.candidate === 'string' ? undefined : await Sandbox.get({ name });
   try {
-    const raw = await sandbox.readFileToBuffer({ path: '/vercel/sandbox/result.json' });
+    const raw = typeof job.checkpoint.candidate === 'string' ? Buffer.from(await blobs.text(job.checkpoint.candidate)) : await sandbox!.readFileToBuffer({ path: '/vercel/sandbox/result.json' });
     if (!raw) {
       if (Date.now() - Number(job.checkpoint.startedAt) > 8 * 60000) throw new ApiError(504, "The agent timed out. The saved project is unchanged.");
-      const progress = await sandbox.readFileToBuffer({ path: '/vercel/sandbox/progress.json' });
+      const progress = await sandbox!.readFileToBuffer({ path: '/vercel/sandbox/progress.json' });
       const activity = progress ? z.object({ activity: z.array(z.string().max(1200)).max(40) }).parse(JSON.parse(progress.toString())).activity : [];
       await checkpoint(job, 'editing', 50, { activity }); return;
     }
@@ -64,6 +64,9 @@ export async function runAgentStep(job: Job) {
     }
   } finally {
     const state = (await db().query("SELECT status FROM jobs WHERE id=$1", [job.id])).rows[0]?.status;
-    if (!['queued', 'running'].includes(state)) await sandbox.stop().catch(() => undefined);
+    if (!['queued', 'running'].includes(state)) {
+      const cleanup = sandbox ?? await Sandbox.get({ name }).catch(() => undefined);
+      await cleanup?.stop().catch(() => undefined);
+    }
   }
 }

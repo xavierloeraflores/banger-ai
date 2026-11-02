@@ -6,6 +6,8 @@ import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnec
 type Artifact={id:string;kind:string;revision:number;status:string};
 const message=(error:unknown)=>error instanceof Error ? error.message : 'The cloud operation failed.';
 export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding):void;onDisconnect():void}) {
+  const [available,setAvailable]=useState(false);
+  useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
   const [url,setUrl]=useState(process.env.NEXT_PUBLIC_BANGER_API_URL ?? 'http://localhost:3001');
   const [token,setToken]=useState('');
   const [connection,setConnection]=useState<CloudConnection|null>(null);
@@ -49,7 +51,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
         ]);
         if(cancelled || epoch !== generation.current || pending.current) return;
         const before=current.current;
-        if(before.snapshot?.projectId !== projectId) return;
+        if(!before.snapshot || before.snapshot.projectId !== projectId) return;
         const next=mergeCloudDelta(before.snapshot,delta);
         setSnapshot(next);setJobs(jobList.jobs);setArtifacts(audioList.artifacts);
         if(before.draftBase === null) {
@@ -71,6 +73,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect}:{studioFi
   function adopt(next:CloudSnapshot){setSnapshot(next);setPath(next.files[0]?.path ?? '');setSource(next.files[0]?.source ?? '');setDraftBase(null);setJobs([]);setArtifacts([]);setPlaying('');}
   function discard(){return !dirty || window.confirm('Discard the unsaved cloud workspace draft?');}
   async function refreshProjects(active:CloudConnection){setProjects((await cloudRequest<{projects:typeof projects}>(active,'/projects')).projects);}
+  if(!available) return null;
   return <details className="project-workspace producer-panel"><summary>Cloud projects</summary>
     {!connection ? <form onSubmit={event=>{event.preventDefault();void action(async()=>{
       const parsed=new URL(url);if(parsed.protocol !== 'https:' && !(['localhost','127.0.0.1'].includes(parsed.hostname)&&parsed.protocol==='http:'))throw new Error('Use HTTPS for the cloud backend.');

@@ -45,6 +45,12 @@ export async function saveChanges(user: string, project: string, baseRevision: n
       files.set(change.path, { path: change.path, sha256, pathname, bytes: Buffer.byteLength(change.source) });
     }
   }
+  for (const path of files.keys()) {
+    const parts = path.split("/");
+    for (let depth = 1; depth < parts.length; depth++) {
+      if (files.has(parts.slice(0, depth).join("/"))) throw new ApiError(400, "A music file cannot also be a folder.");
+    }
+  }
   if (files.size > 256 || [...files.values()].reduce((sum, file) => sum + file.bytes, 0) > 4 * 1024 * 1024) throw new ApiError(413, "Projects support 256 files and 4 MiB of source.");
   const manifest: Manifest = { projectId: project, revision: baseRevision + 1, files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)) };
   const pathname = `projects/${project}/manifests/${randomUUID()}.json`;

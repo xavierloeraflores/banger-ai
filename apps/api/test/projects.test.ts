@@ -17,6 +17,11 @@ test('PostgreSQL publication, permissions, delta sync and concurrent saves', { s
   const project = await createProject(owner, 'Test', [{path:'song.banger', source}], store);
   assert.equal(project.revision, 1);
   await setMember(owner, project.projectId, viewer, 'viewer');
+  await assert.rejects(saveChanges(owner, project.projectId, 1, [{path:'song.banger/nested.banger',source}], store), /also be a folder/);
+  const failingStore={...store, async write(){throw new Error('Blob unavailable');}};
+  await assert.rejects(saveChanges(owner, project.projectId, 1, [{path:'other.banger',source}], failingStore), /Blob unavailable/);
+  assert.equal((await projectFiles(owner, project.projectId, 1, store)).revision,1);
+
   await assert.rejects(saveChanges(viewer, project.projectId, 1, [{path:'song.banger', source}], store), /denied/);
   const old = await projectFiles(viewer, project.projectId, undefined, store);
   assert.equal(old.files[0]?.source, source);

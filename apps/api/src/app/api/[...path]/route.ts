@@ -30,7 +30,7 @@ async function dispatch(request: Request, path: string[]) {
   if (path.join('/') === 'worker' && ['GET','POST'].includes(method)) {
     const secret = process.env.CRON_SECRET, provided = request.headers.get('authorization') ?? '';
     const expected = `Bearer ${secret}`;
-    if (!secret || provided.length !== expected.length || !timingSafeEqual(Buffer.from(provided),Buffer.from(expected))) throw new ApiError(401,'Unauthorized worker.');
+    if (!secret || Buffer.byteLength(provided) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(provided),Buffer.from(expected))) throw new ApiError(401,'Unauthorized worker.');
     return json({ worked: await workOne() });
   }
   if (path.join('/') === 'uploads' && method === 'POST') return json(await uploadCallback(request, await body(request) as HandleUploadBody));

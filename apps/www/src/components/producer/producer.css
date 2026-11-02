@@ -387,3 +387,9 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .producer-transport { flex-wrap: wrap; }
 
 .producer-step-grid { grid-template-columns: repeat(var(--track-steps, 16), minmax(38px, 1fr)); }
+.project-workspace input { display: block; box-sizing: border-box; width: min(100%, 36rem); padding: .6rem; border: 1px solid #343745; border-radius: .4rem; background: var(--producer-bg); color: inherit; }
+.project-workspace pre { max-height: 20rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.project-workspace > summary { cursor: pointer; font-weight: 600; }
+.project-workspace ul { max-height: 28rem; overflow: auto; padding-left: 1.25rem; }
+.project-workspace li { margin-block: .6rem; }
+.project-workspace li button { margin-inline: .3rem; }

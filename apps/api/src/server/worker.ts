@@ -15,7 +15,8 @@ export async function workOne(jobId?: string) {
     const permanent = error instanceof ApiError && [400,403,404,413,422,504].includes(error.status);
     const status = permanent || job.attempts >= 12 ? 'failed' : 'queued';
     const message = error instanceof ApiError ? error.message : 'The service could not finish this step. It will retry from its saved checkpoint.';
-    await checkpoint(job, status === 'queued' ? 'retrying' : status, job.progress, {}, status, null, message).catch(() => undefined);
+    try { await checkpoint(job, status === 'queued' ? 'retrying' : status, job.progress, {}, status, null, message); }
+    catch { return true; } // A newer lease owns cleanup as well as publication.
     if (status === 'failed' && job.kind === 'agent') {
       await db().query("UPDATE agent_sessions SET status='failed' WHERE id=$1", [job.session_id]);
       await Sandbox.get({ name: `banger-${job.id}` }).then(sandbox => sandbox.stop()).catch(() => undefined);

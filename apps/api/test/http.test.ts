@@ -1,0 +1,40 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {spawn} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
+import {generateKeyPair,exportJWK,SignJWT} from 'jose';
+import {db} from '../src/server/db';
+import {createProject} from '../src/server/projects';
+test('production HTTP routes enforce JWT, permissions, revisions, CORS and durable pending jobs',{skip:!process.env.BANGER_HTTP_TEST || !process.env.DATABASE_URL},async t=>{
+  const user=`http-${randomUUID()}`;
+  const project=await createProject(user,'HTTP fixture',[],{async write(){},async text(){return '';}});
+  const {privateKey,publicKey}=await generateKeyPair('RS256');
+  const key=await exportJWK(publicKey);
+  const jwks=createServer((_request,response)=>{response.setHeader('content-type','application/json');response.end(JSON.stringify({keys:[{...key,kid:'http',alg:'RS256'}]}));});
+  await new Promise<void>(resolve=>jwks.listen(0,'127.0.0.1',resolve));
+  const available=createServer();await new Promise<void>(resolve=>available.listen(0,'127.0.0.1',resolve));
+  const port=(available.address() as {port:number}).port;await new Promise<void>(resolve=>available.close(()=>resolve()));
+  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,NODE_ENV:'production',AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'},stdio:['ignore','pipe','pipe']});
+  let output='';child.stdout.on('data',data=>{output+=data;});child.stderr.on('data',data=>{output+=data;});
+  t.after(async()=>{child.kill('SIGTERM');await new Promise<void>(resolve=>jwks.close(()=>resolve()));await db().end();});
+  for(let tries=0;tries<100;tries++){if(output.includes('Ready'))break;if(child.exitCode!==null)throw new Error(output);await new Promise(resolve=>setTimeout(resolve,100));}
+  assert.match(output,/Ready/);
+  const token=await new SignJWT({}).setProtectedHeader({alg:'RS256',kid:'http'}).setIssuer('http-test').setAudience('banger').setSubject(user).setExpirationTime('5m').sign(privateKey);
+  const request=(path:string,method='GET',input?:unknown,headers:Record<string,string>={})=>fetch(`http://127.0.0.1:${port}/api${path}`,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...headers},...(input?{body:JSON.stringify(input)}:{})});
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/projects`)).status,401);
+  const list=await request('/projects');assert.equal(list.status,200);assert.ok((await list.json()).projects.some((p:{id:string})=>p.id===project.projectId));
+  const delta=await request(`/projects/${project.projectId}?since=0`);assert.equal(delta.status,200);assert.deepEqual((await delta.json()).files,[]);
+  assert.equal((await request(`/projects/${project.projectId}`,'PATCH',{baseRevision:1,changes:[{path:'song.banger',source:'invalid'}]})).status,409);
+  assert.equal((await request(`/projects/${project.projectId}`,'PATCH',{baseRevision:0,changes:[{path:'song.banger',source:'invalid'}]})).status,422);
+  assert.equal((await request(`/projects/${randomUUID()}`)).status,404);
+  assert.equal((await request('/projects','GET',undefined,{Origin:'https://attacker.example.test'})).status,403);
+  const cors=await request('/projects','OPTIONS',undefined,{Origin:'https://studio.example.test'});assert.equal(cors.status,204);assert.equal(cors.headers.get('access-control-allow-origin'),'https://studio.example.test');
+  assert.equal((await request('/worker')).status,401);
+  const artifact=randomUUID();await db().query("INSERT INTO artifacts(id,project_id,revision,user_id,kind,pathname,content_type,size,status) VALUES($1,$2,0,$3,'wav',$4,'audio/wav',44,'ready')",[artifact,project.projectId,user,`fixture/${artifact}`]);
+  const submission={kind:'elevenlabs',idempotencyKey:randomUUID(),input:{artifactId:artifact}};
+  const submitted=await request(`/projects/${project.projectId}/jobs`,'POST',submission);assert.equal(submitted.status,202);const job=await submitted.json();
+  for(let tries=0;tries<50;tries++){const current=await (await request(`/jobs/${job.id}`)).json();if(current.status==='awaiting_provider')break;await new Promise(resolve=>setTimeout(resolve,100));}
+  const pending=await (await request(`/jobs/${job.id}`)).json();assert.equal(pending.status,'awaiting_provider');assert.equal(pending.progress,0);
+  const replay=await (await request(`/projects/${project.projectId}/jobs`,'POST',submission)).json();assert.equal(replay.id,job.id);
+});
