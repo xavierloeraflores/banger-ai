@@ -36,13 +36,17 @@ Sync uses `GET /api/projects/:id?since=N` to return changed source and deleted p
 
 Each cloud agent task has its own session and named Sandbox. The runner materializes the base revision under `/vercel/sandbox/project` and invokes the existing `ProjectSession` and filesystem `ProjectWorkspace`. The harness compiles each write. An atomic runner lock prevents duplicate model execution after a replayed launch. The backend revalidates the resulting source and publishes against the task's base revision. Conflicts retain a private candidate result that the client can download for comparison. Each task starts a new model conversation with the saved project as context.
 
-## Audio and pending ElevenLabs integration
+## Audio and ElevenLabs music
 
 Load a saved cloud file into the studio to enable Upload WAV to cloud. The existing `renderWav` engine uses `OfflineAudioContext`; Export WAV and Export stem still download locally. Studio edits must be saved to a cloud revision and loaded again before they can be uploaded with that revision's provenance.
 
-The client reserves an artifact, requests a signed token for that exact path, and uploads directly to private Blob. Tokens expire after ten minutes, prohibit overwrites, limit uploads to 100 MiB, and accept only `audio/wav`. A signed completion callback or an authenticated client finalization verifies the Blob metadata and PCM WAV header before marking the artifact ready. Audio reads go through an authenticated API route. Private Blob URLs and credentials are never returned as playback links.
+The client reserves an artifact, requests a signed token for that exact path, and uploads directly to private Blob. Tokens expire after ten minutes, prohibit overwrites, limit uploads to 100 MiB, and accept only `audio/wav`. A signed completion callback or an authenticated client finalization verifies the Blob metadata and RIFF/WAVE structure before marking the artifact ready. Audio reads go through an authenticated API route. Private Blob URLs and credentials are never returned as playback links.
 
-ElevenLabs submissions are stored and shown as `awaiting_provider`. **The provider adapter is intentionally pending.** No ElevenLabs API requests are made. Implement `AudioProvider` in `src/server/audio-provider.ts` when the operation is chosen. Its submit method must honor the stable job ID as an idempotency key, or recover an existing provider request by that key. The worker persists the provider request ID, polls progress, saves resulting audio in private Blob, and atomically attaches the result to its job. A resume request requeues an awaiting submission after the adapter is installed. It must never blindly repeat a provider operation that lacks idempotency.
+Set `ELEVENLABS_API_KEY` on the API server to enable the song workshop. Uploaded WAVs are analyzed with `music.upload` and `extract_composition_plan: music_v2_5`. The SDK adapter lives in `@banger/elevenlabs`; it also serves the local desktop app. Without a key, cloud submissions remain `awaiting_provider` and can be resumed after configuration.
+
+The workshop displays the extracted chunks, preserves their musical properties when editing lyrics, and can propose AI lyrics for selected chunks. Full generation and selective inpainting use `composeDetailed` with `storeForInpainting`. Unselected chunks reference their exact ranges in the current stored song. New audio is private Blob content; every composition revision has an immutable Blob receipt and PostgreSQL version record. A transaction checks the current revision and job lease before publishing its plan and artifact reference.
+
+ElevenLabs does not document idempotency for these operations. Workers disable SDK retries and checkpoint before each paid request. If a request is interrupted without a saved result, it becomes `needs_review`; resuming does not repeat the paid call. If the result receipt exists, recovery can finish publication without another provider call. Progress represents queued, processing, saving, and completed stages, not provider-reported percentages. A conflicting result remains stored for review. The original WAV and all earlier composition/audio versions remain intact.
 
 ## API
 
@@ -62,8 +66,12 @@ All endpoints except signed Blob callbacks and the separately authenticated work
 | `POST /api/uploads` | Blob SDK token exchange and signed completion callbacks |
 | `POST /api/artifacts/:id/complete` | Verify a completed client upload |
 | `GET /api/artifacts/:id` | Authenticated audio stream |
+| `GET /api/projects/:id/music` | List up to 100 music sessions |
+| `GET /api/music/:id` | Current composition and audio reference |
+| `GET /api/music/:id/versions` | Up to 50 immutable composition versions |
+| `POST /api/music/:id/actions` | Enqueue `{idempotencyKey, action}` for lyrics or generation |
 
-Agent input is `{baseRevision, prompt, activeFile?}`. Pending ElevenLabs input is `{artifactId}`. Job keys are UUIDs and must be reused for retries of the same submission. Reusing a key with different input returns 409.
+Agent input is `{baseRevision, prompt, activeFile?}`. ElevenLabs analysis input is `{artifactId}`. A music action is `{operation: "edit", baseVersion, edits: [{index, lyrics}]}`, `{operation: "lyrics", baseVersion, prompt, indices}`, or `{operation: "generate", baseVersion, indices}`. Indices are zero-based. Selecting every chunk generates a new song; selecting a subset keeps the other audio ranges. Job keys are UUIDs and must be reused for retries of the same submission. Reusing a key with different input returns 409.
 
 ## Verification
 
@@ -75,9 +83,18 @@ BANGER_HTTP_TEST=1 DATABASE_URL=postgresql://localhost/banger_test pnpm --filter
 pnpm lint
 pnpm typecheck
 pnpm fullbuild
+pnpm --filter @banger/elevenlabs test
+pnpm --filter @banger/desktop test
+pnpm --filter @banger/desktop smoke:music
 pnpm --filter @banger/desktop smoke:cloud
 pnpm --filter @banger/desktop smoke
 pnpm verify:audio
 ```
 
 API tests cover PostgreSQL concurrency and permissions, JWT verification, upload authorization, job leases, and a bundled harness editing a real local filesystem with a fixture model. The cloud browser smoke uses an HTTP API fixture and renders a real WAV. These checks do not substitute for a deployment test against Vercel Sandbox and private Blob with production credentials.
+
+## Local desktop music
+
+For development, set `ELEVENLABS_API_KEY` in `apps/desktop/.env.local`; packaged applications read it from their launch environment. The Electron main process owns the key and makes provider calls. The renderer receives only a scoped IPC bridge for importing WAVs, editing compositions, reading progress, and saving audio through native dialogs.
+
+Music is stored under Electron's user-data directory in `elevenlabs-music`: immutable version documents, audio files, operation records, and result receipts. Atomic current pointers and a serialized write queue prevent competing edits. On restart the workshop recovers saved receipts, while interrupted requests without a receipt require review. The desktop workflow runs without PostgreSQL, Blob, or a cloud login. Uploads for analysis must be PCM/float WAVs of 3 seconds to 10 minutes, up to 100 MiB; generated downloads are MP3.

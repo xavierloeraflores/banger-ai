@@ -15,7 +15,7 @@ export interface MusicProvider {
   generate(version: MusicVersion, indices: number[]): Promise<{ songId: string; plan: CompositionPlan; providerPlan: ProviderPlan; audio: Uint8Array }>;
 }
 /** Reads PCM/IEEE-float WAVs, including metadata chunks, without interpreting user-supplied paths. */
-export function validateWav(bytes: Uint8Array) {
+export function validateWav(bytes: Uint8Array, forMusic = true) {
   if (bytes.byteLength < 44 || bytes.byteLength > MAX_WAV_BYTES) throw new Error('Choose a WAV between 44 bytes and 100 MiB.');
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (buffer.toString('ascii',0,4) !== 'RIFF' || buffer.toString('ascii',8,12) !== 'WAVE' || buffer.readUInt32LE(4) + 8 !== buffer.length) throw new Error('Choose a complete RIFF/WAVE file.');
@@ -32,7 +32,8 @@ export function validateWav(bytes: Uint8Array) {
     if (kind === 'data' && format && bytesPerSecond) durationMs += size / bytesPerSecond * 1000;
     offset=start+size+(size%2);
   }
-  if (!format || durationMs<3000 || durationMs>600000) throw new Error('Choose a WAV lasting between 3 seconds and 10 minutes.');
+  if (!format || durationMs<=0) throw new Error('Choose a WAV with nonempty audio data.');
+  if (forMusic && (durationMs<3000 || durationMs>600000)) throw new Error('Choose a WAV lasting between 3 seconds and 10 minutes.');
   return { durationMs: Math.round(durationMs) };
 }
 export class ElevenMusic implements MusicProvider {
@@ -82,12 +83,13 @@ export class ElevenMusic implements MusicProvider {
   }
 }
 
-export async function performMusicAction(provider: MusicProvider, base: MusicVersion, input: import('./protocol.js').MusicAction, operationId: string): Promise<{ version: MusicVersion; audio?: Uint8Array }> {
+export async function performMusicAction(provider: MusicProvider | (()=>MusicProvider), base: MusicVersion, input: import('./protocol.js').MusicAction, operationId: string): Promise<{ version: MusicVersion; audio?: Uint8Array }> {
   if (input.baseVersion !== base.version) throw new Error('This song changed. Reload before editing it.');
   const next: MusicVersion = { ...structuredClone(base), version: base.version+1, createdAt:new Date().toISOString(), operation:input.operation };
   if (input.operation === 'edit') { next.plan=applyLyrics(base.plan,input.edits); return {version:next}; }
-  if (input.operation === 'lyrics') { next.plan=await provider.lyrics(base.plan,input.prompt,input.indices); return {version:next}; }
-  const generated=await provider.generate(base,input.indices);
+  const client=typeof provider==='function'?provider():provider;
+  if (input.operation === 'lyrics') { next.plan=await client.lyrics(base.plan,input.prompt,input.indices); return {version:next}; }
+  const generated=await client.generate(base,input.indices);
   next.plan=generated.plan;next.providerPlan=generated.providerPlan;next.songId=generated.songId;
   next.audioId=operationId;next.audioType='audio/mpeg';next.audioVersion=next.version;
   return {version:next,audio:generated.audio};

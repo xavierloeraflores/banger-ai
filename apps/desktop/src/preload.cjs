@@ -50,3 +50,15 @@ contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
     return () => ipcRenderer.removeListener("banger:workspace-event", listener);
   },
 }));
+
+contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
+  list: () => ipcRenderer.invoke("banger:music-list"),
+  get: id => ipcRenderer.invoke("banger:music-get", id),
+  operations: () => ipcRenderer.invoke("banger:music-operations"),
+  operation: id => ipcRenderer.invoke("banger:music-operation", id),
+  act: (id, action, key) => ipcRenderer.invoke("banger:music-act", id, action, key),
+  importWav: key => ipcRenderer.invoke("banger:music-import", key),
+  rendered: (bytes, name, key) => ipcRenderer.invoke("banger:music-rendered", bytes, name, key),
+  audio: (id, version) => ipcRenderer.invoke("banger:music-audio", id, version),
+  save: (id, version) => ipcRenderer.invoke("banger:music-save", id, version),
+}));

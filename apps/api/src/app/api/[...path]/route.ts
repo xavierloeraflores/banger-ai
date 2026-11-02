@@ -11,6 +11,8 @@ import { enqueue, getJob, publicJob } from '../../../server/jobs';
 import { workOne } from '../../../server/worker';
 import { finalizeWav, getArtifact, reserveWav, uploadCallback } from '../../../server/artifacts';
 import { blobs } from '../../../server/blob';
+import { getMusic } from '../../../server/elevenlabs';
+import { musicActionSchema } from '@banger/elevenlabs/protocol';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -55,9 +57,22 @@ async function dispatch(request: Request, path: string[]) {
       }
       if (method === 'GET') { await authorize(user,project); return json({jobs:(await db().query('SELECT * FROM jobs WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50',[project])).rows.map(publicJob)}); }
     }
+    if (path[2] === 'music' && path.length === 3 && method === 'GET') {
+      await authorize(user,project); return json({music:(await db().query("SELECT id,revision AS version,current_version->>'name' AS name FROM music_sessions WHERE project_id=$1 AND revision>0 ORDER BY created_at DESC LIMIT 100",[project])).rows});
+    }
     if (path[2] === 'artifacts' && path.length === 3) {
       if (method === 'POST') { const input=z.object({revision:z.number().int().nonnegative()}).strict().parse(await body(request)); return json(await reserveWav(user,project,input.revision),201); }
       if (method === 'GET') { await authorize(user,project); return json({artifacts:(await db().query("SELECT id,revision,kind,content_type,size,status,created_at FROM artifacts WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50",[project])).rows}); }
+    }
+  }
+  if (path[0] === 'music') {
+    const music=await getMusic(user,id.parse(path[1]));
+    if (path.length===2 && method==='GET') return json(music.current_version);
+    if (path[2]==='versions' && method==='GET') return json({versions:(await db().query('SELECT revision,document FROM music_versions WHERE music_id=$1 ORDER BY revision DESC LIMIT 50',[music.id])).rows});
+    if (path[2]==='actions' && method==='POST') {
+      const input=z.object({action:musicActionSchema,idempotencyKey:id}).strict().parse(await body(request));
+      const job=await enqueue(user,music.project_id,'elevenlabs',input.idempotencyKey,{musicId:music.id,action:input.action});
+      after(()=>workOne(job.id).then(()=>undefined));return json(publicJob(job),202);
     }
   }
   if (path[0] === 'jobs') {

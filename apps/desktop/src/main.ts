@@ -9,6 +9,7 @@ import { createAISettingsStore } from "./ai-settings.js";
 import { createChatGPTAuth, ChatGPTError, publicChatGPTError } from "./chatgpt-auth.js";
 import { createLocalModel } from "./local-model.js";
 
+import { installMusicHandlers } from "./elevenlabs-ipc.js";
 import { installWorkspaceHandlers } from "./project-workspace.js";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "banger", privileges: {
@@ -161,6 +162,7 @@ void app.whenReady().then(() => {
     if (window?.isMinimized()) window.restore();
     window?.focus();
   });
+  installMusicHandlers(senderWindow);
   const localModel = createLocalModel(join(app.getPath("userData"), "local-model"));
   app.on("before-quit", () => localModel.dispose());
   protocol.handle("banger", (request) => serveApp(request, fileURLToPath(new URL("./web/", import.meta.url))));

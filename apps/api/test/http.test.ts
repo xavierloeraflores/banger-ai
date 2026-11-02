@@ -15,7 +15,7 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   await new Promise<void>(resolve=>jwks.listen(0,'127.0.0.1',resolve));
   const available=createServer();await new Promise<void>(resolve=>available.listen(0,'127.0.0.1',resolve));
   const port=(available.address() as {port:number}).port;await new Promise<void>(resolve=>available.close(()=>resolve()));
-  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,NODE_ENV:'production',AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'},stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,NODE_ENV:'production',ELEVENLABS_API_KEY:'',AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'},stdio:['ignore','pipe','pipe']});
   let output='';child.stdout.on('data',data=>{output+=data;});child.stderr.on('data',data=>{output+=data;});
   t.after(async()=>{child.kill('SIGTERM');await new Promise<void>(resolve=>jwks.close(()=>resolve()));await db().end();});
   for(let tries=0;tries<100;tries++){if(output.includes('Ready'))break;if(child.exitCode!==null)throw new Error(output);await new Promise(resolve=>setTimeout(resolve,100));}

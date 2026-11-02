@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { get, head } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { z } from "zod";
+import { validateWav } from "@banger/elevenlabs";
 import { db } from "./db";
 import { authenticate } from "./auth";
 import { authorize, readManifest } from "./projects";
@@ -30,10 +31,10 @@ export async function finalizeWav(artifactId: string) {
   const data = await get(artifact.pathname, { access: 'private' });
   if (!data || data.statusCode !== 200) throw new ApiError(422, "Upload is not available yet.");
   const reader = data.stream.getReader();
-  let prefix = Buffer.alloc(0);
-  try { while (prefix.length < 44) { const part = await reader.read(); if (part.done) break; prefix = Buffer.concat([prefix, Buffer.from(part.value)]).subarray(0, 44); } }
-  finally { await reader.cancel(); }
-  if (prefix.length < 44 || prefix.toString('ascii',0,4) !== 'RIFF' || prefix.toString('ascii',8,12) !== 'WAVE' || prefix.readUInt32LE(4) + 8 !== metadata.size || prefix.toString('ascii',12,16) !== 'fmt ' || prefix.readUInt16LE(20) !== 1 || prefix.readUInt16LE(34) !== 16) throw new ApiError(422, "Upload a PCM WAV rendered by the studio.");
+  const chunks:Buffer[]=[];let size=0;
+  try { while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>MAX_AUDIO_BYTES)throw new ApiError(413,"WAV exceeds 100 MiB.");chunks.push(Buffer.from(part.value));} }
+  finally {await reader.cancel();}
+  try {validateWav(Buffer.concat(chunks),false);}catch(error){throw new ApiError(422,error instanceof Error?error.message:"Invalid WAV.");}
   await db().query("UPDATE artifacts SET status='ready',size=$2 WHERE id=$1 AND status='pending'", [artifactId, metadata.size]);
 }
 export async function uploadCallback(request: Request, body: HandleUploadBody) {

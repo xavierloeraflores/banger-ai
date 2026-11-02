@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { musicActionSchema } from "@banger/elevenlabs/protocol";
 import { db, transaction } from "./db";
 import { authorize } from "./projects";
 import { ApiError, id, pathSchema } from "./domain";
 export const agentInput = z.object({ baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional() }).strict();
-export const elevenInput = z.object({ artifactId: id }).strict();
+export const elevenInput = z.union([
+  z.object({ artifactId: id, operation: z.literal('analyze').default('analyze') }).strict(),
+  z.object({ musicId: id, action: musicActionSchema }).strict(),
+]);
 export type Job = { id: string; project_id: string; user_id: string; kind: "agent" | "elevenlabs"; session_id: string | null; status: string; stage: string; progress: number; input: Record<string, unknown>; checkpoint: Record<string, unknown>; result: Record<string, unknown> | null; error: string | null; lease_token: string; attempts: number; created_at: Date };
 export async function enqueue(user: string, project: string, kind: Job["kind"], key: string, input: unknown) {
   const parsed = kind === "agent" ? agentInput.parse(input) : elevenInput.parse(input);
@@ -26,8 +30,16 @@ export async function enqueue(user: string, project: string, kind: Job["kind"], 
       await client.query("INSERT INTO agent_sessions(id,project_id,user_id,base_revision) VALUES($1,$2,$3,$4)", [session, project, user, agent.baseRevision]);
     } else {
       const eleven = elevenInput.parse(parsed);
-      const artifact = await client.query("SELECT 1 FROM artifacts WHERE id=$1 AND project_id=$2 AND kind='wav' AND status='ready'", [eleven.artifactId, project]);
-      if (!artifact.rowCount) throw new ApiError(400, "Choose an uploaded WAV from this project.");
+      if ('artifactId' in eleven) {
+        const artifact = await client.query("SELECT 1 FROM artifacts WHERE id=$1 AND project_id=$2 AND kind='wav' AND status='ready'", [eleven.artifactId, project]);
+        if (!artifact.rowCount) throw new ApiError(400, "Choose an uploaded WAV from this project.");
+      } else {
+        const music = (await client.query("SELECT revision FROM music_sessions WHERE id=$1 AND project_id=$2", [eleven.musicId,project])).rows[0];
+        if (!music) throw new ApiError(404, "Music session not found.");
+        if (music.revision !== eleven.action.baseVersion) throw new ApiError(409, "This song changed. Reload its composition plan.");
+        const pending = await client.query("SELECT 1 FROM jobs WHERE project_id=$1 AND input->>'musicId'=$2 AND status IN ('queued','running') LIMIT 1", [project,eleven.musicId]);
+        if (pending.rowCount) throw new ApiError(409, "Wait for the current song operation to finish.");
+      }
     }
     return (await client.query("INSERT INTO jobs(id,project_id,user_id,kind,idempotency_key,session_id,input) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *", [randomUUID(), project, user, kind, key, session, parsed])).rows[0] as Job;
   });

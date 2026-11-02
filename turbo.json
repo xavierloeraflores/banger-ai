@@ -38,7 +38,8 @@
         "BANGER_MODEL",
         "BANGER_API_KEY",
         "SANDBOX_RUNNER_BLOB_PATH",
-        "CRON_SECRET"
+        "CRON_SECRET",
+        "ELEVENLABS_API_KEY"
       ],
       "cache": false,
       "persistent": true,
