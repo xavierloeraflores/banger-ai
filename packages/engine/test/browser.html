@@ -5,7 +5,7 @@
 <button id="run">Run audio checks</button>
 <pre id="results">Ready</pre>
 <script type="module">
-import { compileMusic, createDefaultProgram } from '/packages/compiler/dist/index.js';
+import { compileMusic, createDefaultProgram, SOUND_NAMES, INSTRUMENT_NAMES } from '/packages/compiler/dist/index.js';
 import { AudioRenderer, BangerPlayer } from '/packages/engine/dist/index.js';
 const results = document.querySelector('#results');
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -27,7 +27,7 @@ document.querySelector('#run').onclick = async () => {
     await sleep(100);
     await player.dispose();
     results.textContent = 'PASS live start, step, bar update, stop, restart, dispose\n';
-    for (const name of ['drums/kick', 'drums/snare', 'drums/hat', 'synth/bass', 'synth/pluck']) {
+    for (const name of [...SOUND_NAMES, ...INSTRUMENT_NAMES]) {
       const context = new OfflineAudioContext(2, 44100, 44100), renderer = new AudioRenderer(context);
       const drum = name.startsWith('drums/');
       const program = compileMusic(`track test { ${drum ? 'sound' : 'instrument'} "${name}"; ${drum ? 'rhythm "x"' : 'notes "A4"'}; gain .7; effect reverb { mix .2; } }`);
@@ -38,6 +38,19 @@ document.querySelector('#run').onclick = async () => {
       assert(energy > .001 && energy < 1, `${name} has invalid energy ${energy}`);
       results.textContent += `PASS ${name} actual render RMS ${energy.toFixed(5)}\n`;
       renderer.dispose();
+    }
+    for (const effects of [
+      'effect delay { mix .7; time .25; feedback .45; } effect reverb { mix .2; } effect filter { cutoff 2500; resonance 2; }',
+      'effect filter { cutoff 1500; resonance 1; } effect delay { mix .4; time .375; feedback .6; } effect reverb { mix .3; }',
+    ]) {
+      const context = new OfflineAudioContext(2, 44100 * 5, 44100), renderer = new AudioRenderer(context);
+      renderer.renderBar(compileMusic(`track test { instrument "synth/bell"; notes "A4"; pan -1; ${effects} }`), 0);
+      const buffer = await context.startRendering(), left = buffer.getChannelData(0), right = buffer.getChannelData(1);
+      assert(left.every(Number.isFinite) && right.every(Number.isFinite), 'Effects emitted nonfinite samples');
+      assert(rms(left, 2205, 22050) > .001, 'Effect chain was silent');
+      assert(rms(left, 44100, 66150) > .00001, 'Delay tail was missing');
+      assert(rms(right, 0, right.length) < .000001, 'Hard-left pan leaked to right channel');
+      renderer.dispose(); results.textContent += 'PASS ordered effects, delay tail and stereo pan actual render\n';
     }
     const context = new OfflineAudioContext(1, 44100 * 2, 44100), renderer = new AudioRenderer(context);
     const program = compileMusic('track kick { sound "drums/kick"; rhythm "x x x x"; gain .8; }');

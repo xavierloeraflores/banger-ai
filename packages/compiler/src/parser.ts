@@ -1,5 +1,5 @@
 import { CompileError, tokenize, type Token } from './lexer.js';
-import { validatePianoNote, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type ReverbEffect, type SoundName, type Step } from './model.js';
+import { validatePianoNote, validateEffect, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type MusicEffect, type SoundName, type Step } from './model.js';
 type Value = string | number;
 const pitchClasses: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
@@ -138,10 +138,11 @@ class Parser {
     let source: MusicTrack['source'] | undefined, steps: Step[] | undefined, patternKind: string | undefined;
     let pianoRoll: PianoNote[] | undefined;
     let gain = 1;
-    const seen = new Set<string>(), effects: ReverbEffect[] = [];
+    let pan: number | undefined;
+    const seen = new Set<string>(), effects: MusicEffect[] = [];
     while (this.token.text !== '}') {
       const property = this.identifier();
-      if (seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
+      if (property.text !== 'effect' && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
       seen.add(property.text);
       if (property.text === 'piano') {
         if (steps) this.error('A track can have only one pattern', property);
@@ -149,12 +150,27 @@ class Parser {
         continue;
       }
       if (property.text === 'effect') {
-        this.expect('reverb'); this.expect('{');
-        let mix = 0.2;
-        if (this.token.text !== '}') { this.expect('mix'); mix = this.unit(this.expression(), property); this.expect(';'); }
+        const kind = this.identifier();
+        if (effects.some(effect => effect.kind === kind.text)) this.error(`Duplicate effect '${kind.text}'`, kind);
+        const defaults: Record<string, Record<string, number>> = {
+          reverb: { mix: .2 }, delay: { mix: .25, time: .25, feedback: .35 }, filter: { cutoff: 2000, resonance: 1 },
+        };
+        if (!Object.hasOwn(defaults, kind.text)) this.error(`Unknown effect '${kind.text}'`, kind);
+        const parameters = { ...defaults[kind.text] }, properties = new Set<string>();
+        this.expect('{');
+        while (this.token.text !== '}') {
+          const parameter = this.identifier();
+          if (!Object.hasOwn(parameters, parameter.text)) this.error(`Unknown ${kind.text} parameter '${parameter.text}'`, parameter);
+          if (properties.has(parameter.text)) this.error(`Duplicate parameter '${parameter.text}'`, parameter);
+          properties.add(parameter.text);
+          parameters[parameter.text] = this.number(this.expression(), parameter);
+          this.expect(';');
+        }
         this.expect('}');
         if (this.tokens[this.cursor].text === ';') this.take();
-        effects.push({ kind: 'reverb', mix });
+        const effect = { kind: kind.text, ...parameters } as unknown as MusicEffect;
+        try { validateEffect(effect); } catch (error) { this.error((error as Error).message, kind); }
+        effects.push(effect);
         continue;
       }
       const valueToken = this.token;
@@ -191,6 +207,10 @@ class Parser {
           });
           break;
         }
+        case 'pan':
+          pan = this.number(value, valueToken);
+          if (pan < -1 || pan > 1) this.error('Pan must be between -1 and 1', valueToken);
+          break;
         case 'gain': gain = this.unit(value, valueToken); break;
         default: this.error(`Unknown track property '${property.text}'`, property);
       }
@@ -199,7 +219,7 @@ class Parser {
     if (this.tokens[this.cursor].text === ';') this.take();
     if (!source || !steps) this.error('A track requires a source and a pattern', name);
     if ((source.kind === 'sound') !== (patternKind === 'rhythm')) this.error('Use rhythm with sound, and notes or piano with instrument', name);
-    return { name: name.text, source, steps, gain, ...(pianoRoll === undefined ? {} : { pianoRoll }), ...(effects.length ? { effects } : {}) };
+    return { name: name.text, source, steps, gain, ...(pan === undefined ? {} : { pan }), ...(pianoRoll === undefined ? {} : { pianoRoll }), ...(effects.length ? { effects } : {}) };
   }
 }
 
