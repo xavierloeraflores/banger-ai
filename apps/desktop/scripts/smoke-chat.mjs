@@ -125,7 +125,7 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('.byok-feedback [role=status]')");
   await click("Sequencer");
   await openChat();
-  await waitFor("document.querySelector('.ai-chat-heading-actions').textContent.includes('your key')");
+  await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/test-model'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 2");

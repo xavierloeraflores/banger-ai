@@ -36,7 +36,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         if (!active) return;
         const provider = AI_PROVIDERS.find(item => item.id === settings.activeProvider);
         setLocal(Boolean(settings.localSelected));
-        setConnection(settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · your key` : "Choose a provider in BYOK");
+        setConnection(settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · ${settings.providers[provider.id]?.model || "Choose a model in BYOK"}` : "Choose a provider in BYOK");
       }).catch(() => { if (active) setConnection("AI settings unavailable"); });
     };
     refresh();
