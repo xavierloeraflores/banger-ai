@@ -27,6 +27,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@banger/agent": "workspace:*"
+    "@ai-sdk/openai": "^4.0.106",
+    "@banger/agent": "workspace:*",
+    "jose": "^6.2.14"
   }
 }

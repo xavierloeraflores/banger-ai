@@ -26,3 +26,13 @@ contextBridge.exposeInMainWorld("bangerLocal", Object.freeze({
   stop: () => ipcRenderer.invoke("banger:local-stop"),
   select: selected => ipcRenderer.invoke("banger:local-select", selected),
 }));
+
+contextBridge.exposeInMainWorld("bangerChatGPT", Object.freeze({
+  status: () => ipcRenderer.invoke("banger:chatgpt-status"),
+  signIn: accountId => ipcRenderer.invoke("banger:chatgpt-sign-in", accountId),
+  cancelSignIn: () => ipcRenderer.invoke("banger:chatgpt-cancel"),
+  selectAccount: accountId => ipcRenderer.invoke("banger:chatgpt-account", accountId),
+  selectModel: model => ipcRenderer.invoke("banger:chatgpt-model", model),
+  signOut: accountId => ipcRenderer.invoke("banger:chatgpt-sign-out", accountId),
+  usage: () => ipcRenderer.invoke("banger:chatgpt-usage"),
+}));

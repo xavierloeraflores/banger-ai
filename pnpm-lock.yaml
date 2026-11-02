@@ -20,9 +20,15 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: ^4.0.106
+        version: 4.0.106(zod@4.6.7)
       '@banger/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      jose:
+        specifier: ^6.2.14
+        version: 6.2.14
     devDependencies:
       '@banger/eslint-config':
         specifier: workspace:*
@@ -1728,6 +1734,9 @@ packages:
   iterator.prototype@1.1.5:
     resolution: {integrity: sha512-H0dkQoCa3b2VEeKQBOxFph+JAbcrQdE7KC0UkqwpLmv2EC4P41QXP+rqo9wYodACiG5/WM5s9oDApTU8utwj9g==}
     engines: {node: '>= 0.4'}
+
+  jose@6.2.14:
+    resolution: {integrity: sha512-3JasLuki1NRLQvY4wCoC37KZk4qxoBx2k2aFqLxT84IezqW0bkJKnNtxnZj/Fu1xsQivoc/lytxaRHJoGLjJ1A==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -3972,6 +3981,8 @@ snapshots:
       get-proto: 1.0.1
       has-symbols: 1.1.0
       set-function-name: 2.0.2
+
+  jose@6.2.14: {}
 
   js-tokens@4.0.0: {}
 
