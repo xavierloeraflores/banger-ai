@@ -62,6 +62,7 @@ class Parser {
   }
   parse(): MusicProgram {
     const program: MusicProgram = { tempo: 120, meter: { numerator: 4, denominator: 4 }, tracks: [] };
+    let totalNotes = 0;
     const declarations = new Set<string>(), names = new Set<string>();
     while (this.token.kind !== 'eof') {
       const token = this.identifier();
@@ -94,7 +95,10 @@ class Parser {
           if (!isTrackName(name.text)) this.error('Track names must have 1 to 64 characters', name);
           if (names.has(name.text)) this.error(`Duplicate track '${name.text}'`, name);
           names.add(name.text);
-          program.tracks.push(this.track(name));
+          const track = this.track(name);
+          totalNotes += track.pianoRoll?.length ?? 0;
+          if (totalNotes > MUSIC_LIMITS.totalNotes) this.error('A program supports at most 256 piano notes', name);
+          program.tracks.push(track);
           break;
         }
         default: this.error(`Unknown statement '${token.text}'`, token);

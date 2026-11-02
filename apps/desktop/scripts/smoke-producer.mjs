@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
+import { smokePiano } from "./smoke-piano.mjs";
 import { dialog } from "electron";
 
 const mixedLengthSource = `tempo 137;
@@ -117,6 +118,16 @@ export async function smokeProducer(window, directory) {
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), "tempo nope;");
   assert.deepEqual(await evaluate(gridSnapshot), beforeInvalid, "Invalid source must preserve the applied sequence.");
   assert.equal(await evaluate("document.querySelector('.producer-tracks').disabled"), true);
+  const pianoSource = await smokePiano(window);
+  const pianoPath = join(directory, "piano.banger");
+  await saveAs(pianoPath, "piano.banger");
+  assert.equal(await readFile(pianoPath, "utf8"), pianoSource);
+  await applySource(replacementSource, 91, ["replacement"], [4]);
+  await saveAs(join(directory, "before-piano.banger"), "before-piano.banger");
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [pianoPath] });
+  await clickText("Open");
+  await waitFor("document.querySelectorAll('.piano-note').length === 4", "native piano reopen");
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), pianoSource);
   await applySource(mixedLengthSource, 137, ["smoke_kick", "smoke_bass"], [8, 3]);
 
   const filename = "対話 🎵.banger";

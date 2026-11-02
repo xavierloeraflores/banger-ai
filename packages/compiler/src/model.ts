@@ -18,7 +18,7 @@ export interface MusicProgram {
   meter: { numerator: 4; denominator: 4 };
   tracks: MusicTrack[];
 }
-export const MUSIC_LIMITS = Object.freeze({ minTempo: 20, maxTempo: 300, tracks: 16, steps: 64, notes: 128, sourceLength: 65536 });
+export const MUSIC_LIMITS = Object.freeze({ minTempo: 20, maxTempo: 300, tracks: 16, steps: 64, notes: 128, totalNotes: 256, sourceLength: 65536 });
 export const SOUND_NAMES: readonly SoundName[] = ['drums/kick', 'drums/snare', 'drums/hat'];
 export const INSTRUMENT_NAMES: readonly InstrumentName[] = ['synth/bass', 'synth/pluck'];
 export const isTrackName = (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z_][A-Za-z_0-9]{0,63}$/.test(name);
@@ -32,6 +32,7 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
   if (program.meter?.numerator !== 4 || program.meter?.denominator !== 4) fail('Only 4/4 meter is supported');
   if (!Array.isArray(program.tracks) || program.tracks.length > MUSIC_LIMITS.tracks) fail('A program can have at most 16 tracks');
   const names = new Set<string>();
+  let totalNotes = 0;
   for (const track of program.tracks) {
     if (!track || !isTrackName(track.name)) fail('Track names must be identifiers of 1 to 64 characters');
     if (names.has(track.name)) fail(`Duplicate track '${track.name}'`);
@@ -43,6 +44,8 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
       if (track.source.kind !== 'instrument' || !Array.isArray(track.steps) || track.steps.length !== 0)
         fail('Piano rolls require an instrument and cannot be combined with steps');
       if (!Array.isArray(track.pianoRoll) || track.pianoRoll.length > MUSIC_LIMITS.notes) fail('Piano rolls support at most 128 notes');
+      totalNotes += track.pianoRoll.length;
+      if (totalNotes > MUSIC_LIMITS.totalNotes) fail('A program supports at most 256 piano notes');
       for (const note of track.pianoRoll) validatePianoNote(note);
     } else if (!Array.isArray(track.steps) || track.steps.length < 1 || track.steps.length > MUSIC_LIMITS.steps) fail('Patterns must have 1 to 64 steps');
     for (const step of track.steps) {

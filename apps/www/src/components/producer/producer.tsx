@@ -333,7 +333,7 @@ export function Producer() {
                       <span className="producer-track-length">{track.pianoRoll ? `${track.pianoRoll.length} notes` : `${track.steps.length} steps`}</span>
                       <IconButton variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>×</IconButton>
                     </div>
-                    {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}`} track={track} disabled={draft || fileBusy} playing={playback.state.playing} phase={playback.state.phase} onChange={next => editTrack(index, next)} />}
+                    {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}`} track={track} disabled={draft || fileBusy} visible={view === "sequencer"} playing={playback.state.playing} phase={playback.state.phase} onChange={next => editTrack(index, next)} />}
                   </div>
                 ))}
               </fieldset>

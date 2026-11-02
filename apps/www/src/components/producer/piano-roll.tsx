@@ -11,8 +11,8 @@ const pitchName = (midi: number) => `${names[midi % 12]}${Math.floor(midi / 12) 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 type Gesture = { index: number; mode: "move" | "resize"; x: number; y: number; width: number; original: PianoNote; preview: PianoNote; track: MusicTrack };
 
-export function PianoRoll({ track, disabled, playing, phase, onChange }: {
-  track: MusicTrack; disabled: boolean; playing: boolean; phase: number;
+export function PianoRoll({ track, disabled, visible, playing, phase, onChange }: {
+  track: MusicTrack; disabled: boolean; visible: boolean; playing: boolean; phase: number;
   onChange: (track: MusicTrack) => unknown;
 }) {
   const notes = pianoNotes(track);
@@ -22,9 +22,14 @@ export function PianoRoll({ track, disabled, playing, phase, onChange }: {
   const scroll = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
   const initialPitch = useRef(notes[0]?.midi ?? 60);
+  const positioned = useRef(false);
   useEffect(() => {
-    if (scroll.current) scroll.current.scrollTop = (127 - initialPitch.current - 5) * ROW;
-  }, []);
+    // Applying source mounts the roll inside a hidden tab, where scrolling has no effect.
+    if (visible && !positioned.current && scroll.current) {
+      scroll.current.scrollTop = (127 - initialPitch.current - 5) * ROW;
+      positioned.current = true;
+    }
+  }, [visible]);
   const active = selected === null ? undefined : notes[selected];
   const currentGesture = !disabled && gesture?.track === track ? gesture : null;
 
