@@ -84,7 +84,7 @@ export function ByokSettings() {
           </button>}
           {AI_PROVIDERS.map(item => <button key={item.id} type="button" aria-pressed={provider === item.id}
             disabled={busy || !loaded} onClick={() => select(item.id)}>
-            <span>{item.name}</span><small>{!settings.localSelected && settings.activeProvider === item.id ? "Selected" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
+            <span>{item.name}</span><small>{!settings.localSelected && settings.activeProvider === item.id ? "Selected" : settings.settingsError ? "Locked" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
           </button>)}
         </nav>
         {provider === "local" ? <LocalModelSettings /> : <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>

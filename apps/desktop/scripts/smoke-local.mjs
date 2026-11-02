@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { compileMusic } from "../../../packages/compiler/dist/index.js";
 
+app.setName("@banger/desktop");
 const keepOpen = process.argv.includes("--keep-open");
 if (process.env.BANGER_LOCAL_SMOKE_HOME) app.setPath("userData", process.env.BANGER_LOCAL_SMOKE_HOME);
 const timeout = setTimeout(() => { console.error("Local smoke timed out."); if (!keepOpen) app.exit(1); }, 30 * 60_000);
@@ -71,6 +72,8 @@ async function run(window) {
     assert.equal(status.phase, "running");
     await writeFile(join(tmpdir(), "banger-local-selector.png"), (await window.webContents.capturePage()).toPNG());
     console.log("Live Muse Glimmer loaded through the model selector. Generating through desktop chat.");
+    await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+    await waitFor("document.querySelector('#ai-chat-dialog').matches(':modal')");
     await input("Create one warm lo-fi loop at 85 BPM with kick, snare, hats and a C minor bass line. Use create_banger_file to produce a playable file.");
     await click("Send");
     await waitFor("document.querySelector('.ai-chat-file') || document.querySelector('.ai-chat-footer [role=alert]')", 650_000);
