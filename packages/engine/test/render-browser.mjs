@@ -1,5 +1,5 @@
 import { compileMusic, copyMusicProgram, SOUND_NAMES, INSTRUMENT_NAMES } from '/compiler/index.js';
-import { renderWav, renderStems, AudioRenderer, prepareAudio, eventsForSong } from '/engine/index.js';
+import { renderWav, renderStems, AudioRenderer, prepareAudio, configureAudioWorklet, eventsForSong } from '/engine/index.js';
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 function rms(buffer, from = 0, to = buffer.duration, channel = 0) {
   const samples = buffer.getChannelData(channel); let sum = 0, count = 0;
@@ -8,7 +8,8 @@ function rms(buffer, from = 0, to = buffer.duration, channel = 0) {
 }
 const options = { sampleRate: 16000, tailSeconds: 1.5 };
 export async function run() {
-  const report = {};
+  configureAudioWorklet('/banger-sidechain.js');
+  const report = { strictCspWorklet: true };
   const keySong = compileMusic(`tempo 120;
     track kick { sound "drums/kick"; bars 2; rhythm "x . . . x . . ."; gain 1; }
     track pad { instrument "synth/organ"; bars 2; piano { note "A3" start 0 duration 8 velocity .8; } gain .8;
@@ -68,6 +69,39 @@ export async function run() {
     const result = await renderWav(voice, { sampleRate: 16000, tailSeconds: .7 });
     const left = rms(result.buffer), right = rms(result.buffer, 0, result.duration, 1);
     assert(left > .0001 && right < 1e-6, `Voice/pan failed: ${name}, ${left}, ${right}`); report.voices[name] = left;
+  }
+  const barContext = new OfflineAudioContext(2, mix.buffer.length, 16000); await prepareAudio(barContext);
+  const barRenderer = new AudioRenderer(barContext);
+  for (let bar = 0; bar < 4; bar++) barRenderer.renderBar(song, bar * 2, -Infinity, bar);
+  const barBuffer = await barContext.startRendering(); barRenderer.dispose();
+  let boundaryDifference = 0;
+  for (let channel = 0; channel < 2; channel++) for (let i = 0; i < barBuffer.length; i++) boundaryDifference = Math.max(boundaryDifference, Math.abs(barBuffer.getChannelData(channel)[i] - mix.buffer.getChannelData(channel)[i]));
+  assert(boundaryDifference < .00001, `Per-bar and full-song rendering differ: ${boundaryDifference}`); report.barRenderDifference = boundaryDifference;
+  report.automation = {};
+  const targets = [
+    ['gain', undefined, .1, .9], ['pan', undefined, -1, 1], ['pitch', undefined, 0, 12],
+    ['filter.cutoff', { kind: 'filter', cutoff: 200, resonance: 1 }, 200, 8000],
+    ['filter.resonance', { kind: 'filter', cutoff: 500, resonance: 0 }, 0, 10],
+    ['reverb.mix', { kind: 'reverb', mix: 0 }, 0, 1],
+    ['delay.mix', { kind: 'delay', time: .173, feedback: .4, mix: 0 }, 0, 1],
+    ['delay.time', { kind: 'delay', time: .1, feedback: .4, mix: .7 }, .1, .5],
+    ['delay.feedback', { kind: 'delay', time: .173, feedback: 0, mix: .7 }, 0, .8],
+    ...['low', 'mid', 'high'].map(band => [`eq.${band}`, { kind: 'eq', low: 0, mid: 0, high: 0 }, 0, 20]),
+    ['compressor.threshold', { kind: 'compressor', threshold: 0, ratio: 10, attack: .001, release: .05, knee: 0 }, 0, -40],
+    ['compressor.ratio', { kind: 'compressor', threshold: -40, ratio: 1, attack: .001, release: .05, knee: 0 }, 1, 10],
+    ['distortion.amount', { kind: 'distortion', amount: 0, mix: 1 }, 0, 1],
+    ['distortion.mix', { kind: 'distortion', amount: .7, mix: 0 }, 0, 1],
+  ];
+  for (const [target, effect, from, to] of targets) {
+    const test = compileMusic('tempo 120; track voice { instrument "synth/organ"; piano { note "C4" start 0 duration 4 velocity .7; } gain .6; }');
+    if (effect) test.tracks[0].effects = [effect];
+    test.tracks[0].automation = [{ target, points: [{ beat: 0, value: from }, { beat: 4, value: from }] }];
+    const flat = await renderWav(test, { sampleRate: 16000, tailSeconds: .1 });
+    test.tracks[0].automation[0].points[1].value = to;
+    const ramp = await renderWav(test, { sampleRate: 16000, tailSeconds: .1 });
+    let difference = 0;
+    for (let i = 24000; i < 30000; i++) difference += Math.abs(flat.buffer.getChannelData(0)[i] - ramp.buffer.getChannelData(0)[i]);
+    difference /= 6000; assert(difference > .00001, `Automation inaudible/ignored: ${target} ${difference}`); report.automation[target] = difference;
   }
   const keyStems = await renderStems(keySong, options);
   assert(Object.values(keyStems).every(stem => stem.buffer.length === ducked.buffer.length), 'Stems not aligned');
