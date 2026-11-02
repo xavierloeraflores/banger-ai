@@ -12,10 +12,13 @@ export function SongArrangement({ program, disabled, section, onChange }: { prog
     <fieldset disabled={disabled}>
       <p>Sections choose which track patterns play. Add sections to the timeline to build the song.</p>
       <div className="studio-sections">{sections.map((item, index) => <section key={item.name} className="studio-section" data-playing={section === item.name}>
-        <strong>{item.name}</strong>
+        <Input key={item.name} aria-label={`${item.name} section name`} defaultValue={item.name} onBlur={event => {
+          const name = event.target.value; if (name === item.name) return;
+          if (!onChange({ ...program, sections: sections.map((section,i) => i === index ? { ...item, name } : section), ...(program.timeline ? { timeline: timeline.map(entry => entry.section === item.name ? { ...entry, section: name } : entry) } : {}) })) event.target.value = item.name;
+        }} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />
         <label>Bars <Input type="number" aria-label={`${item.name} section bars`} min={1} max={64} value={item.bars} onChange={e => update(index, { ...item, bars: Number(e.target.value) })} /></label>
-        {program.tracks.map(track => <label key={track.name}>{track.name}<Select aria-label={`${item.name} ${track.name} pattern`} value={item.tracks.find(binding => binding.track === track.name)?.pattern ?? (item.tracks.some(binding => binding.track === track.name) ? "base" : "silent")} onChange={e => update(index, { ...item, tracks: [...item.tracks.filter(binding => binding.track !== track.name), ...(e.target.value === "silent" ? [] : [{ track: track.name, ...(e.target.value === "base" ? {} : { pattern: e.target.value }) }])] })}>
-          <option value="silent">Silent</option><option value="base">Base pattern</option>{track.patterns?.map(pattern => <option key={pattern.name} value={pattern.name}>{pattern.name}</option>)}
+        {program.tracks.map(track => <label key={track.name}>{track.name}<Select aria-label={`${item.name} ${track.name} pattern`} value={(item.tracks.find(binding => binding.track === track.name)?.pattern ? `pattern:${item.tracks.find(binding => binding.track === track.name)!.pattern}` : undefined) ?? (item.tracks.some(binding => binding.track === track.name) ? "base" : "silent")} onChange={e => update(index, { ...item, tracks: [...item.tracks.filter(binding => binding.track !== track.name), ...(e.target.value === "silent" ? [] : [{ track: track.name, ...(e.target.value === "base" ? {} : { pattern: e.target.value.slice(8) }) }])] })}>
+          <option value="silent">Silent</option><option value="base">Base pattern</option>{track.patterns?.map(pattern => <option key={pattern.name} value={`pattern:${pattern.name}`}>{pattern.name}</option>)}
         </Select></label>)}
         <Button variant="ghost" onClick={() => onChange({ ...program, sections: sections.filter((_, i) => i !== index), timeline: timeline.filter(entry => entry.section !== item.name) })}>Remove {item.name}</Button>
       </section>)}</div>

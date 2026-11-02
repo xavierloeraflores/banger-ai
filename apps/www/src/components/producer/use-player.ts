@@ -1,5 +1,6 @@
 "use client";
 
+import "./audio-worklet";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
 import { BangerPlayer, type MeterSnapshot, type PlaybackState } from "@banger/engine";

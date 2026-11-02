@@ -19,7 +19,9 @@
     "smoke:chatgpt": "electron scripts/smoke-chatgpt.mjs",
     "smoke:musical": "electron scripts/smoke-musical-options.mjs",
     "smoke:workspace": "electron scripts/smoke-workspace.mjs",
-    "smoke:local": "electron scripts/smoke-local.mjs"
+    "smoke:local": "electron scripts/smoke-local.mjs",
+    "smoke:song": "electron scripts/smoke-song.mjs",
+    "smoke:song:web": "electron scripts/smoke-song.mjs --web"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",
