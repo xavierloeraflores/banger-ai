@@ -1,0 +1,49 @@
+import { app, BrowserWindow } from 'electron';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+const root = new URL('../',import.meta.url);
+const server=createServer(async(req,res)=>{
+  if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><script type="importmap">{"imports":{"@banger/compiler":"/packages/compiler/dist/index.js"}}</script>');return;}
+  if(!/^\/packages\/(engine|compiler)\/dist\/[a-z-]+\.js$/.test(req.url)){res.writeHead(404);res.end();return;}
+  try{res.setHeader('Content-Type','text/javascript');res.end(await readFile(new URL(req.url.slice(1),root)));}catch{res.writeHead(404);res.end();}
+});
+const timeout=setTimeout(()=>{console.error('Sound verification timed out');app.exit(1);},120000);
+async function runTest() {
+try {
+  await app.whenReady();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const window=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  await window.loadURL(`http://127.0.0.1:${server.address().port}`);
+  const report=await window.webContents.executeJavaScript(`(async()=>{
+    const c=await import('/packages/compiler/dist/index.js'),e=await import('/packages/engine/dist/index.js');
+    const assert=(value,message)=>{if(!value)throw new Error(message);};
+    const base=()=>({tempo:120,meter:{numerator:4,denominator:4},tracks:[{name:'voice',source:{kind:'instrument',name:'synth/lead'},steps:[{kind:'note',midi:48},null,{kind:'note',midi:55},null],gain:.5,synth:{...c.INIT_SYNTH,attack:.005,decay:.1,release:.05,lfo1Depth:0,glide:0}}]});
+    const energy=b=>b.getChannelData(0).reduce((sum,value)=>{assert(Number.isFinite(value),'nonfinite audio');return sum+value*value;},0)/b.length;
+    const render=async p=>(await e.renderWav(c.compileMusic(c.serializeMusic(p)),{sampleRate:22050}));
+    const reference=await render(base());assert(energy(reference.buffer)>1e-6,'synth silent');assert(new TextDecoder().decode(reference.wav.slice(0,4))==='RIFF','export missing WAV');
+    const changes={osc1:'square',osc2:'sawtooth',mix:.95,drive:.7,fm:.8,fmRatio:3,detune:80,sub:1,noise:.7,voices:4,unisonDetune:80,spread:0,filterType:'highpass',cutoff:400,resonance:12,filterEnv:-.8,velocityFilter:.9,lfo1Wave:'square',lfo1Rate:12,lfo1Depth:.9,lfo1Target:'pitch',lfo2Wave:'square',lfo2Rate:12,lfo2Depth:.9,lfo2Target:'pitch',attack:.3,decay:.6,sustain:.1,release:.5,glide:.4,pitchEnv:24,pitchDecay:.6,volume:.15};
+    const deltas={};
+    for(const [key,value] of Object.entries(changes)){
+      const p=base();p.tracks[0].synth[key]=value;
+      if(key.startsWith('lfo')){p.tracks[0].synth.lfo1Depth=.6;p.tracks[0].synth.lfo2Depth=.6;}
+      if(key==='fmRatio')p.tracks[0].synth.fm=.5;
+      if(key==='pitchDecay')p.tracks[0].synth.pitchEnv=24;
+      if(['unisonDetune','spread'].includes(key))p.tracks[0].synth.voices=3;
+      const before=base();for(const coupled of ['fm','voices','lfo1Depth','lfo2Depth','pitchEnv'])if(coupled!==key)before.tracks[0].synth[coupled]=p.tracks[0].synth[coupled];
+      const a=(await render(before)).buffer.getChannelData(0),b=(await render(p)).buffer.getChannelData(0);let delta=0;for(let i=0;i<Math.min(a.length,b.length);i++)delta+=Math.abs(a[i]-b[i]);assert(delta>1e-4,key+' did not change audio');deltas[key]=delta;
+    }
+    const metal=base(),white=base();metal.tracks[0].synth.noise=white.tracks[0].synth.noise=.8;metal.tracks[0].synth.noiseType='metal';assert(energy((await render(metal)).buffer)!==energy((await render(white)).buffer),'noise type unchanged');
+    const disabled=base();disabled.tracks[0].synth.enabled=false;assert(energy((await render(disabled)).buffer)===0,'disabled synth audible');
+    const empty=base();empty.tracks[0].modular=null;assert(energy((await render(empty)).buffer)===0,'empty modular audible');
+    const locked=base();locked.tracks[0].steps[0].locks={cutoff:100,drive:.8,release:.02};const saved=c.compileMusic(c.serializeMusic(locked));assert(saved.tracks[0].steps[0].locks.cutoff===100,'lock not persisted');assert(saved.tracks[0].synth.cutoff===1800,'lock leaked into track');
+    const a=reference.buffer.getChannelData(0),b=(await render(locked)).buffer.getChannelData(0);let secondDelta=0;for(let i=22050;i<33075;i++)secondDelta+=Math.abs(a[i]-b[i]);assert(secondDelta<.0001,'lock leaked into following note');
+    const long=base();long.tracks[0].steps=[null,null,null,{kind:'note',midi:48}];long.tracks[0].steps[3].locks={release:3};const tail=await render(long);assert(tail.tailSeconds>=3,'locked release tail clipped');
+    const glide=base();glide.tracks[0].synth.glide=.4;const first=await render(glide),second=await render(glide);assert(energy(first.buffer)===energy(second.buffer),'glide depends on prior session');
+    const pitch=base();pitch.tracks[0].automation=[{target:'pitch',points:[{beat:0,value:12}]}];assert(energy((await render(pitch)).buffer)!==energy(reference.buffer),'pitch automation bypassed');
+    const factories={};for(const patch of c.FACTORY_PATCHES){const p=base();p.tracks[0].modular=patch;const result=await render(p);factories[patch.name]=energy(result.buffer);assert(factories[patch.name]>1e-9,patch.name+' silent');}
+    return {controlChanges:Object.keys(deltas),factories,lockIsolation:true,disabledSilence:true,emptyPatchSilence:true,releaseTail:tail.tailSeconds,saveReopen:true,wavBytes:reference.wav.byteLength};
+  })()`);
+  console.log(JSON.stringify(report,null,2));clearTimeout(timeout);server.close();app.exit(0);
+}catch(error){console.error(error);clearTimeout(timeout);server.close();app.exit(1);}
+
+}
+void runTest();

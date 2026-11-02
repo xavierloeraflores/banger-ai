@@ -22,6 +22,7 @@ import { AutomationEditor } from "./automation-editor";
 import { TrackRouting, LevelMeter } from "./mixer-routing";
 import { MixerView } from "./mixer-view";
 import { AudioExport } from "./audio-export";
+import { SoundDesign } from "./sound-design";
 import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
 import { usePlayer } from "./use-player";
@@ -421,6 +422,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
                         onChange={next => editTrack(index, next)} />
                       <LevelMeter name={track.name} level={playback.meters.tracks[track.name]?.peak} />
                       <TrackRouting program={program} index={index} onChange={edit} />
+                      <SoundDesign track={track} phrase={phraseTrack} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
                       <TrackEffects track={track} tracks={program.tracks.map(item => item.name)} disabled={draft || fileBusy} onChange={next => editTrack(index, { ...track, ...next })} />
                       <AutomationEditor name={track.name} curves={track.automation} effects={track.effects} beats={(phrase.bars ?? 1) * 4} onChange={automation => editTrack(index, { ...track, automation })} />
                       {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={draft || fileBusy} visible={view === "sequencer" && expandedTrack === index} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
