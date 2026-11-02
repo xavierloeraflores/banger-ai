@@ -28,6 +28,7 @@ export class MixerGraph {
   private readonly masterMeter?: AnalyserNode;
   private readonly nodes: AudioNode[] = [];
   private readonly meterSamples = new WeakMap<AnalyserNode, Float32Array<ArrayBuffer>>();
+  private readonly processors: AudioWorkletNode[] = [];
   private readonly controls: ConstantSourceNode[] = [];
   private readonly keys: { input: AudioNode; source: string; port?: number }[] = [];
   private readonly impulse: AudioBuffer;
@@ -85,6 +86,7 @@ export class MixerGraph {
       } else if (effect.kind === 'compressor') {
         if (effect.sidechain && hasSidechainWorklet(context)) {
           const compressor = this.keep(new AudioWorkletNode(context, 'banger-sidechain', { numberOfInputs: 2, numberOfOutputs: 1, outputChannelCount: [2] }));
+          this.processors.push(compressor);
           for (const name of ['threshold', 'ratio', 'attack', 'release', 'knee'] as const) {
             const parameter = compressor.parameters.get(name)!; parameter.value = effect[name]; bind(`compressor.${name}`, parameter);
           }
@@ -144,5 +146,5 @@ export class MixerGraph {
     };
     return { master: read(this.masterMeter), tracks: Object.fromEntries([...this.tracks].map(([name, strip]) => [name, read(strip.meter)])), buses: Object.fromEntries([...this.buses].map(([name, strip]) => [name, read(strip.meter)])) };
   }
-  dispose(): void { for (const control of this.controls) control.stop(); for (const node of this.nodes) node.disconnect(); }
+  dispose(): void { for (const processor of this.processors) { processor.port.postMessage('dispose'); processor.port.close(); } for (const control of this.controls) control.stop(); for (const node of this.nodes) node.disconnect(); }
 }
