@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input } from "@banger/shadcn";
 import { AI_PROVIDERS, aiSettingsBridge, type AISettings, type ProviderId } from "@/lib/ai-providers";
 
+import { ChatGPTSettings } from "./chatgpt-settings";
 import { LocalModelSettings } from "./local-model";
 
 export function ByokSettings() {
   const pending = useRef(false);
   const [settings, setSettings] = useState<AISettings>({ activeProvider: null, providers: {} });
-  const [provider, setProvider] = useState<ProviderId | "local">("vercel");
+  const [provider, setProvider] = useState<ProviderId | "local" | "chatgpt">("vercel");
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
   const [visible, setVisible] = useState(false);
@@ -19,11 +20,11 @@ export function ByokSettings() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const selected = AI_PROVIDERS.find(item => item.id === provider)!;
-  const saved = provider !== "local" && settings.providers[provider]?.configured;
+  const saved = provider !== "local" && provider !== "chatgpt" && settings.providers[provider]?.configured;
 
-  function select(id: ProviderId | "local", next = settings) {
+  function select(id: ProviderId | "local" | "chatgpt", next = settings) {
     setProvider(id);
-    setModel(id === "local" ? "" : next.providers[id]?.model ?? "");
+    setModel((id === "local" || id === "chatgpt") ? "" : next.providers[id]?.model ?? "");
     setKey("");
     setVisible(false);
     setError(null);
@@ -36,9 +37,9 @@ export function ByokSettings() {
       if (!active) return;
       setDesktop(Boolean(window.bangerAI));
       setSettings(next);
-      const id = next.localSelected ? "local" : next.activeProvider ?? "vercel";
+      const id = next.chatgpt?.selected ? "chatgpt" : next.localSelected ? "local" : next.activeProvider ?? "vercel";
       setProvider(id);
-      setModel(id === "local" ? "" : next.providers[id]?.model ?? "");
+      setModel((id === "local" || id === "chatgpt") ? "" : next.providers[id]?.model ?? "");
       setLoaded(true);
       setError(next.settingsError ?? null);
     }).catch(cause => {
@@ -54,7 +55,7 @@ export function ByokSettings() {
   }, []);
 
   async function update(remove = false) {
-    if (pending.current || provider === "local") return;
+    if (pending.current || provider === "local" || provider === "chatgpt") return;
     pending.current = true;
     setBusy(true);
     setError(null);
@@ -74,20 +75,23 @@ export function ByokSettings() {
 
   return <section className="byok-settings" aria-labelledby="byok-title" aria-describedby="byok-description">
       <div className="byok-heading">
-        <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">{desktop ? "Local model or your own key" : "Bring your own key"}</h2></div>
+        <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">{desktop ? "Choose how to connect" : "Bring your own key"}</h2></div>
       </div>
       <p id="byok-description" className="byok-description">Configure your AI options here. Choose the active model from the menu at the top of the app.</p>
       <div className="byok-layout">
         <nav className="byok-providers" aria-label="AI providers">
+          {desktop && <button type="button" aria-pressed={provider === "chatgpt"} disabled={busy} onClick={() => select("chatgpt")}>
+            <span>ChatGPT</span><small>{settings.chatgpt?.selected ? "Selected" : "Use your plan"}</small>
+          </button>}
           {desktop && <button type="button" aria-pressed={provider === "local"} disabled={busy} onClick={() => select("local")}>
             <span>Local model</span><small>{settings.localSelected ? "Selected" : "Muse Glimmer · no key"}</small>
           </button>}
           {AI_PROVIDERS.map(item => <button key={item.id} type="button" aria-pressed={provider === item.id}
             disabled={busy || !loaded} onClick={() => select(item.id)}>
-            <span>{item.name}</span><small>{!settings.localSelected && settings.activeProvider === item.id ? "Selected" : settings.settingsError ? "Locked" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
+            <span>{item.name}</span><small>{!settings.localSelected && !settings.chatgpt?.selected && settings.activeProvider === item.id ? "Selected" : settings.settingsError ? "Locked" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
           </button>)}
         </nav>
-        {provider === "local" ? <LocalModelSettings /> : <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
+        {provider === "chatgpt" ? <ChatGPTSettings /> : provider === "local" ? <LocalModelSettings /> : <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
           <h3>{selected.name}</h3>
           <p className="byok-hint">{selected.hint}</p>
           <fieldset disabled={busy || !loaded}>

@@ -1,3 +1,5 @@
+import type { ChatGPTStatus } from "./chatgpt";
+
 export const AI_PROVIDERS = [
   { id: "vercel", name: "Vercel AI Gateway", hint: "Use a Gateway key and a provider/model ID." },
   { id: "anthropic", name: "Anthropic", hint: "Use an Anthropic API key and a Claude model ID." },
@@ -8,8 +10,8 @@ export const AI_PROVIDERS = [
 
 export type ProviderId = typeof AI_PROVIDERS[number]["id"];
 export type ProviderSettings = { model: string; configured: boolean };
-export type AIOptionId = ProviderId | "local:small" | "local:dynamic";
-export type AISettings = { localSelected?: boolean; localVariant?: "small" | "dynamic"; localModels?: { id: "local:small" | "local:dynamic"; label: string }[]; settingsError?: string; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
+export type AIOptionId = ProviderId | "local:small" | "local:dynamic" | "chatgpt";
+export type AISettings = { chatgpt?: ChatGPTStatus; localSelected?: boolean; localVariant?: "small" | "dynamic"; localModels?: { id: "local:small" | "local:dynamic"; label: string }[]; settingsError?: string; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
 export type AISettingsBridge = {
   load(): Promise<AISettings>;
   select(option: AIOptionId): Promise<AISettings>;

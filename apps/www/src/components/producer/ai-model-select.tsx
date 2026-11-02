@@ -33,8 +33,9 @@ export function AIModelSelect() {
   const options = [
     ...AI_PROVIDERS.filter(provider => settings.providers[provider.id]?.configured).map(provider => ({ id: provider.id, label: `${provider.name} · ${settings.providers[provider.id]!.model}` })),
     ...settings.localModels ?? [],
+    ...(settings.chatgpt?.accounts.some(account => account.connected && account.sharing) ? [{ id: "chatgpt", label: `ChatGPT · ${settings.chatgpt.accounts.find(account => account.id === settings.chatgpt?.activeAccountId)?.model ?? "Choose a model"}` }] : []),
   ];
-  const selected = settings.localSelected ? `local:${settings.localVariant ?? "small"}` : settings.activeProvider ?? "";
+  const selected = settings.chatgpt?.selected ? "chatgpt" : settings.localSelected ? `local:${settings.localVariant ?? "small"}` : settings.activeProvider ?? "";
   async function select(value: string) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError("");
@@ -51,6 +52,7 @@ export function AIModelSelect() {
       {selected && !options.some(option => option.id === selected) && <option value={selected} disabled>Local model needs a download</option>}
       {options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
     </select>
+    {settings.chatgpt?.selected && <span className="chatgpt-usage">Using ChatGPT plan <button type="button" onClick={() => void window.bangerChatGPT?.usage().catch(() => setError("Could not open usage settings."))}>Manage usage</button></span>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }
