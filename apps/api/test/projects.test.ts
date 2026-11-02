@@ -1,0 +1,34 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { db } from '../src/server/db';
+import { createProject, projectFiles, saveChanges, setMember } from '../src/server/projects';
+import { validateChanges, pathSchema } from '../src/server/domain';
+const source = await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8');
+const objects = new Map<string,string>();
+const store = { async write(path:string, body:string | Buffer) { assert.ok(!objects.has(path)); objects.set(path, body.toString()); }, async text(path:string) { return objects.get(path)!; } };
+test('path and compiler validation reject unsafe or invalid edits', () => {
+  for (const path of ['../song.banger','/song.banger','a/../song.banger','a\\song.banger','.git/song.banger']) assert.equal(pathSchema.safeParse(path).success, false);
+  assert.throws(() => validateChanges([{path:'song.banger',source:'not music'}]));
+});
+test('PostgreSQL publication, permissions, delta sync and concurrent saves', { skip: !process.env.DATABASE_URL }, async () => {
+  const owner = `test-${randomUUID()}`, viewer = `test-${randomUUID()}`;
+  const project = await createProject(owner, 'Test', [{path:'song.banger', source}], store);
+  assert.equal(project.revision, 1);
+  await setMember(owner, project.projectId, viewer, 'viewer');
+  await assert.rejects(saveChanges(viewer, project.projectId, 1, [{path:'song.banger', source}], store), /denied/);
+  const old = await projectFiles(viewer, project.projectId, undefined, store);
+  assert.equal(old.files[0]?.source, source);
+  const saves = await Promise.allSettled(['a.banger','b.banger'].map(path => saveChanges(owner, project.projectId, 1, [{path,source}], store)));
+  assert.equal(saves.filter(result => result.status === 'fulfilled').length, 1);
+  const delta = await projectFiles(owner, project.projectId, 1, store);
+  assert.equal(delta.revision, 2); assert.equal(delta.files.length, 1);
+  await assert.rejects(saveChanges(owner, project.projectId, 2, [{path:'song.banger',source:'broken'}], store), /Cannot save/);
+  assert.equal((await projectFiles(owner, project.projectId, 2, store)).revision, 2);
+  await saveChanges(owner, project.projectId, 2, [{path:'song.banger',source:null}], store);
+  assert.deepEqual((await projectFiles(owner, project.projectId, 2, store)).deleted, ['song.banger']);
+  await setMember(owner, project.projectId, viewer, null);
+  await assert.rejects(projectFiles(viewer, project.projectId, undefined, store), /denied/);
+});
+after(async () => { await db().end(); });
