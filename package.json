@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:www": "turbo run dev --filter=@banger/www",
-    "dev:desktop": "turbo run dev --filter=@banger/desktop",
+    "dev:desktop": "turbo run dev --filter=@banger/desktop --filter=@banger/www",
     "build": "turbo run build",
     "fullbuild": "cross-env NODE_ENV=production turbo run build",
     "lint": "turbo run lint",

@@ -12,12 +12,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build && node --test test/*.test.mjs"
   },
   "devDependencies": {
     "@banger/eslint-config": "workspace:*",
     "@banger/typescript-config": "workspace:*",
     "eslint": "^9.39.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@banger/compiler": "workspace:*"
   }
 }
