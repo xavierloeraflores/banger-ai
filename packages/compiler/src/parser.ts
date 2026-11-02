@@ -1,5 +1,5 @@
 import { CompileError, tokenize, type Token } from './lexer.js';
-import { validatePianoNote, validateEffect, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type MusicEffect, type SoundName, type Step } from './model.js';
+import { validateMusicProgram, validateEffect, type MusicBus, type MusicSection, type TimelineEntry, type MusicPattern, type Groove, type AutomationCurve, type AutomationTarget, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type MusicEffect, type SoundName, type Step } from './model.js';
 type Value = string | number;
 const pitchClasses: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
@@ -62,7 +62,6 @@ class Parser {
   }
   parse(): MusicProgram {
     const program: MusicProgram = { tempo: 120, meter: { numerator: 4, denominator: 4 }, tracks: [] };
-    let totalNotes = 0;
     const declarations = new Set<string>(), names = new Set<string>();
     while (this.token.kind !== 'eof') {
       const token = this.identifier();
@@ -96,14 +95,26 @@ class Parser {
           if (names.has(name.text)) this.error(`Duplicate track '${name.text}'`, name);
           names.add(name.text);
           const track = this.track(name);
-          totalNotes += track.pianoRoll?.length ?? 0;
-          if (totalNotes > MUSIC_LIMITS.totalNotes) this.error('A program supports at most 256 piano notes', name);
           program.tracks.push(track);
           break;
+        }
+        case 'bus': {
+          const name = this.identifier();
+          (program.buses ??= []).push(this.bus(name)); break;
+        }
+        case 'section': {
+          const name = this.identifier();
+          (program.sections ??= []).push(this.section(name)); break;
+        }
+        case 'song': {
+          if (program.timeline) this.error('Song is already declared', token);
+          program.timeline = this.song(); break;
         }
         default: this.error(`Unknown statement '${token.text}'`, token);
       }
     }
+    try { validateMusicProgram(program); }
+    catch (error) { this.error((error as Error).message); }
     return program;
   }
   private pitch(word: string, token: Token): number {
@@ -125,101 +136,205 @@ class Parser {
       this.expect('velocity'); const velocity = this.unit(this.expression(), token);
       this.expect(';');
       const note = { midi, start, duration, velocity };
-      try { validatePianoNote(note); }
-      catch (error) { this.error((error as Error).message, token); }
       notes.push(note);
     }
     this.expect('}');
     if (this.tokens[this.cursor].text === ';') this.take();
     return notes;
   }
-  private track(name: Token): MusicTrack {
+  private endBlock(): void {
+    this.expect('}');
+    if (this.tokens[this.cursor].text === ';') this.take();
+  }
+  private numeric(): number { const token = this.token; return this.number(this.expression(), token); }
+  private effect(): MusicEffect {
+    const kind = this.identifier();
+    const defaults: Record<string, Record<string, number | string>> = {
+      reverb: { mix: .2 }, delay: { mix: .25, time: .25, feedback: .35 }, filter: { cutoff: 2000, resonance: 1 },
+      eq: { low: 0, mid: 0, high: 0 }, compressor: { threshold: -24, ratio: 4, attack: .01, release: .1, knee: 20 },
+      distortion: { amount: .2, mix: .5 },
+    };
+    if (!Object.hasOwn(defaults, kind.text)) this.error(`Unknown effect '${kind.text}'`, kind);
+    const parameters = { ...defaults[kind.text] }, seen = new Set<string>();
     this.expect('{');
-    let source: MusicTrack['source'] | undefined, steps: Step[] | undefined, patternKind: string | undefined;
-    let pianoRoll: PianoNote[] | undefined;
-    let gain = 1;
-    let pan: number | undefined;
-    const seen = new Set<string>(), effects: MusicEffect[] = [];
+    while (this.token.text !== '}') {
+      const parameter = this.identifier();
+      if (seen.has(parameter.text)) this.error(`Duplicate parameter '${parameter.text}'`, parameter);
+      seen.add(parameter.text);
+      if (kind.text === 'compressor' && parameter.text === 'sidechain') parameters.sidechain = this.identifier().text;
+      else {
+        if (!Object.hasOwn(parameters, parameter.text)) this.error(`Unknown ${kind.text} parameter '${parameter.text}'`, parameter);
+        parameters[parameter.text] = this.numeric();
+      }
+      this.expect(';');
+    }
+    this.endBlock();
+    const effect = { kind: kind.text, ...parameters } as unknown as MusicEffect;
+    try { validateEffect(effect); } catch (error) { this.error((error as Error).message, kind); }
+    return effect;
+  }
+  private automation(): AutomationCurve {
+    const token = this.token;
+    const target = this.string(this.expression(), token) as AutomationTarget;
+    const curve: AutomationCurve = { target, points: [] };
+    this.expect('{');
     while (this.token.text !== '}') {
       const property = this.identifier();
-      if (property.text !== 'effect' && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
-      seen.add(property.text);
-      if (property.text === 'piano') {
-        if (steps) this.error('A track can have only one pattern', property);
-        pianoRoll = this.piano(); steps = []; patternKind = 'piano';
-        continue;
-      }
-      if (property.text === 'effect') {
-        const kind = this.identifier();
-        if (effects.some(effect => effect.kind === kind.text)) this.error(`Duplicate effect '${kind.text}'`, kind);
-        const defaults: Record<string, Record<string, number>> = {
-          reverb: { mix: .2 }, delay: { mix: .25, time: .25, feedback: .35 }, filter: { cutoff: 2000, resonance: 1 },
-        };
-        if (!Object.hasOwn(defaults, kind.text)) this.error(`Unknown effect '${kind.text}'`, kind);
-        const parameters = { ...defaults[kind.text] }, properties = new Set<string>();
-        this.expect('{');
-        while (this.token.text !== '}') {
-          const parameter = this.identifier();
-          if (!Object.hasOwn(parameters, parameter.text)) this.error(`Unknown ${kind.text} parameter '${parameter.text}'`, parameter);
-          if (properties.has(parameter.text)) this.error(`Duplicate parameter '${parameter.text}'`, parameter);
-          properties.add(parameter.text);
-          parameters[parameter.text] = this.number(this.expression(), parameter);
-          this.expect(';');
-        }
-        this.expect('}');
-        if (this.tokens[this.cursor].text === ';') this.take();
-        const effect = { kind: kind.text, ...parameters } as unknown as MusicEffect;
-        try { validateEffect(effect); } catch (error) { this.error((error as Error).message, kind); }
-        effects.push(effect);
-        continue;
-      }
-      const valueToken = this.token;
-      const value = this.expression();
+      if (property.text === 'interpolation') {
+        if (curve.interpolation !== undefined) this.error('Duplicate interpolation', property);
+        const mode = this.identifier();
+        if (mode.text !== 'linear' && mode.text !== 'step') this.error('Interpolation must be linear or step', mode);
+        curve.interpolation = mode.text;
+      } else if (property.text === 'point') {
+        const token = this.token, beat = this.number(this.expression(2), token), value = this.numeric();
+        curve.points.push({ beat, value });
+        if (curve.points.length > MUSIC_LIMITS.points) this.error('Too many automation points', property);
+      } else this.error(`Unknown automation property '${property.text}'`, property);
       this.expect(';');
+    }
+    this.endBlock(); return curve;
+  }
+  private groove(): Groove {
+    const groove: Groove = {}, seen = new Set<string>();
+    this.expect('{');
+    while (this.token.text !== '}') {
+      const property = this.identifier();
+      if (!['quantize', 'swing', 'humanize', 'seed'].includes(property.text)) this.error(`Unknown groove property '${property.text}'`, property);
+      if (seen.has(property.text)) this.error(`Duplicate groove property '${property.text}'`, property);
+      seen.add(property.text);
+      groove[property.text as keyof Groove] = this.numeric(); this.expect(';');
+    }
+    this.endBlock(); return groove;
+  }
+  private mixerProperty(item: MusicTrack | MusicBus, property: Token): boolean {
+    switch (property.text) {
+      case 'effect': (item.effects ??= []).push(this.effect()); return true;
+      case 'automation': (item.automation ??= []).push(this.automation()); return true;
+      case 'send': {
+        const bus = this.identifier().text, gain = this.numeric();
+        (item.sends ??= []).push({ bus, gain }); this.expect(';'); return true;
+      }
+      case 'gain': item.gain = this.numeric(); this.expect(';'); return true;
+      case 'pan': item.pan = this.numeric(); this.expect(';'); return true;
+      default: return false;
+    }
+  }
+  private steps(kind: string): Step[] {
+    const token = this.token, words = this.string(this.expression(), token).trim().split(/\s+/);
+    if (!words[0] || words.length > MUSIC_LIMITS.steps) this.error('Patterns must have 1 to 64 steps', token);
+    this.expect(';');
+    return words.map((word): Step => {
+      if (word === '.') return null;
+      if (kind === 'rhythm') {
+        if (word !== 'x') this.error(`Invalid rhythm token '${word}'`, token);
+        return { kind: 'hit' };
+      }
+      return { kind: 'note', midi: this.pitch(word, token) };
+    });
+  }
+  private phrase(name: Token): { pattern: MusicPattern; kind: string } {
+    const pattern: MusicPattern = { name: name.text, steps: [] };
+    let kind = '';
+    this.expect('{');
+    while (this.token.text !== '}') {
+      const property = this.identifier();
+      if (property.text === 'bars') {
+        if (pattern.bars !== undefined) this.error('Duplicate bars', property);
+        pattern.bars = this.numeric(); this.expect(';');
+      } else if (['rhythm', 'notes', 'piano'].includes(property.text)) {
+        if (kind) this.error('A pattern can have only one rhythm, notes or piano block', property);
+        kind = property.text;
+        if (kind === 'piano') pattern.pianoRoll = this.piano();
+        else pattern.steps = this.steps(kind);
+      } else this.error(`Unknown pattern property '${property.text}'`, property);
+    }
+    this.endBlock();
+    if (!kind) this.error('A pattern requires rhythm, notes or piano', name);
+    return { pattern, kind };
+  }
+  private track(name: Token): MusicTrack {
+    this.expect('{');
+    const track = { name: name.text, gain: 1, steps: [] } as unknown as MusicTrack;
+    const seen = new Set<string>(), patternKinds: string[] = [];
+    let baseKind = '';
+    while (this.token.text !== '}') {
+      const property = this.identifier();
+      if (!['effect', 'pattern', 'send', 'automation'].includes(property.text) && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
+      seen.add(property.text);
+      if (this.mixerProperty(track, property)) continue;
       switch (property.text) {
-        case 'sound':
-        case 'instrument': {
-          if (source) this.error('A track can have only one source', property);
-          const selected = this.string(value, valueToken);
+        case 'sound': case 'instrument': {
+          if (track.source) this.error('A track can have only one source', property);
+          const token = this.token, selected = this.string(this.expression(), token);
           if (property.text === 'sound') {
-            if (!SOUND_NAMES.includes(selected as SoundName)) this.error(`Unknown sound '${selected}'`, valueToken);
-            source = { kind: 'sound', name: selected as SoundName };
+            if (!SOUND_NAMES.includes(selected as SoundName)) this.error(`Unknown sound '${selected}'`, token);
+            track.source = { kind: 'sound', name: selected as SoundName };
           } else {
-            if (!INSTRUMENT_NAMES.includes(selected as InstrumentName)) this.error(`Unknown instrument '${selected}'`, valueToken);
-            source = { kind: 'instrument', name: selected as InstrumentName };
+            if (!INSTRUMENT_NAMES.includes(selected as InstrumentName)) this.error(`Unknown instrument '${selected}'`, token);
+            track.source = { kind: 'instrument', name: selected as InstrumentName };
           }
+          this.expect(';'); break;
+        }
+        case 'bars': track.bars = this.numeric(); this.expect(';'); break;
+        case 'output': track.output = this.identifier().text; this.expect(';'); break;
+        case 'groove': track.groove = this.groove(); break;
+        case 'pattern': {
+          const result = this.phrase(this.identifier());
+          (track.patterns ??= []).push(result.pattern); patternKinds.push(result.kind); break;
+        }
+        case 'rhythm': case 'notes': case 'piano': {
+          if (baseKind) this.error('A track can have only one base pattern', property);
+          baseKind = property.text;
+          if (baseKind === 'piano') track.pianoRoll = this.piano(); else track.steps = this.steps(baseKind);
           break;
         }
-        case 'rhythm':
-        case 'notes': {
-          if (steps) this.error('A track can have only one pattern', property);
-          const words = this.string(value, valueToken).trim().split(/\s+/);
-          if (!words[0] || words.length > MUSIC_LIMITS.steps) this.error('Patterns must have 1 to 64 steps', valueToken);
-          patternKind = property.text;
-          steps = words.map((word): Step => {
-            if (word === '.') return null;
-            if (property.text === 'rhythm') {
-              if (word !== 'x') this.error(`Invalid rhythm token '${word}'`, valueToken);
-              return { kind: 'hit' };
-            }
-            const midi = this.pitch(word, valueToken);
-            return { kind: 'note', midi };
-          });
-          break;
-        }
-        case 'pan':
-          pan = this.number(value, valueToken);
-          if (pan < -1 || pan > 1) this.error('Pan must be between -1 and 1', valueToken);
-          break;
-        case 'gain': gain = this.unit(value, valueToken); break;
         default: this.error(`Unknown track property '${property.text}'`, property);
       }
     }
-    this.expect('}');
-    if (this.tokens[this.cursor].text === ';') this.take();
-    if (!source || !steps) this.error('A track requires a source and a pattern', name);
-    if ((source.kind === 'sound') !== (patternKind === 'rhythm')) this.error('Use rhythm with sound, and notes or piano with instrument', name);
-    return { name: name.text, source, steps, gain, ...(pan === undefined ? {} : { pan }), ...(pianoRoll === undefined ? {} : { pianoRoll }), ...(effects.length ? { effects } : {}) };
+    this.endBlock();
+    if (!track.source || !baseKind) this.error('A track requires a source and a pattern', name);
+    for (const kind of [baseKind, ...patternKinds]) if ((track.source.kind === 'sound') !== (kind === 'rhythm')) this.error('Use rhythm with sound, and notes or piano with instrument', name);
+    return track;
+  }
+  private bus(name: Token): MusicBus {
+    const bus: MusicBus = { name: name.text, gain: 1 }, seen = new Set<string>();
+    this.expect('{');
+    while (this.token.text !== '}') {
+      const property = this.identifier();
+      if (!['effect', 'send', 'automation'].includes(property.text) && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
+      seen.add(property.text);
+      if (!this.mixerProperty(bus, property)) this.error(`Unknown bus property '${property.text}'`, property);
+    }
+    this.endBlock(); return bus;
+  }
+  private section(name: Token): MusicSection {
+    const section: MusicSection = { name: name.text, bars: 1, tracks: [] };
+    let hasBars = false;
+    this.expect('{');
+    while (this.token.text !== '}') {
+      const property = this.identifier();
+      if (property.text === 'bars') {
+        if (hasBars) this.error('Duplicate bars', property);
+        hasBars = true; section.bars = this.numeric();
+      } else if (property.text === 'play') {
+        const track = this.identifier().text;
+        const pattern = this.token.kind === 'identifier' ? this.identifier().text : undefined;
+        section.tracks.push({ track, ...(pattern === undefined ? {} : { pattern }) });
+      } else this.error(`Unknown section property '${property.text}'`, property);
+      this.expect(';');
+    }
+    this.endBlock(); return section;
+  }
+  private song(): TimelineEntry[] {
+    const timeline: TimelineEntry[] = [];
+    this.expect('{');
+    while (this.token.text !== '}') {
+      this.expect('play');
+      const section = this.identifier().text;
+      const repeats = this.token.text === ';' ? undefined : this.numeric();
+      timeline.push({ section, ...(repeats === undefined ? {} : { repeats }) }); this.expect(';');
+    }
+    this.endBlock(); return timeline;
   }
 }
 
