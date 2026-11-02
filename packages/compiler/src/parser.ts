@@ -1,3 +1,4 @@
+import { INIT_SYNTH, validateSynth, validateSynthLocks, type SynthConfig, type SynthLocks } from './synth.js';
 import { CompileError, tokenize, type Token } from './lexer.js';
 import { validateMusicProgram, validateEffect, type MusicBus, type MusicSection, type TimelineEntry, type MusicPattern, type Groove, type AutomationCurve, type AutomationTarget, type PianoNote, INSTRUMENT_NAMES, MUSIC_LIMITS, SOUND_NAMES, isTrackName, type InstrumentName, type MusicProgram, type MusicTrack, type MusicEffect, type SoundName, type Step, type StepCondition } from './model.js';
 type Value = string | number;
@@ -234,6 +235,30 @@ class Parser {
       default: return false;
     }
   }
+  private synth(): SynthConfig {
+    const config = { ...INIT_SYNTH }, seen = new Set<string>(); this.expect('{');
+    while (this.token.text !== '}') {
+      const key = this.identifier();
+      if (!Object.hasOwn(INIT_SYNTH,key.text) || seen.has(key.text)) this.error(`Unknown or duplicate synth parameter '${key.text}'`,key);
+      seen.add(key.text);
+      const value = this.expression();
+      if (key.text === 'enabled' && value !== 0 && value !== 1) this.error('Synth enabled must be 0 or 1',key);
+      Object.assign(config,{[key.text]:key.text === 'enabled' ? value === 1 : value}); this.expect(';');
+    }
+    this.endBlock(); try { validateSynth(config); } catch (error) { this.error((error as Error).message); } return config;
+  }
+  private locks(pattern: Pick<MusicPattern,'steps'>): void {
+    const index = this.numeric();
+    if (!Number.isInteger(index) || !pattern.steps[index]) this.error('Lock requires an existing active step');
+    const step = pattern.steps[index]!;
+    if (step.locks) this.error('Duplicate step locks');
+    const locks: SynthLocks = {}; this.expect('{');
+    while (this.token.text !== '}') {
+      const key = this.identifier(); if (Object.hasOwn(locks,key.text)) this.error('Duplicate lock',key);
+      Object.assign(locks,{[key.text]:this.numeric()}); this.expect(';');
+    }
+    this.endBlock(); try { validateSynthLocks(locks); } catch (error) { this.error((error as Error).message); } step.locks = locks;
+  }
   private steps(kind: string): Step[] {
     const token = this.token, words = this.string(this.expression(), token).trim().split(/\s+/);
     if (!words[0] || words.length > MUSIC_LIMITS.steps) this.error('Patterns must have 1 to 64 steps', token);
@@ -259,6 +284,7 @@ class Parser {
       if (property.text === 'bars') {
         if (pattern.bars !== undefined) this.error('Duplicate bars', property);
         pattern.bars = this.numeric(); this.expect(';');
+      } else if (property.text === 'lock') { this.locks(pattern);
       } else if (['rhythm', 'notes', 'piano'].includes(property.text)) {
         if (kind) this.error('A pattern can have only one rhythm, notes or piano block', property);
         kind = property.text;
@@ -277,7 +303,7 @@ class Parser {
     let baseKind = '';
     while (this.token.text !== '}') {
       const property = this.identifier();
-      if (!['effect', 'pattern', 'send', 'automation'].includes(property.text) && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
+      if (!['effect', 'pattern', 'send', 'automation', 'lock', 'patch'].includes(property.text) && seen.has(property.text)) this.error(`Duplicate property '${property.text}'`, property);
       seen.add(property.text);
       if (property.text === 'mute' || property.text === 'solo') {
         const state = this.identifier();
@@ -298,6 +324,10 @@ class Parser {
           }
           this.expect(';'); break;
         }
+        case 'synth': track.synth = this.synth(); break;
+        case 'modular': { const name = this.string(this.expression(),property); if (!name) { track.modular = null; this.expect(';'); } else track.modular = { name, config:this.synth() }; break; }
+        case 'patch': { const name = this.string(this.expression(),property); (track.patchLibrary ??= []).push({name,config:this.synth()}); break; }
+        case 'lock': this.locks(track); break;
         case 'bars': track.bars = this.numeric(); this.expect(';'); break;
         case 'output': track.output = this.identifier().text; this.expect(';'); break;
         case 'groove': track.groove = this.groove(); break;

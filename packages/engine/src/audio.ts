@@ -1,20 +1,28 @@
+import { scheduleSynth, synthForEvent, synthRelease } from './synth.js';
 import { programDurationBeats, type MusicProgram } from '@banger/compiler';
 import { barDuration, eventsForSong, eventOccurs, songDuration, type MusicEvent } from './events.js';
 import { instruments } from './instruments.js';
 import { createDrums } from './sounds.js';
 import { MixerGraph, scheduleCurve, silentMeters, type MeterSnapshot } from './graph.js';
 export interface RenderedBar { cleanupAt: number; dispose(): void; cancelFrom(time: number): void }
+type SynthEvent = MusicEvent & { previousMidi?: number };
 interface GraphEntry { graph: MixerGraph; handles: number }
 export class AudioRenderer {
   private readonly drums;
   private readonly active = new Set<RenderedBar>();
   private readonly graphs = new Map<MusicProgram, GraphEntry>();
   private disposed = false;
-  private readonly schedules = new WeakMap<MusicProgram, { beats: number; events: MusicEvent[]; bars: MusicEvent[][] }>();
+  private readonly schedules = new WeakMap<MusicProgram, { beats: number; events: SynthEvent[]; bars: SynthEvent[][] }>();
   private schedule(program: MusicProgram) {
     let schedule = this.schedules.get(program);
     if (!schedule) {
-      const events = eventsForSong(program, 0, { includeConditional: true }), beats = programDurationBeats(program), bars = Array.from({ length: beats / 4 }, () => [] as MusicEvent[]);
+      const prior = new Map<string, { beat: number; midi: number; before?: number }>();
+      const events: SynthEvent[] = eventsForSong(program, 0, { includeConditional: true }).map(event => {
+        const previous = prior.get(event.track.name), midi = event.step.kind === 'note' ? event.step.midi : 36;
+        const previousMidi = previous?.beat === event.beat ? previous.before : previous?.midi;
+        prior.set(event.track.name, { beat: event.beat, midi, before: previousMidi });
+        return { ...event, previousMidi };
+      }), beats = programDurationBeats(program), bars = Array.from({ length: beats / 4 }, () => [] as SynthEvent[]);
       for (const event of events) bars[Math.floor(event.beat / 4)].push(event);
       schedule = { beats, events, bars }; this.schedules.set(program, schedule);
     }
@@ -36,7 +44,7 @@ export class AudioRenderer {
     return this.render(program, events, start, beat, beat + 4, barDuration(program), skipBefore, true);
   }
   renderSong(program: MusicProgram, start = 0): RenderedBar { if (!Number.isFinite(start) || start < 0) throw new RangeError('Invalid song start'); const schedule = this.schedule(program); return this.render(program, schedule.events.filter(event => eventOccurs(event)).map(event => ({ ...event, time: start + event.time })), start, 0, schedule.beats, songDuration(program), -Infinity); }
-  private render(program: MusicProgram, events: MusicEvent[], start: number, fromBeat: number, toBeat: number, duration: number, skipBefore: number, click = false): RenderedBar {
+  private render(program: MusicProgram, events: SynthEvent[], start: number, fromBeat: number, toBeat: number, duration: number, skipBefore: number, click = false): RenderedBar {
     if (this.disposed) throw new Error('Audio renderer has been disposed');
     let entry = this.graphs.get(program);
     if (!entry) { entry = { graph: new MixerGraph(this.context, program, this.solo), handles: 0 }; this.graphs.set(program, entry); }
@@ -46,7 +54,7 @@ export class AudioRenderer {
     graph.automate(origin, fromBeat, toBeat);
     let cancelled = false;
     const rendered: RenderedBar = {
-      cleanupAt: Math.max(start + duration, ...events.map(event => event.time + event.duration)) + graph.tail,
+      cleanupAt: Math.max(start + duration, ...events.map(event => event.time + event.duration + synthRelease(event))) + graph.tail,
       cancelFrom: time => { for (const source of sources) if ((sourceTimes.get(source) ?? -Infinity) >= time) { try { source.stop(); } catch { /* Already ended. */ } source.disconnect(); sources.delete(source); sourceTimes.delete(source); } },
       dispose: () => {
         if (cancelled) return; cancelled = true;
@@ -82,7 +90,20 @@ export class AudioRenderer {
           const shifted = { ...pitch, points: pitch.points.map(point => ({ ...point, value: point.value * 100 + base })) };
           scheduleCurve(parameter, shifted, offset, seconds, from, to);
         };
-        if (event.track.source.kind === 'sound') {
+        const synth = synthForEvent(event);
+        if (synth !== undefined) {
+          if (!synth?.enabled) continue;
+          const note = scheduleSynth(context,input,event,synth,event.previousMidi);
+          for (const oscillator of note.pitchOscillators) automatePitch(oscillator.detune, oscillator.detune.value, note.end);
+          for (const node of note.nodes) nodes.add(node);
+          let remaining = note.sources.length;
+          for (const source of note.sources) {
+            register(source);
+            const ended = source.onended;
+            source.onended = event => { ended?.call(source,event); if (--remaining === 0) for (const node of note.nodes) { node.disconnect(); nodes.delete(node); } };
+            source.stop(note.end);
+          }
+        } else if (event.track.source.kind === 'sound') {
           const sample = context.createBufferSource(); sample.buffer = this.drums[event.track.source.name];
           const envelope = context.createGain(); envelope.gain.value = event.velocity; nodes.add(envelope);
           const minimumPitch = Math.min(0, ...pitch?.points.map(point => point.value) ?? []);

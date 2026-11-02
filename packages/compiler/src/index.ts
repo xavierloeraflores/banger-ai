@@ -1,3 +1,5 @@
+export * from './synth.js';
+import type { SynthConfig } from './synth.js';
 import { compileMusic } from './parser.js';
 import { validateMusicProgram, type MusicProgram, type MusicTrack, type MusicBus, type MusicPattern } from './model.js';
 export { compileMusic } from './parser.js';
@@ -14,11 +16,13 @@ export function serializeMusic(program: MusicProgram): string {
   if (program.masterGain !== undefined) lines.push(`master ${program.masterGain};`);
   if (program.metronome !== undefined) lines.push(`metronome ${program.metronome ? 'on' : 'off'};`);
   if (program.activePattern !== undefined) lines.push(`activePattern ${program.activePattern};`);
+  const synthBlock = (config: SynthConfig) => `{ ${Object.entries(config).map(([key,value]) => `${key} ${typeof value === 'boolean' ? Number(value) : JSON.stringify(value)};`).join(' ')} }`;
   const phrase = (pattern: Pick<MusicPattern, 'bars' | 'steps' | 'pianoRoll'>, source: MusicTrack['source'], indent: string): void => {
     if (pattern.bars !== undefined) lines.push(`${indent}bars ${pattern.bars};`);
     if (pattern.pianoRoll === undefined) {
       const steps = pattern.steps.map(step => step === null ? '.' : `${step.kind === 'hit' ? 'x' : pitch(step.midi)}${step.velocity === undefined ? '' : `@${step.velocity}`}${step.probability === undefined ? '' : `?${step.probability}`}${step.condition === undefined ? '' : `!${step.condition}`}`).join(' ');
       lines.push(`${indent}${source.kind === 'sound' ? 'rhythm' : 'notes'} ${JSON.stringify(steps)};`);
+      pattern.steps.forEach((step,index) => { if (step?.locks && Object.keys(step.locks).length) lines.push(`${indent}lock ${index} { ${Object.entries(step.locks).map(([key,value]) => `${key} ${value};`).join(' ')} }`); });
     } else lines.push(`${indent}piano {`, ...pattern.pianoRoll.map(note => `${indent}  note ${JSON.stringify(pitch(note.midi))} start ${note.start} duration ${note.duration} velocity ${note.velocity};`), `${indent}}`);
   };
   const mixer = (item: MusicBus | MusicTrack): void => {
@@ -34,6 +38,9 @@ export function serializeMusic(program: MusicProgram): string {
   };
   for (const track of program.tracks) {
     lines.push('', `track ${track.name} {`, `  ${track.source.kind} ${JSON.stringify(track.source.name)};`);
+    if (track.synth) lines.push(`  synth ${synthBlock(track.synth)}`);
+    if (track.modular !== undefined) lines.push(`  modular ${JSON.stringify(track.modular?.name ?? '')}${track.modular ? ' '+synthBlock(track.modular.config) : ';'}`);
+    for (const patch of track.patchLibrary ?? []) lines.push(`  patch ${JSON.stringify(patch.name)} ${synthBlock(patch.config)}`);
     phrase(track, track.source, '  ');
     for (const pattern of track.patterns ?? []) {
       lines.push(`  pattern ${pattern.name} {`); phrase(pattern, track.source, '    '); lines.push('  }');

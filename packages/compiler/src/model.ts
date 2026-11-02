@@ -1,8 +1,9 @@
+import { validateSynth, validateSynthLocks, validatePatch, type SynthConfig, type SynthLocks, type SynthPatch } from './synth.js';
 export type SoundName = 'drums/kick' | 'drums/snare' | 'drums/hat' | 'drums/clap' | 'drums/tom' | 'drums/open-hat';
 export type InstrumentName = 'synth/bass' | 'synth/pluck' | 'synth/lead' | 'synth/pad' | 'synth/bell' | 'synth/organ' | 'synth/keys';
 export const STEP_CONDITIONS = ['always', 'fill', 'not-fill', 'first', 'every-2', 'every-4'] as const;
 export type StepCondition = typeof STEP_CONDITIONS[number];
-export interface StepPerformance { velocity?: number; probability?: number; condition?: StepCondition }
+export interface StepPerformance { velocity?: number; probability?: number; condition?: StepCondition; locks?: SynthLocks }
 export type Step = null | (({ kind: 'hit' } | { kind: 'note'; midi: number }) & StepPerformance);
 /** A note in a phrase piano roll. Start and duration are quarter-note beats. */
 export interface PianoNote { midi: number; start: number; duration: number; velocity: number }
@@ -26,6 +27,9 @@ export interface ResolvedClip { track: string; pattern?: string; startBeat: numb
 export interface MusicTrack {
   muted?: boolean;
   solo?: boolean;
+  synth?: SynthConfig;
+  modular?: SynthPatch | null;
+  patchLibrary?: SynthPatch[];
   bars?: number;
   patterns?: MusicPattern[];
   groove?: Groove;
@@ -148,6 +152,7 @@ function validatePattern(pattern: Pick<MusicPattern, 'bars' | 'steps' | 'pianoRo
     if (step.velocity !== undefined) range(step.velocity, 0, 1, 'Step velocity');
     if (step.probability !== undefined) range(step.probability, 0, 1, 'Step probability');
     if (step.condition !== undefined && !STEP_CONDITIONS.includes(step.condition)) fail('Unknown step condition');
+    if (step.locks !== undefined) validateSynthLocks(step.locks);
     if (source.kind === 'sound' ? step.kind !== 'hit' : step.kind !== 'note' || !Number.isInteger(step.midi) || step.midi < 0 || step.midi > 127)
       fail('Use hits with sounds and MIDI notes from 0 to 127 with instruments');
   }
@@ -179,6 +184,9 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
     if (track.solo !== undefined && typeof track.solo !== 'boolean') fail('Track solo must be a boolean');
     if (!track.source || !((track.source.kind === 'sound' && SOUND_NAMES.includes(track.source.name)) ||
       (track.source.kind === 'instrument' && INSTRUMENT_NAMES.includes(track.source.name)))) fail(`Invalid source for '${track.name}'`);
+    if (track.synth !== undefined) validateSynth(track.synth);
+    if (track.modular !== undefined && track.modular !== null) validatePatch(track.modular);
+    if (track.patchLibrary !== undefined) { array(track.patchLibrary, 32, 'Saved patches'); for (const patch of track.patchLibrary) validatePatch(patch); }
     totalNotes += validatePattern(track, track.source);
     if (track.patterns !== undefined) {
       array(track.patterns, MUSIC_LIMITS.patterns, 'Patterns'); uniqueNames(track.patterns);
@@ -225,21 +233,29 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
     if (bars > MUSIC_LIMITS.songBars) fail(`Song supports at most ${MUSIC_LIMITS.songBars} bars`);
   }
   // Count an upper bound without allocating the expanded arrangement or note events.
+  let synthNodes = 0;
   const count = (track: MusicTrack, patternName: string | undefined, duration: number): number => {
     const pattern = resolvePattern(track, patternName);
     const events = pattern.pianoRoll?.length ?? pattern.steps.filter(step => step !== null).length;
-    return Math.ceil(duration / patternDurationBeats(pattern)) * events;
+    const repetitions = Math.ceil(duration / patternDurationBeats(pattern));
+    const synth = track.modular === null ? undefined : track.modular?.config ?? track.synth;
+    if (synth?.enabled) {
+      const cost = (locks?: SynthLocks) => 20 + (locks?.voices ?? synth.voices) * 8;
+      synthNodes += repetitions * (pattern.pianoRoll ? pattern.pianoRoll.length * cost() : pattern.steps.reduce((sum,step) => sum + (step ? cost(step.locks) : 0),0));
+    }
+    return repetitions * events;
   };
   let events = 0;
   if (program.timeline && program.chainEnabled !== false) {
     for (const entry of program.timeline) {
       const section = program.sections!.find(section => section.name === entry.section)!;
-      for (const binding of section.tracks) events += count(program.tracks.find(track => track.name === binding.track)!, binding.pattern, section.bars * 4) * (entry.repeats ?? 1);
+      for (const binding of section.tracks) { const before = synthNodes; events += count(program.tracks.find(track => track.name === binding.track)!, binding.pattern, section.bars * 4) * (entry.repeats ?? 1); synthNodes += (synthNodes - before) * ((entry.repeats ?? 1) - 1); }
     }
   } else {
     const duration = Math.max(4, ...program.tracks.map(track => patternDurationBeats(resolvePattern(track, activePatternName(program, track)))));
     for (const track of program.tracks) events += count(track, activePatternName(program, track), duration);
   }
+  if (synthNodes > 32768) fail('Custom synth arrangement exceeds the 32768-node render budget. Shorten the arrangement or reduce unison voices.');
   if (events > MUSIC_LIMITS.expandedEvents) fail(`Arrangement supports at most ${MUSIC_LIMITS.expandedEvents} expanded events`);
 }
 
