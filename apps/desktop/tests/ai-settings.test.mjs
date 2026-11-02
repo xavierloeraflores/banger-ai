@@ -22,6 +22,7 @@ function browser(storage = new Map(), native) {
 
 async function lifecycle(bridge) {
   assert.equal((await bridge.load()).activeProvider, null);
+  await assert.rejects(bridge.select("openai"), /Configure/);
   for (const { id } of browser().providers) {
     const result = await bridge.save(id, `${id}/model`, `test-key-${id}`);
     assert.equal(result.activeProvider, id);
@@ -29,6 +30,11 @@ async function lifecycle(bridge) {
     assert.equal(JSON.stringify(result).includes("test-key"), false, "Responses must not contain API keys.");
   }
   assert.equal(Object.keys((await bridge.load()).providers).length, 5);
+  const selected = await bridge.select("openai");
+  assert.equal(selected.activeProvider, "openai");
+  assert.equal(selected.providers.openai.model, "openai/model");
+  assert.equal(JSON.stringify(selected).includes("test-key"), false);
+  await assert.rejects(bridge.select("unknown"), /supported/);
   await bridge.save("anthropic", "updated-model", "");
   assert.equal((await bridge.load()).providers.anthropic.model, "updated-model");
   await assert.rejects(bridge.save("openai", "bad model", "new-key"), /model ID/);
@@ -38,6 +44,8 @@ async function lifecycle(bridge) {
   await bridge.remove("openai");
   assert.equal((await bridge.load()).activeProvider, "anthropic");
   assert.equal((await bridge.load()).providers.openai, undefined);
+  await assert.rejects(bridge.select("openai"), /Configure/);
+  assert.equal((await bridge.load()).activeProvider, "anthropic");
   await assert.rejects(bridge.save("openai", "model", ""), /API key/);
   await bridge.remove("anthropic");
   assert.equal((await bridge.load()).activeProvider, null);

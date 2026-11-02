@@ -5,7 +5,7 @@ import { Button } from "@banger/shadcn";
 
 type LocalStatus = {
   phase: "missing" | "downloading" | "verifying" | "ready" | "starting" | "running" | "error";
-  variant: "small" | "dynamic"; selected: boolean; installed: boolean; completed: number; total: number; message: string;
+  installedVariants: ("small" | "dynamic")[]; variant: "small" | "dynamic"; selected: boolean; installed: boolean; completed: number; total: number; message: string;
   supported: boolean; memoryGB: number;
 };
 declare global {
@@ -33,12 +33,11 @@ export function LocalModelSettings() {
     const timer = window.setInterval(() => { void refresh(); }, 1000);
     return () => { active = false; clearInterval(timer); };
   }, []);
-  async function act(action: "download" | "start" | "stop" | "select" | "small" | "dynamic") {
+  async function act(action: "download" | "start" | "stop" | "small" | "dynamic") {
     if (pending.current || !window.bangerLocal) return;
     pending.current = true; setBusy(true); setError("");
     try {
-      if (action === "select") await window.bangerLocal.select(!status?.selected);
-      else if (action === "small" || action === "dynamic") await window.bangerLocal.choose(action);
+      if (action === "small" || action === "dynamic") await window.bangerLocal.choose(action);
       else await window.bangerLocal[action]();
       setStatus(await window.bangerLocal.status());
       window.dispatchEvent(new Event("banger:ai-settings-changed"));
@@ -63,11 +62,11 @@ export function LocalModelSettings() {
     {!status.supported && <p role="alert">Automatic installation is unavailable on this operating system.</p>}
     <p role="status">{status.message}</p>
     {downloading && <div className="local-model-progress"><progress aria-label="Local model download" max={status.total} value={status.completed} /><span>{(status.completed / 1e9).toFixed(2)} / {(status.total / 1e9).toFixed(2)} GB</span></div>}
+    <p className="byok-storage">Choose a downloaded model from the AI model menu at the top of the app to use it for chat.</p>
     <div className="byok-actions">
       {!status.installed && !working && <Button variant="primary" disabled={busy || !status.supported} onClick={() => void act("download")}>Download model</Button>}
       {status.installed && !working && status.phase !== "running" && <Button variant="primary" disabled={busy} onClick={() => void act("start")}>Start model</Button>}
       {(working || status.phase === "running") && <Button disabled={busy} onClick={() => void act("stop")}>{downloading ? "Pause download" : "Stop model"}</Button>}
-      <Button disabled={busy || !status.supported} onClick={() => void act("select")}>{status.selected ? "Use API provider" : "Use local AI"}</Button>
       {status.phase === "error" && status.installed && <Button disabled={busy} onClick={() => void act("download")}>Repair runtime</Button>}
     </div>
     {error && <p className="has-error" role="alert">{error}</p>}

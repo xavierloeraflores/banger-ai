@@ -17,7 +17,7 @@ app.on("browser-window-created", (_event, window) => {
 await import("../dist/main.js");
 
 async function run(window) {
-  const evaluate = script => window.webContents.executeJavaScript(script, true);
+  const evaluate = script => window.webContents.executeJavaScript(script, true).catch(error => { throw new Error(`${error.message} Script: ${script}`); });
   async function waitFor(script, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -39,6 +39,8 @@ async function run(window) {
   try {
     await waitFor("window.bangerLocal && document.querySelector('#producer-source')?.value");
     await click("BYOK");
+    await waitFor("[...document.querySelectorAll('.byok-providers button span')].some(span => span.textContent === 'Local model')");
+    await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Local model').click()");
     await waitFor("document.querySelector('.local-model-settings')");
     let status = await evaluate("window.bangerLocal.status()");
     if (!status.installed) {
@@ -52,9 +54,14 @@ async function run(window) {
       }
       assert.equal(status.phase, "ready", status.message);
     }
-    if (!status.selected) await click("Use local AI");
+    await waitFor("document.querySelector('#active-ai-model option[value=\"local:small\"]')");
+    await evaluate(`(() => {
+      const select = document.getElementById('active-ai-model');
+      select.value = 'local:small';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
     await waitFor("document.querySelector('.ai-chat-heading-actions')?.textContent.includes('Muse Glimmer')");
-    if (status.phase !== "running") await click("Start model");
+
     const startupDeadline = Date.now() + 320_000;
     do {
       await delay(1000);
@@ -62,7 +69,8 @@ async function run(window) {
       if (status.phase === "error") throw new Error(status.message);
     } while (status.phase !== "running" && Date.now() < startupDeadline);
     assert.equal(status.phase, "running");
-    console.log("Live Muse Glimmer loaded. Generating through desktop chat.");
+    await writeFile(join(tmpdir(), "banger-local-selector.png"), (await window.webContents.capturePage()).toPNG());
+    console.log("Live Muse Glimmer loaded through the model selector. Generating through desktop chat.");
     await input("Create one warm lo-fi loop at 85 BPM with kick, snare, hats and a C minor bass line. Use create_banger_file to produce a playable file.");
     await click("Send");
     await waitFor("document.querySelector('.ai-chat-file') || document.querySelector('.ai-chat-footer [role=alert]')", 650_000);

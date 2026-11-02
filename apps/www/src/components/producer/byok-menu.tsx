@@ -9,7 +9,7 @@ import { LocalModelSettings } from "./local-model";
 export function ByokSettings() {
   const pending = useRef(false);
   const [settings, setSettings] = useState<AISettings>({ activeProvider: null, providers: {} });
-  const [provider, setProvider] = useState<ProviderId>("vercel");
+  const [provider, setProvider] = useState<ProviderId | "local">("vercel");
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
   const [visible, setVisible] = useState(false);
@@ -19,11 +19,11 @@ export function ByokSettings() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const selected = AI_PROVIDERS.find(item => item.id === provider)!;
-  const saved = settings.providers[provider]?.configured;
+  const saved = provider !== "local" && settings.providers[provider]?.configured;
 
-  function select(id: ProviderId, next = settings) {
+  function select(id: ProviderId | "local", next = settings) {
     setProvider(id);
-    setModel(next.providers[id]?.model ?? "");
+    setModel(id === "local" ? "" : next.providers[id]?.model ?? "");
     setKey("");
     setVisible(false);
     setError(null);
@@ -36,18 +36,25 @@ export function ByokSettings() {
       if (!active) return;
       setDesktop(Boolean(window.bangerAI));
       setSettings(next);
-      const id = next.activeProvider ?? "vercel";
+      const id = next.localSelected ? "local" : next.activeProvider ?? "vercel";
       setProvider(id);
-      setModel(next.providers[id]?.model ?? "");
+      setModel(id === "local" ? "" : next.providers[id]?.model ?? "");
       setLoaded(true);
+      setError(next.settingsError ?? null);
     }).catch(cause => {
       if (active) { setDesktop(Boolean(window.bangerAI)); setError(cause instanceof Error ? cause.message : "Could not load AI settings."); }
     });
-    return () => { active = false; };
+    const refresh = () => {
+      void aiSettingsBridge().load().then(next => {
+        if (active) { setSettings(next); setError(next.settingsError ?? null); }
+      }).catch(() => { if (active) setError("Could not refresh AI settings."); });
+    };
+    window.addEventListener("banger:ai-settings-changed", refresh);
+    return () => { active = false; window.removeEventListener("banger:ai-settings-changed", refresh); };
   }, []);
 
   async function update(remove = false) {
-    if (pending.current) return;
+    if (pending.current || provider === "local") return;
     pending.current = true;
     setBusy(true);
     setError(null);
@@ -69,16 +76,18 @@ export function ByokSettings() {
       <div className="byok-heading">
         <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">{desktop ? "Local model or your own key" : "Bring your own key"}</h2></div>
       </div>
-      <p id="byok-description" className="byok-description">Select your own key and model for AI chat.</p>
-      {desktop && <LocalModelSettings />}
+      <p id="byok-description" className="byok-description">Configure your AI options here. Choose the active model from the menu at the top of the app.</p>
       <div className="byok-layout">
         <nav className="byok-providers" aria-label="AI providers">
+          {desktop && <button type="button" aria-pressed={provider === "local"} disabled={busy} onClick={() => select("local")}>
+            <span>Local model</span><small>{settings.localSelected ? "Selected" : "Muse Glimmer · no key"}</small>
+          </button>}
           {AI_PROVIDERS.map(item => <button key={item.id} type="button" aria-pressed={provider === item.id}
             disabled={busy || !loaded} onClick={() => select(item.id)}>
-            <span>{item.name}</span><small>{settings.activeProvider === item.id ? "Selected" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
+            <span>{item.name}</span><small>{!settings.localSelected && settings.activeProvider === item.id ? "Selected" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
           </button>)}
         </nav>
-        <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
+        {provider === "local" ? <LocalModelSettings /> : <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
           <h3>{selected.name}</h3>
           <p className="byok-hint">{selected.hint}</p>
           <fieldset disabled={busy || !loaded}>
@@ -101,7 +110,7 @@ export function ByokSettings() {
               <Button variant="danger" disabled={!saved || busy} onClick={() => void update(true)}>Remove key</Button>
             </div>
           </fieldset>
-        </form>
+        </form>}
       </div>
       <div className="byok-feedback" aria-live="polite">
         {!loaded && !error && <p>Loading settings…</p>}

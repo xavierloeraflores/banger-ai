@@ -8,9 +8,11 @@ export const AI_PROVIDERS = [
 
 export type ProviderId = typeof AI_PROVIDERS[number]["id"];
 export type ProviderSettings = { model: string; configured: boolean };
-export type AISettings = { localSelected?: boolean; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
+export type AIOptionId = ProviderId | "local:small" | "local:dynamic";
+export type AISettings = { localSelected?: boolean; localVariant?: "small" | "dynamic"; localModels?: { id: "local:small" | "local:dynamic"; label: string }[]; settingsError?: string; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
 export type AISettingsBridge = {
   load(): Promise<AISettings>;
+  select(option: AIOptionId): Promise<AISettings>;
   save(provider: ProviderId, model: string, key: string): Promise<AISettings>;
   remove(provider: ProviderId): Promise<AISettings>;
 };
@@ -50,6 +52,16 @@ export function aiSettingsBridge(): AISettingsBridge {
     async load() {
       try { return summary(read()); }
       catch { throw new Error("Could not read AI settings. Allow session storage for this site and try again."); }
+    },
+    async select(option) {
+      if (!AI_PROVIDERS.some(({ id }) => id === option)) throw new Error("Choose a supported provider.");
+      const provider = option as ProviderId;
+      const settings = read();
+      if (!settings.providers[provider]) throw new Error("Configure this provider before selecting it.");
+      settings.activeProvider = provider;
+      try { window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); }
+      catch { throw new Error("Could not select the provider. Allow session storage for this site and try again."); }
+      return summary(settings);
     },
     async save(provider, model, key) {
       if (!AI_PROVIDERS.some(({ id }) => id === provider)) throw new Error("Choose a supported provider.");

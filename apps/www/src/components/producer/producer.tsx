@@ -12,6 +12,7 @@ import { Button, IconButton, Input, Panel, Range, Select, StepButton } from "@ba
 import { openProject, saveProject } from "@/lib/project-files";
 import { usePlayer } from "./use-player";
 import { ByokSettings } from "./byok-menu";
+import { AIModelSelect } from "./ai-model-select";
 import { AIChat } from "./ai-chat";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
@@ -223,6 +224,7 @@ export function Producer() {
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : "Local project"}</span></div>
+        <AIModelSelect />
         <div className="producer-file-actions">
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
           <Button variant="secondary" onClick={save} disabled={fileBusy}>Save .banger</Button>

@@ -10,7 +10,7 @@ import { MODELS, RUNTIMES } from "./local-model-manifest.js";
 
 export type LocalStatus = {
   phase: "missing" | "downloading" | "verifying" | "ready" | "starting" | "running" | "error";
-  variant: "small" | "dynamic"; selected: boolean; installed: boolean; completed: number; total: number; message: string;
+  installedVariants: ("small" | "dynamic")[]; variant: "small" | "dynamic"; selected: boolean; installed: boolean; completed: number; total: number; message: string;
   supported: boolean; memoryGB: number;
 };
 type Artifact = { url: string; size: number; sha256: string };
@@ -85,7 +85,7 @@ export function createLocalModel(directory: string) {
   let operation: AbortController | undefined;
   let job: Promise<void> | undefined;
   let preferenceQueue = Promise.resolve();
-  const state: LocalStatus = { phase: "missing", variant: "small", selected: false, installed: false, completed: 0, total: model.size,
+  const state: LocalStatus = { phase: "missing", installedVariants: [], variant: "small", selected: false, installed: false, completed: 0, total: model.size,
     message: "Download Muse Glimmer to generate music on this computer.", supported: Boolean(runtime), memoryGB: Math.round(totalmem() / 2 ** 30) };
   const initialized = (async () => {
     await mkdir(directory, { recursive: true });
@@ -95,7 +95,14 @@ export function createLocalModel(directory: string) {
       state.variant = preference.variant === "dynamic" ? "dynamic" : "small";
       model = MODELS[state.variant]; modelPath = join(directory, model.name); state.total = model.size;
     } catch { /* First use. */ }
-    try { state.installed = await size(modelPath) === model.size && Boolean(await findServer(runtimeDirectory)); } catch { /* Not installed. */ }
+    try {
+      if (await findServer(runtimeDirectory)) {
+        for (const variant of ["small", "dynamic"] as const) {
+          if (await size(join(directory, MODELS[variant].name)) === MODELS[variant].size) state.installedVariants.push(variant);
+        }
+      }
+      state.installed = state.installedVariants.includes(state.variant);
+    } catch { /* Not installed. */ }
     if (state.installed) { state.phase = "ready"; state.message = "Ready to start."; }
   })();
   async function stopServer() {
@@ -182,6 +189,7 @@ export function createLocalModel(directory: string) {
         await downloadArtifact(model, modelPath, signal, (completed, verifying) => {
           Object.assign(state, { phase: verifying ? "verifying" : "downloading", completed, total: model.size, message: verifying ? "Verifying Muse Glimmer…" : "Downloading Muse Glimmer…" });
         });
+        if (!state.installedVariants.includes(state.variant)) state.installedVariants.push(state.variant);
         Object.assign(state, { phase: "ready", installed: true, message: "Download complete. Start the model to use local AI." });
       });
     },

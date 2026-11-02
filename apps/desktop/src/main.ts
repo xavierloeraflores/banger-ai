@@ -175,20 +175,59 @@ void app.whenReady().then(() => {
     if (typeof selected !== "boolean") throw new Error("Choose local AI or an API provider.");
     return localModel.select(selected);
   });
-  ipcMain.handle("banger:ai-load", async event => {
-    senderWindow(event);
+  async function loadAISettings() {
     const local = await localModel.status();
-    // Local AI works even when the operating system keychain is locked.
-    if (local.selected) return { activeProvider: null, providers: {}, localSelected: true };
-    return { ...await aiSettings.load(), localSelected: false };
-  });
-  ipcMain.handle("banger:ai-save", async (event, provider: unknown, model: unknown, key: unknown) => {
+    const localSettings = { localSelected: local.selected, localVariant: local.variant,
+      localModels: local.installedVariants.map(variant => ({ id: `local:${variant}`, label: `Muse Glimmer 30B · ${variant === "small" ? "16 GB" : "20 GB Dynamic"} · local` })) };
+    try { return { ...await aiSettings.load(), ...localSettings }; }
+    catch {
+      // A locked keychain must not prevent selecting an installed local model.
+      return { activeProvider: null, providers: {}, ...localSettings,
+        settingsError: "Saved API providers are unavailable. Unlock your system keychain to load them." };
+    }
+  }
+  let settingsQueue = Promise.resolve();
+  function changeAISettings<T>(action: () => Promise<T>) {
+    const result = settingsQueue.then(action);
+    settingsQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+  ipcMain.handle("banger:ai-load", async event => { senderWindow(event); await settingsQueue; return loadAISettings(); });
+  ipcMain.handle("banger:ai-select", (event, option: unknown) => {
     senderWindow(event);
-    const settings = await aiSettings.save(provider, model, key);
-    await localModel.select(false);
-    return settings;
+    return changeAISettings(async () => {
+      if (option === "local:small" || option === "local:dynamic") {
+        const variant = option === "local:small" ? "small" : "dynamic";
+        const local = await localModel.status();
+        if (!local.installedVariants.includes(variant)) throw new Error("Download this local model before selecting it.");
+        if (["downloading", "verifying", "starting"].includes(local.phase)) throw new Error("Wait for the current model operation to finish before switching.");
+        if (local.variant !== variant) {
+          await localModel.stop();
+          await localModel.choose(variant);
+        }
+        await localModel.select(true);
+        await localModel.start();
+      } else {
+        await aiSettings.select(option);
+        await localModel.select(false);
+      }
+      for (const controller of pendingChats.values()) controller.abort();
+      return loadAISettings();
+    });
   });
-  ipcMain.handle("banger:ai-remove", (event, provider: unknown) => { senderWindow(event); return aiSettings.remove(provider); });
+  ipcMain.handle("banger:ai-save", (event, provider: unknown, model: unknown, key: unknown) => {
+    senderWindow(event);
+    return changeAISettings(async () => {
+      await aiSettings.save(provider, model, key);
+      await localModel.select(false);
+      return loadAISettings();
+    });
+  });
+  ipcMain.handle("banger:ai-remove", eventRemove);
+  function eventRemove(event: IpcMainInvokeEvent, provider: unknown) {
+    senderWindow(event);
+    return changeAISettings(async () => { await aiSettings.remove(provider); return loadAISettings(); });
+  }
   ipcMain.handle("banger:chat-cancel", event => { pendingChats.get(senderWindow(event).id)?.abort(); });
   ipcMain.handle("banger:chat", async (event, request: unknown) => {
     const window = senderWindow(event);

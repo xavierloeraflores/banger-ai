@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("bangerProjects", Object.freeze({
 
 contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
   load: () => ipcRenderer.invoke("banger:ai-load"),
+  select: option => ipcRenderer.invoke("banger:ai-select", option),
   save: (provider, model, key) => ipcRenderer.invoke("banger:ai-save", provider, model, key),
   remove: provider => ipcRenderer.invoke("banger:ai-remove", provider),
 }));
