@@ -12,6 +12,7 @@ type State = { workspace: ProjectWorkspace; session?: ProjectSession; controller
 export function installWorkspaceHandlers(options: {
   senderWindow(event: IpcMainInvokeEvent): BrowserWindow;
   selectModel(): Promise<SelectedModel>;
+  onOpen?(window: BrowserWindow, root: string): void;
   modelError?(error: unknown): string;
 }) {
   const states = new Map<number, State>();
@@ -43,9 +44,14 @@ export function installWorkspaceHandlers(options: {
         window.webContents.on("did-start-navigation", (_event, _url, _inPlace, main) => { if (main) states.get(window.id)?.controller?.abort(); });
       }
       states.set(window.id, { workspace });
+      options.onOpen?.(window, workspace.root);
       return { name: basename(workspace.root), paths };
     } catch (error) { throw new Error(safeError(error, "Could not open the music folder.")); }
     finally { opening.delete(window.id); }
+  });
+  ipcMain.handle("banger:workspace-activate", event => {
+    const window = options.senderWindow(event);
+    options.onOpen?.(window, state(window).workspace.root);
   });
   ipcMain.handle("banger:workspace-list", async event => {
     const current = state(options.senderWindow(event));

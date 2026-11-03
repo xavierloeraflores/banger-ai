@@ -493,9 +493,10 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </div>
           {notice && <p role="status">{notice}</p>}
         </section>
-        <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
-        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => { setWorkspaceFile(null); setProjectName(""); }} onLoad={(file, saved, name) => {
+        <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
+        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => { setWorkspaceFile(null); setProjectName(""); }} onLoad={async (file, saved, name) => {
           if (filePending.current || (dirty && !window.confirm("Load this workspace file and replace unsaved studio edits?"))) return;
+          await window.bangerWorkspace?.activate();
           loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
           setProjectName(name); setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
           projectDialog.current?.close();

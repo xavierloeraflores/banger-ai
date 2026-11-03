@@ -1,18 +1,35 @@
 import { app, dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { open, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { MAX_WAV_BYTES } from '@banger/elevenlabs';
+import { toWav } from './audio-conversion.js';
+import type { SongLocation } from './song-storage.js';
+import type { MusicVersion } from '@banger/elevenlabs';
+import type { SongStorageBridge } from './song-storage-ipc.js';
+import { MAX_WAV_BYTES, lyricsOf } from '@banger/elevenlabs';
 import { createMusicStore } from './elevenlabs-music.js';
-export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>BrowserWindow, suppliedStore?:ReturnType<typeof createMusicStore>) {
+export function musicStorageHooks(storage: SongStorageBridge['storage']) {
+  return {
+    imported: (song: SongLocation, bytes: Uint8Array) => storage.saveAudio(song, 'instrumentals', bytes),
+    saved: async (song: SongLocation, version: MusicVersion, audio?: Uint8Array) => {
+      if (audio) await storage.saveAudio(song, version.plan.chunks.some(chunk => lyricsOf(chunk.text)) ? 'vocals' : 'instrumentals', await toWav(audio));
+      await storage.saveLyrics(song, { schemaVersion: 1, musicId: version.id, version: version.version, createdAt: version.createdAt, plan: version.plan });
+    },
+  };
+}
+export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>BrowserWindow, suppliedStore?:ReturnType<typeof createMusicStore>, storage?:SongStorageBridge) {
   if(!app.isPackaged&&!process.env.ELEVENLABS_API_KEY){try{process.loadEnvFile(join(app.getAppPath(),'.env.local'));}catch{/* Credentials may instead be supplied by the launch environment. */}}
-  const store=suppliedStore??createMusicStore(join(app.getPath('userData'),'elevenlabs-music'));
+  const store=suppliedStore??createMusicStore(join(app.getPath('userData'),'elevenlabs-music'), undefined, storage ? musicStorageHooks(storage.storage) : undefined);
   const dialogs=new Set<number>();
   ipcMain.handle('banger:music-list',event=>{senderWindow(event);return store.list();});
   ipcMain.handle('banger:music-operations',event=>{senderWindow(event);return store.operations();});
   ipcMain.handle('banger:music-versions',(event,id:string,before?:number)=>{senderWindow(event);return store.versions(id,before);});
   ipcMain.handle('banger:music-get',(event,id:string)=>{senderWindow(event);return store.get(id);});
   ipcMain.handle('banger:music-operation',(event,id:string)=>{senderWindow(event);return store.recover(id);});
-  ipcMain.handle('banger:music-act',(event,id:string,input:unknown,key:string)=>{senderWindow(event);return store.act(id,input,key);});
+  ipcMain.handle('banger:music-act',async(event,id:string,input:unknown,key:string)=>{
+    const window=senderWindow(event);
+    if(storage) await store.bind(id,await store.location(id) ?? await storage.prepare(window,(await store.get(id)).name));
+    return store.act(id,input,key);
+  });
   ipcMain.handle('banger:music-audio',(event,id:string,version?:number)=>{senderWindow(event);return store.audio(id,version);});
   ipcMain.handle('banger:music-import',async(event,key:string)=>{
     const window=senderWindow(event);if(dialogs.has(window.id))throw new Error('A music file dialog is already open.');dialogs.add(window.id);
@@ -20,13 +37,14 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
       const selected=await dialog.showOpenDialog(window,{title:'Upload WAV to ElevenLabs',filters:[{name:'WAV audio',extensions:['wav']}],properties:['openFile']});
       if(selected.canceled||!selected.filePaths[0])return null;
       const file=await open(selected.filePaths[0],'r');
-      try{const stat=await file.stat();if(!stat.isFile()||stat.size>MAX_WAV_BYTES)throw new Error('Choose a WAV up to 100 MiB.');const bytes=await file.readFile();return store.importWav(bytes,basename(selected.filePaths[0]),key);}finally{await file.close();}
+      try{const stat=await file.stat();if(!stat.isFile()||stat.size>MAX_WAV_BYTES)throw new Error('Choose a WAV up to 100 MiB.');const bytes=await file.readFile();return store.importWav(bytes,basename(selected.filePaths[0]),key,await storage?.prepare(window,basename(selected.filePaths[0])));}finally{await file.close();}
     }finally{dialogs.delete(window.id);}
   });
-  ipcMain.handle('banger:music-rendered',async(event,bytes:unknown,name:unknown,key:string)=>{
-    senderWindow(event);
+  ipcMain.handle('banger:music-rendered',async(event,bytes:unknown,name:unknown,key:string,token?:string)=>{
+    const window=senderWindow(event);
     if(!(bytes instanceof Uint8Array)||bytes.byteLength>MAX_WAV_BYTES||typeof name!=='string')throw new Error('Invalid rendered WAV.');
-    return store.importWav(bytes,name.slice(0,120),key);
+    const location = storage ? token ? storage.resolve(window,token) : await storage.prepare(window,name) : undefined;
+    return store.importWav(bytes,name.slice(0,120),key,location);
   });
   ipcMain.handle('banger:music-save',async(event,id:string,version?:number)=>{
     const window=senderWindow(event);if(dialogs.has(window.id))throw new Error('A music file dialog is already open.');dialogs.add(window.id);

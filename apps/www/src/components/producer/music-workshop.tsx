@@ -2,6 +2,7 @@
 import './audio-worklet';
 import './music-workshop.css';
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {prepareSong} from '@/lib/song-storage';
 import {renderWav} from '@banger/engine';
 import {compileMusic} from '@banger/compiler';
 import {chunkName,lyricsOf,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
@@ -84,7 +85,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
   const editing=history.filter(item=>item.operation==='edit'||item.operation==='lyrics');
   const wavActions=<div className="music-wav-actions" aria-label="Add a WAV">
     <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button>
-    <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav')),true);});}}>Use studio WAV</button>
+    <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioFile.name,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token),true);});}}>Use studio WAV</button>
   </div>;
   return <section className="music-workshop" aria-label="Vocal Studio">
     {backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}

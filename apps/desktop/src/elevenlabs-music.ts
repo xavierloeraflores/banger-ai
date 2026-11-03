@@ -2,9 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
+import type { SongLocation } from './song-storage.js';
+type StorageHooks = { imported(song: SongLocation, bytes: Uint8Array): Promise<unknown>; saved(song: SongLocation, version: MusicVersion, audio?: Uint8Array): Promise<unknown> };
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
-export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? '')) {
+export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? ''), storage?: StorageHooks) {
   let queue:Promise<unknown>=Promise.resolve();
+  let imports:Promise<unknown>=Promise.resolve();
   const active=new Map<string,string>();
   const jobs=new Set<string>();
   type StoredOperation=MusicOperation & {fingerprint:string};
@@ -26,6 +29,14 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
       const versionPath=join(root,`version-${version.id}-${version.version}.json`);
       try{await writeFile(versionPath,JSON.stringify(version),{flag:'wx',mode:0o600});}
       catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST'||await readFile(versionPath,'utf8')!==JSON.stringify(version))throw error;}
+      const location = await read<SongLocation>(join(root, `location-${version.id}.json`)).catch((error:NodeJS.ErrnoException) => { if(error.code==='ENOENT') return undefined; throw error; });
+      const receipt = join(root, `archived-${version.id}-${version.version}.json`);
+      const archived = await read<boolean>(receipt).catch((error:NodeJS.ErrnoException) => { if(error.code==='ENOENT') return false; throw error; });
+      if (storage && location && !archived) {
+        const audio = version.operation === 'generate' ? new Uint8Array(await readFile(audioPath(version.audioId))) : undefined;
+        await storage.saved(location, version, audio);
+        await atomic(receipt, true);
+      }
       await atomic(musicPath(version.id),version);
       const list=await catalog();await atomic(join(root,'catalog.json'),[{id:version.id,name:version.name,version:version.version},...list.filter(item=>item.id!==version.id)].slice(0,100));
     });
@@ -76,17 +87,53 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
       return {versions,original:await getVersion(id,1),...(start>1?{nextBefore:start}:{})};
     },
     async operations(){const ids=await read<string[]>(join(root,'operation-catalog.json')).catch(()=>[]);return Promise.all(ids.map(id=>operation(id)));},
-    async importWav(bytes:Uint8Array,name:string,key:string) {
-      uuid(key);validateWav(bytes);await mkdir(root,{recursive:true});
+    async importWav(bytes:Uint8Array,name:string,key:string,location?:SongLocation) {
+      const imported = imports.then(async () => {
+      uuid(key);validateWav(bytes,false);await mkdir(root,{recursive:true});
       const hash=fingerprint({name,sha:createHash('sha256').update(bytes).digest('hex')});
       const existing=await prior(key,hash);
       if(existing)return existing;
       const id=key,audioId=randomUUID();
+      if (location && storage) {
+        await atomic(join(root, `location-${id}.json`), location);
+        await storage.imported(location, bytes);
+      }
+      validateWav(bytes);
       await writeFile(audioPath(audioId),bytes,{flag:'wx',mode:0o600});
       return launch(id,key,async()=>{
         const result=await provider().analyze(bytes,name);
         return {version:{id,version:1,name,songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
       },0,hash);
+      });
+      imports = imported.catch(() => undefined);
+      return imported;
+    },
+    async bind(id:string, location:SongLocation) {
+      if (!storage) return;
+      await locked(async () => {
+        const path = join(root, `location-${uuid(id)}.json`);
+        const bound = await read<SongLocation>(path).catch((error:NodeJS.ErrnoException) => { if(error.code==='ENOENT') return undefined; throw error; });
+        const completePath = join(root, `bound-${id}.json`);
+        const complete = await read<boolean>(completePath).catch((error:NodeJS.ErrnoException) => { if(error.code==='ENOENT') return false; throw error; });
+        if (bound && complete) return;
+        location = bound ?? location;
+        const current = await get(id);
+        await atomic(path, location);
+        for(let number=1;number<=current.version;number++) {
+          const version = await getVersion(id,number);
+          const receipt = join(root, `archived-${id}-${number}.json`);
+          const archived = await read<boolean>(receipt).catch((error:NodeJS.ErrnoException) => { if(error.code==='ENOENT') return false; throw error; });
+          if (!archived) {
+            if(number===1) await storage.imported(location,new Uint8Array(await readFile(audioPath(version.audioId))));
+            await storage.saved(location,version,version.operation==='generate'?new Uint8Array(await readFile(audioPath(version.audioId))):undefined);
+            await atomic(receipt,true);
+          }
+        }
+        await atomic(completePath,true);
+      });
+    },
+    async location(id:string) {
+      return read<SongLocation>(join(root, `location-${uuid(id)}.json`)).catch((error:NodeJS.ErrnoException) => { if(error.code==='ENOENT') return undefined; throw error; });
     },
     async act(id:string,input:unknown,key:string){
       uuid(key);const action=musicActionSchema.parse(input),hash=fingerprint({id,action});

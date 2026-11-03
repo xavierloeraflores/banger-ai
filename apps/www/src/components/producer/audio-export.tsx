@@ -2,6 +2,7 @@ import "./audio-worklet";
 import { ProjectIcon } from "./project-icon";
 import { useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
+import { prepareSong, archiveWav } from "@/lib/song-storage";
 import { renderWav } from "@banger/engine";
 import { uploadWav, type CloudBinding } from "@/lib/cloud-projects";
 import { Button, Select } from "@banger/shadcn";
@@ -11,7 +12,7 @@ function download(wav: ArrayBuffer, name: string) {
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-export function AudioExport({ program, fileName, disabled, cloud }: { program: MusicProgram; fileName: string; disabled: boolean; cloud?: CloudBinding | null }) {
+export function AudioExport({ program, fileName, source, disabled, cloud }: { program: MusicProgram; fileName: string; source: string; disabled: boolean; cloud?: CloudBinding | null }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [sampleRate, setSampleRate] = useState(44100);
@@ -21,14 +22,17 @@ export function AudioExport({ program, fileName, disabled, cloud }: { program: M
     setBusy(true); setStatus("Rendering audio…");
     const name = fileName.replace(/\.banger$/i, "").replace(/[^\w.-]/g, "_");
     try {
+      const token = await prepareSong(fileName, source);
       if (individual) {
         const selected = program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name;
         if (!selected) throw new Error("Choose a track to export.");
         const audio = await renderWav(program, { sampleRate, stem: selected });
+        await archiveWav(token, audio.wav);
         download(audio.wav, `${name}-${selected}.wav`);
         setStatus(`Exported ${selected} stem with routing and ${audio.tailSeconds.toFixed(1)} seconds of effect tails.`);
       } else {
         const audio = await renderWav(program, { sampleRate });
+        await archiveWav(token, audio.wav);
         if (upload && cloud) {
           await uploadWav(cloud, audio.wav, percentage => setStatus(`Uploading WAV: ${Math.round(percentage)}%`));
           setStatus(`WAV uploaded to cloud revision ${cloud.revision}.`); return;

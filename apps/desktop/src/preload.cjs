@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("bangerChatGPT", Object.freeze({
 
 contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
   open: () => ipcRenderer.invoke("banger:workspace-open"),
+  activate: () => ipcRenderer.invoke("banger:workspace-activate"),
   list: () => ipcRenderer.invoke("banger:workspace-list"),
   read: path => ipcRenderer.invoke("banger:workspace-read", path),
   save: (path, source, expectedSource) => ipcRenderer.invoke("banger:workspace-save", path, source, expectedSource),
@@ -51,6 +52,13 @@ contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
   },
 }));
 
+contextBridge.exposeInMainWorld("bangerStorage", Object.freeze({
+  prepare: (name, source) => ipcRenderer.invoke("banger:storage-prepare", name, source),
+  audio: (token, bytes) => ipcRenderer.invoke("banger:storage-audio", token, bytes),
+  history: token => ipcRenderer.invoke("banger:storage-history", token),
+  copyToLibrary: (token, scope, selection) => ipcRenderer.invoke("banger:storage-library", token, scope, selection),
+}));
+
 contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
   list: () => ipcRenderer.invoke("banger:music-list"),
   get: id => ipcRenderer.invoke("banger:music-get", id),
@@ -59,7 +67,7 @@ contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
   operation: id => ipcRenderer.invoke("banger:music-operation", id),
   act: (id, action, key) => ipcRenderer.invoke("banger:music-act", id, action, key),
   importWav: key => ipcRenderer.invoke("banger:music-import", key),
-  rendered: (bytes, name, key) => ipcRenderer.invoke("banger:music-rendered", bytes, name, key),
+  rendered: (bytes, name, key, token) => ipcRenderer.invoke("banger:music-rendered", bytes, name, key, token),
   audio: (id, version) => ipcRenderer.invoke("banger:music-audio", id, version),
   save: (id, version) => ipcRenderer.invoke("banger:music-save", id, version),
 }));

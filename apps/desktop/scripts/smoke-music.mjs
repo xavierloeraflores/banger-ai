@@ -10,6 +10,7 @@ import {join,resolve} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {serveApp} from '../dist/static-app.js';
 import {createMusicStore} from '../dist/elevenlabs-music.js';
+import {installSongStorage} from '../dist/song-storage-ipc.js';
 import {installMusicHandlers} from '../dist/elevenlabs-ipc.js';
 import {fixtureProvider,wav,fixturePlan} from '../../../packages/elevenlabs/test/fixtures.mjs';
 const cloud=process.argv.includes('--web');
@@ -73,6 +74,7 @@ async function run(){
  await Promise.all([new Promise(resolve=>api.listen(0,'127.0.0.1',resolve)),new Promise(resolve=>web.listen(0,'127.0.0.1',resolve))]);
  window=new BrowserWindow({show:false,width:1440,height:1080,webPreferences:{backgroundThrottling:false,sandbox:true,contextIsolation:true,nodeIntegration:false,...(!cloud?{preload:resolve('dist/preload.cjs')}:{})}});
  if(!cloud){
+  installSongStorage(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;});
   installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store);
   ipcMain.handle('banger:ai-load',()=>({activeProvider:null,providers:{}}));
   ipcMain.handle('banger:local-status',()=>({phase:'idle',selected:false}));

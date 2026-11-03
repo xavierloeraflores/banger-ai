@@ -8,7 +8,7 @@ import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspa
 type Bridge = NonNullable<Window["bangerWorkspace"]>;
 const message = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(): void; onLoad(file: File, savedSource: string, projectName: string): void }) {
+export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(): void; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
   const [paths, setPaths] = useState<string[]>(initialFolder?.paths ?? []);
@@ -85,7 +85,7 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
         <label htmlFor="workspace-source">{file.path}{dirty ? " · Unsaved draft" : " · Saved"}</label>
         <textarea id="workspace-source" spellCheck={false} value={source} disabled={busy || running} onChange={event => setSource(event.target.value)} />
         <div className="project-workspace-actions"><Button disabled={!dirty || busy || running} onClick={() => void action(async bridge => { adopt(await bridge.save(file.path, source, file.source)); setNotice(`Saved ${file.path}.`); })}>Save project file</Button>
-          <Button disabled={busy || running} onClick={() => onLoad({ path: file.path, source }, file.source, name)}>Load workspace file in studio</Button></div>
+          <Button disabled={busy || running} onClick={() => void action(async () => { await onLoad({ path: file.path, source }, file.source, name); })}>Load workspace file in studio</Button></div>
       </> : <p>No .banger files yet. Ask the agent to create the first music file.</p>}
       <form onSubmit={event => { event.preventDefault(); if (dirty || running) return; void action(async bridge => {
         setRunning(true); setEvents([]);

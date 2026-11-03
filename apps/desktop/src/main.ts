@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
 import { access, open, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_URL, getDevelopmentUrl, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
@@ -9,6 +9,7 @@ import { createAISettingsStore } from "./ai-settings.js";
 import { createChatGPTAuth, ChatGPTError, publicChatGPTError } from "./chatgpt-auth.js";
 import { createLocalModel } from "./local-model.js";
 
+import { installSongStorage, type SongStorageBridge } from "./song-storage-ipc.js";
 import { installMusicHandlers } from "./elevenlabs-ipc.js";
 import { installWorkspaceHandlers } from "./project-workspace.js";
 
@@ -20,6 +21,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 const developmentUrl = getDevelopmentUrl(process.env.BANGER_DEV_URL, app.isPackaged);
+let songStorage: SongStorageBridge;
 const windows = new Set<BrowserWindow>();
 const pendingDialogs = new Set<number>();
 const pendingChats = new Map<number, AbortController>();
@@ -60,7 +62,9 @@ function installProjectHandlers() {
         let source: string;
         try { source = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, size)); }
         catch { throw new Error("The project must contain valid UTF-8 text."); }
-        return { name: basename(path), source: validateSource(source) };
+        validateSource(source);
+        songStorage.setRoot(window, dirname(path));
+        return { name: basename(path), source };
       } finally { await file.close(); }
     } catch (error) {
       throw new Error(readableError(error, "Could not open the project."));
@@ -95,6 +99,7 @@ function installProjectHandlers() {
         }
       }
       await writeFile(path, text, "utf8");
+      songStorage.setRoot(window, dirname(path));
       return { name: basename(path) };
     } catch (error) {
       throw new Error(readableError(error, "Could not save the project."));
@@ -162,7 +167,8 @@ void app.whenReady().then(() => {
     if (window?.isMinimized()) window.restore();
     window?.focus();
   });
-  installMusicHandlers(senderWindow);
+  songStorage = installSongStorage(senderWindow);
+  installMusicHandlers(senderWindow, undefined, songStorage);
   const localModel = createLocalModel(join(app.getPath("userData"), "local-model"));
   app.on("before-quit", () => localModel.dispose());
   protocol.handle("banger", (request) => serveApp(request, fileURLToPath(new URL("./web/", import.meta.url))));
@@ -312,7 +318,7 @@ void app.whenReady().then(() => {
       return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };
     } finally { pendingChats.delete(window.id); }
   });
-  const projectWorkspace = installWorkspaceHandlers({ senderWindow,
+  const projectWorkspace = installWorkspaceHandlers({ senderWindow, onOpen: (window, root) => songStorage.setRoot(window, root),
     modelError: error => error instanceof ChatGPTError || (error instanceof Error && error.cause instanceof ChatGPTError)
       ? publicChatGPTError(error) : publicAIError(error),
     selectModel: async () => {

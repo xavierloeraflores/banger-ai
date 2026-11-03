@@ -1,7 +1,7 @@
 import { enterStudio } from "./smoke-startup.mjs";
 import { app, BrowserWindow, dialog } from "electron";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -103,6 +103,18 @@ async function run(window) {
     await wait("document.querySelector('#workspace-source').value.includes('tempo 110')");
     await click("Reload files");
     await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#workspace-source').disabled");
+    // Exercise the real export button after loading the workspace song.
+    await click("Load workspace file in studio");
+    await wait("!document.querySelector('#project-controls').open");
+    window.webContents.session.on('will-download', event => event.preventDefault());
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
+    for (let version = 1; version <= 2; version++) {
+      await evaluate("[...document.querySelectorAll('.studio-export button')].find(b=>b.textContent.includes('Export WAV')).click()");
+      await wait("document.querySelector('.studio-export-status')?.textContent.includes('Exported stereo WAV')");
+      const saved = await readFile(join(directory, `.banger/history/verse/instrumentals/verse.instrumental-v00${version}.wav`));
+      assert.equal(saved.toString('ascii', 0, 4), 'RIFF');
+    }
+    assert.equal((await readdir(join(directory, '.banger/history/verse/instrumentals'))).length, 2);
     await evaluate("document.querySelector('.project-workspace').scrollIntoView({ block:'start' })");
     await delay(100);
     await writeFile(join(tmpdir(), "banger-workspace-desktop.png"), (await window.webContents.capturePage()).toPNG());

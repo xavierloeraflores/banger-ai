@@ -2,6 +2,7 @@ export type WorkspaceFile = { path: string; source: string };
 type Event = { type: string; name?: string; path?: string; text?: string; ok?: boolean; error?: string; file?: WorkspaceFile };
 type Bridge = {
   open(): Promise<{ name: string; paths: string[] } | null>;
+  activate(): Promise<void>;
   list(): Promise<string[]>;
   read(path: string): Promise<WorkspaceFile>;
   save(path: string, source: string, expected: string | null): Promise<WorkspaceFile>;
