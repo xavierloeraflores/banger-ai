@@ -20,6 +20,8 @@
     "smoke:musical": "electron scripts/smoke-musical-options.mjs",
     "smoke:workspace": "electron scripts/smoke-workspace.mjs",
     "smoke:local": "electron scripts/smoke-local.mjs",
+    "smoke:sequencer": "electron scripts/smoke-sequencer.mjs",
+    "smoke:grid": "electron scripts/smoke-shared-grid.mjs",
     "smoke:song": "electron scripts/smoke-song.mjs",
     "smoke:song:web": "electron scripts/smoke-song.mjs --web",
     "smoke:cloud": "electron scripts/smoke-cloud.mjs",

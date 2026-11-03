@@ -41,8 +41,9 @@ async function run(window) {
   try {
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'No Fill steps');
+    await evaluate("document.querySelector('.producer-performance').open = true");
     await text('Fill');
-    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Set a step condition to F or !F');
+    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Set a step condition to Fill or Not fill');
     await apply('tempo 120; track kick { sound "drums/kick"; rhythm "x x x x"; } section intro { bars 2; play kick; } song { play intro; }');
     const originalSong = (await program()).timeline;
     window.show(); window.focus(); window.webContents.focus();
@@ -60,8 +61,8 @@ async function run(window) {
     console.log('Native drag:', await evaluate("document.querySelector('.producer-step').getAttribute('aria-label')"));
     await waitFor("document.querySelector('.producer-step').getAttribute('aria-label').includes('velocity 50%') && document.querySelector('#producer-source').value.includes('@0.5')", 'saved drag velocity');
     assert.equal((await program()).tracks[0].steps[0].velocity, .5, 'Drag changes step velocity without disabling the step.');
-    await click('kick, step 1 probability 100%');
-    await click('kick, step 1 condition always');
+    await set('Selected step probability', 90);
+    await set('Selected step condition', 'fill', 'HTMLSelectElement');
     assert.equal((await program()).tracks[0].steps[0].probability, .9);
     assert.equal((await program()).tracks[0].steps[0].condition, 'fill');
     await text('Copy to new pattern');
@@ -89,8 +90,8 @@ async function run(window) {
     await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0", 'live audio');
     const position = await evaluate("document.querySelector('.producer-position').textContent"); await delay(350);
     assert.notEqual(await evaluate("document.querySelector('.producer-position').textContent"), position);
-    await text('Base'); await waitFor("document.querySelector('.producer-transport-state').textContent === 'Playing'", 'launch on bar boundary');
-    await text('A'); await waitFor("document.querySelector('.producer-transport-state').textContent === 'Playing'", 'relaunch A');
+    await set('Launch pattern', '', 'HTMLSelectElement'); await waitFor("!document.querySelector('.producer-transport-state')", 'launch on bar boundary');
+    await set('Launch pattern', 'A', 'HTMLSelectElement'); await waitFor("!document.querySelector('.producer-transport-state')", 'relaunch A');
     await text('Fill');
     assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Fill on');
     await click('Stop playback');
@@ -117,6 +118,7 @@ async function run(window) {
     await apply(beforeFillCheck);
     // Exercise sound edits through the native app before saving the combined project.
     await click('Edit kick');
+    await text('Sound', "document.querySelector('#track-editor-0 .producer-editor-tabs')");
     const soundScope = "document.querySelector('#track-editor-0 .sound-design')";
     await text('Off', soundScope);
     await set('kick Cutoff', 900);
@@ -124,7 +126,7 @@ async function run(window) {
     await set('kick Cutoff', 320);
     assert.equal((await program()).tracks[0].synth.cutoff, 900);
     assert.equal((await program()).tracks[0].patterns[0].steps[1].locks.cutoff, 320);
-    assert.ok(await evaluate("document.querySelectorAll('.producer-step-velocity')[1].textContent.includes('◆')"));
+    assert.ok(await evaluate("document.querySelectorAll('.producer-step')[1].querySelector('.producer-step-lock')?.textContent.includes('◆')"));
     await text('Preview', soundScope);
     await waitFor("document.querySelector('#track-editor-0 .sound-status').textContent.includes('Preview playing')", 'synth preview');
     await text('On', soundScope);

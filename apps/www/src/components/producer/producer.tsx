@@ -15,6 +15,7 @@ import {
 import { Button, IconButton, Input, Panel, Range, Select } from "@banger/shadcn";
 import { openProject, saveProject } from "@/lib/project-files";
 import { SongArrangement } from "./song-arrangement";
+import { StepInspector } from "./step-inspector";
 import { SequencerStep } from "./sequencer-step";
 import { TransportControls } from "./transport-controls";
 import { PatternControls } from "./pattern-controls";
@@ -110,6 +111,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
   const [editorTab, setEditorTab] = useState<TrackEditorTab>("notes");
   const [patterns, setPatterns] = useState<Record<number, string>>({});
+  const [selectedStep, setSelectedStep] = useState<{ track: number; index: number; pattern?: string; epoch: number } | null>(null);
   const [pitch, setPitch] = useState<Record<number, number>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
@@ -135,6 +137,32 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     if (previewSection) void playPreview();
   }, [previewSection, playPreview]);
   const hasSolo = program.tracks.some(track => track.solo);
+  const songMode = audibleProgram.chainEnabled !== false && !!audibleProgram.timeline?.length;
+  const patternNames = [...new Set(program.tracks.flatMap(track => track.patterns?.map(pattern => pattern.name) ?? []))];
+  const phrases = program.tracks.map((track, index) => {
+    const requested = patterns[index] ?? program.activePattern;
+    const name = track.patterns?.some(pattern => pattern.name === requested) ? requested : undefined;
+    return { name, phrase: resolvePattern(track, name) };
+  });
+  const gridBeats = Math.max(4, ...phrases.map(({ phrase }) => (phrase.bars ?? 1) * 4));
+  const beatWidth = Math.max(112, ...phrases.filter(({ phrase }) => phrase.pianoRoll === undefined).map(({ phrase }) => phrase.steps.length / ((phrase.bars ?? 1) * 4) * 36));
+  const inspectedTrack = selectedStep && selectedStep.epoch === editorEpoch && phrases[selectedStep.track]?.name === selectedStep.pattern
+    ? program.tracks[selectedStep.track] : undefined;
+  const inspectedPhrase = inspectedTrack && selectedStep ? phrases[selectedStep.track]!.phrase : undefined;
+  const hasSelectedStep = !!inspectedPhrase && inspectedPhrase.pianoRoll === undefined && selectedStep!.index < inspectedPhrase.steps.length;
+
+  function launchPattern(name: string, next = program) {
+    const launch = { ...next, chainEnabled: false };
+    if (name) launch.activePattern = name; else delete launch.activePattern;
+    if (edit(launch)) { setPreviewSection(undefined); setPatterns({}); setSelectedStep(null); }
+  }
+
+  function setTransportMode(song: boolean) {
+    if (edit({ ...program, chainEnabled: song })) {
+      setPreviewSection(undefined);
+      if (!song) { setPatterns({}); setSelectedStep(null); }
+    }
+  }
 
   useEffect(() => {
     if (!dirty) return;
@@ -331,9 +359,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   }
 
   const trackViews = program.tracks.map((track, index) => {
-    const requestedPattern = patterns[index] ?? program.activePattern;
-    const selectedPattern = track.patterns?.some(pattern => pattern.name === requestedPattern) ? requestedPattern : undefined;
-    const phrase = resolvePattern(track, selectedPattern);
+    const { name: selectedPattern, phrase } = phrases[index]!;
     const previewNotes = phrase.pianoRoll ?? [];
     const lowestPitch = Math.min(60, ...previewNotes.map(note => note.midi));
     const highestPitch = Math.max(lowestPitch + 12, ...previewNotes.map(note => note.midi));
@@ -348,11 +374,13 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     const phase = clip ? (songBeat - clip.startBeat) / ((phrase.bars ?? 1) * 4) : 0;
     const row = <div className={`producer-track${track.muted || (hasSolo && !track.solo) ? " is-muted" : ""}`} key={index}>
       <button type="button" className="producer-track-toggle" aria-label={`Edit ${track.name}`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`}
-        title={`Edit ${track.name} sound, pattern and mix`} onClick={() => setExpandedTrack(index)}>
+        title={`Edit ${track.name} sound, pattern and mix. Editing ${selectedPattern || "Base"}, ${phrase.bars ?? 1} bars.`} onClick={() => setExpandedTrack(index)}>
         <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
-        <span className="producer-track-label"><strong>{track.name}</strong><small>{sounds.find(([value]) => value === track.source.name)?.[1] ?? track.source.name}{selectedPattern ? ` · ${selectedPattern}` : ""}</small></span>
+        <span className="producer-track-label"><strong>{track.name}</strong><small>{sounds.find(([value]) => value === track.source.name)?.[1] ?? track.source.name}</small><small>{selectedPattern || "Base"} · {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</small></span>
         <span className="producer-track-chevron" aria-hidden="true">{expandedTrack === index ? "▾" : "▸"}</span>
       </button>
+      <div className="producer-time-lane">
+        <div className="producer-phrase-length" style={{ width: `${(phrase.bars ?? 1) * 4 / gridBeats * 100}%` }}>
       {phraseTrack.pianoRoll !== undefined ? <button type="button" className="producer-phrase-preview" aria-label={`Edit ${track.name} piano roll`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`} onClick={() => openNotes(index)}>
         <svg viewBox="0 0 1000 32" preserveAspectRatio="none" aria-hidden="true">
           {phraseTrack.pianoRoll.map((note, noteIndex) => <rect key={noteIndex} x={note.start / ((phrase.bars ?? 1) * 4) * 1000} y={3 + (highestPitch - note.midi) / (highestPitch - lowestPitch) * 23} width={Math.max(3, note.duration / ((phrase.bars ?? 1) * 4) * 1000)} height={3} rx={1} />)}
@@ -361,10 +389,14 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <span>{phraseTrack.pianoRoll.length} notes · {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</span>
       </button> : <div className="producer-step-grid" style={{ "--track-steps": phraseTrack.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
         {phraseTrack.steps.map((step, stepIndex) => <SequencerStep key={stepIndex} step={step} index={stepIndex} name={track.name}
+          selected={hasSelectedStep && selectedStep?.track === index && selectedStep.index === stepIndex}
+          onSelect={() => setSelectedStep({ track: index, index: stepIndex, pattern: selectedPattern, epoch: editorEpoch })}
           current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex}
           newStep={track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }}
           onChange={next => editPhrase({ ...phraseTrack, steps: phraseTrack.steps.map((item, i) => i === stepIndex ? next : item) })} />)}
       </div>}
+        </div>
+      </div>
       <div className="producer-track-mix">
         <Button className="producer-track-mute" variant={!!track.muted ? "primary" : "ghost"} aria-pressed={!!track.muted} aria-label={`Mute ${track.name}`} title={!!track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => editTrack(index, { ...track, muted: !track.muted })}>M</Button>
         <Button variant={!!track.solo ? "primary" : "ghost"} aria-pressed={!!track.solo} aria-label={`Solo ${track.name}`} title={`Solo ${track.name}`} onClick={() => editTrack(index, { ...track, solo: !track.solo })}>S</Button>
@@ -474,9 +506,16 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </Button>
           <IconButton aria-label="Stop playback" variant="secondary" onClick={stopPlayback} disabled={!playback.state.playing && !playback.starting}><span aria-hidden="true">■</span></IconButton>
         </div>
+        <div className="producer-playback-mode" role="group" aria-label="Playback mode">
+          <Button variant={songMode ? "primary" : "secondary"} aria-pressed={songMode} disabled={draft || fileBusy || !program.timeline?.length} title={program.timeline?.length ? "Play the song arrangement" : "Add a song timeline to enable Song mode"} onClick={() => setTransportMode(true)}>Song</Button>
+          <Button variant={!songMode ? "primary" : "secondary"} aria-pressed={!songMode} disabled={draft || fileBusy} onClick={() => setTransportMode(false)}>Pattern</Button>
+        </div>
+        <label className="producer-launch-pattern">Launch <Select aria-label="Launch pattern" value={program.activePattern ?? ""} disabled={draft || fileBusy} onChange={event => launchPattern(event.target.value)}>
+          <option value="">Base</option>{patternNames.map(name => <option key={name} value={name}>{name}</option>)}
+        </Select></label>
         <div className="producer-transport-summary">
           <LevelMeter name="Master" level={playback.meters.master.peak} />
-          <div className="producer-meter"><strong>4/4</strong><span>{programDurationBeats(program) / 4} bar song</span></div>
+          <div className="producer-meter"><strong>4/4</strong><span>{programDurationBeats(audibleProgram) / 4} bars · {songMode ? "Song" : "Pattern"}</span></div>
           <div className="producer-position" aria-label={playback.state.playing ? `Bar ${playback.state.bar}, step ${playback.state.step + 1}` : "Stopped"}>
             <span className={playback.state.playing ? "producer-live-dot is-playing" : "producer-live-dot"} />
             <span>{playback.state.playing ? `${String(Math.max(1, playback.state.bar)).padStart(2, "0")}.${String(playback.state.step + 1).padStart(2, "0")}` : "01.01"}</span>
@@ -485,7 +524,8 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         </div>
         <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill} fill={playback.fill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
-          onLaunch={(name, next = program) => { const launch = { ...next, chainEnabled: false }; if (name) launch.activePattern = name; else delete launch.activePattern; if (edit(launch)) { setPreviewSection(undefined); setPatterns(Object.fromEntries(next.tracks.map((track, index) => [index, track.patterns?.some(pattern => pattern.name === name) ? name : ""]))); } }} />
+          onLaunch={launchPattern} />
+        <span className="producer-mode-status" role="status">{previewSection ? `Previewing ${previewSection}` : songMode ? "Song arrangement" : `Pattern loop · ${program.activePattern || "Base"}`}</span>
       </section>
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
       <div className="producer-workspace" id="studio">
@@ -525,13 +565,24 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
             </div>
             {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
 
-            <div className="producer-sequence-scroll" data-focused={expandedTrack !== null}>
-              <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / SELECTED PHRASE</span><span>M / S</span></div>
+            <p id="producer-step-help" className="producer-grid-help">Click or Space to toggle. Shift-click or focus to inspect. Arrow keys move; Shift + ↑ / ↓ adjusts velocity; E opens the inspector.</p>
+            <div className="producer-sequence-scroll" data-focused={expandedTrack !== null} role="region" aria-label="Shared beat grid" tabIndex={0} style={{ "--grid-beats": gridBeats, "--beat-width": `${beatWidth}px` } as CSSProperties}>
+              <div className="producer-step-ruler" aria-hidden="true"><span className="producer-ruler-label">TRACK / PHRASE</span><div className="producer-beat-ruler">{Array.from({ length: gridBeats }, (_, beat) => <span key={beat} className={beat % 4 === 0 ? "is-beat" : ""}>{Math.floor(beat / 4) + 1}.{beat % 4 + 1}</span>)}</div><span className="producer-ruler-mix">M / S</span></div>
               <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
                 <div className="producer-track-list">{trackViews.map(item => item.row)}</div>
                 <div className="producer-editors" hidden={expandedTrack === null}>{trackViews.map(item => item.editor)}</div>
               </fieldset>
             </div>
+            <StepInspector name={hasSelectedStep ? inspectedTrack!.name : undefined} index={selectedStep?.index} pattern={selectedStep?.pattern}
+              step={hasSelectedStep ? inspectedPhrase!.steps[selectedStep!.index] : undefined} disabled={draft || fileBusy}
+              newStep={inspectedTrack?.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[selectedStep?.track ?? 0] ?? 36 }}
+              onChange={step => {
+                if (!hasSelectedStep || !selectedStep || !inspectedTrack || !inspectedPhrase) return;
+                const steps = inspectedPhrase.steps.map((item, index) => index === selectedStep.index ? step : item);
+                editTrack(selectedStep.track, selectedStep.pattern
+                  ? { ...inspectedTrack, patterns: inspectedTrack.patterns!.map(pattern => pattern.name === selectedStep.pattern ? { ...pattern, steps } : pattern) }
+                  : { ...inspectedTrack, steps });
+              }} />
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
             <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button></div>
           </Panel>

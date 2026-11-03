@@ -28,11 +28,13 @@ export function TransportControls({ program, disabled, onChange, onTempo, onLaun
       setTapStatus("Tap slower · 20–300 BPM");
     }
   };
-  return <fieldset className="producer-transport-extras" disabled={disabled} aria-label="Performance controls">
+  return <details className="producer-performance">
+    <summary>Performance</summary>
+    <fieldset className="producer-transport-extras" disabled={disabled} aria-label="Performance controls">
     <div className="producer-performance-control">
       <Button aria-pressed={fill} variant={fill ? "primary" : "secondary"} aria-describedby="producer-fill-status"
         onClick={() => { setFillHint(true); if (hasFillSteps) onFill(!fill); }}>Fill</Button>
-      <span id="producer-fill-status" role="status">{!hasFillSteps ? fillHint ? "Set a step condition to F or !F" : "No Fill steps" : fill ? "Fill on" : "Fill off"}</span>
+      <span id="producer-fill-status" role="status">{!hasFillSteps ? fillHint ? "Set a step condition to Fill or Not fill" : "No Fill steps" : fill ? "Fill on" : "Fill off"}</span>
     </div>
     <div className="producer-performance-control">
       <Button variant="secondary" onClick={tap} aria-describedby="producer-tap-status">Tap tempo</Button>
@@ -40,9 +42,9 @@ export function TransportControls({ program, disabled, onChange, onTempo, onLaun
     </div>
     <Button variant={program.metronome ? "primary" : "secondary"} aria-pressed={program.metronome ?? false} onClick={() => onChange({ ...program, metronome: !program.metronome })} title="Live metronome. Excluded from exports.">Click</Button>
     <label>Master <Range aria-label="Master volume" min={0} max={1} step={.01} value={program.masterGain ?? 1} onChange={event => onChange({ ...program, masterGain: Number(event.target.value) })} /><output>{Math.round((program.masterGain ?? 1) * 100)}%</output></label>
-    <div className="producer-pattern-launcher" role="group" aria-label="Launch patterns">
-      <Button variant={!program.activePattern && program.chainEnabled === false ? "primary" : "secondary"} aria-pressed={!program.activePattern && program.chainEnabled === false} onClick={() => onLaunch("")}>Base</Button>
-      {names.map(name => <Button key={name} variant={program.activePattern === name && program.chainEnabled === false ? "primary" : "secondary"} aria-pressed={program.activePattern === name && program.chainEnabled === false} onClick={() => onLaunch(name)}>{name}</Button>)}
+    </fieldset>
+    <fieldset className="producer-pattern-launcher" disabled={disabled} aria-label="Pattern tools">
+      <legend>Pattern tools</legend>
       <Button variant="ghost" disabled={program.tracks.length === 0 || program.tracks.some(track => (track.patterns?.length ?? 0) >= 32)} onClick={() => {
         let number = 1; let name = "A"; while (names.includes(name)) { number++; name = number <= 10 ? String.fromCharCode(64 + number) : `pattern_${number}`; }
         const tracks = program.tracks.map(track => ({ ...track, patterns: [...track.patterns ?? [], { ...structuredClone(resolvePattern(track, track.patterns?.some(pattern => pattern.name === program.activePattern) ? program.activePattern : undefined)), name }] }));
@@ -56,6 +58,6 @@ export function TransportControls({ program, disabled, onChange, onTempo, onLaun
         const active = track.patterns?.find(pattern => pattern.name === program.activePattern);
         return active ? { ...track, patterns: track.patterns!.map(pattern => pattern === active ? { ...pattern, steps, pianoRoll, bars } : pattern) } : { ...track, steps, pianoRoll, bars };
       }) })}>Paste</Button>
-    </div>
-  </fieldset>;
+    </fieldset>
+  </details>;
 }
