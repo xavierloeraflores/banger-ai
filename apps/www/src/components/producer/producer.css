@@ -33,6 +33,7 @@ body { margin: 0; background: #141514; }
 .producer-wordmark { color: var(--producer-text); font-size: 32px; font-weight: 800; text-decoration: none; letter-spacing: -2px; }
 .producer-wordmark span { color: var(--producer-lime); }
 .producer-project { display: flex; align-items: center; gap: 10px; font-size: 12px; overflow-wrap: anywhere; }
+.producer-project-empty { color: var(--producer-dim); }
 .producer-file-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--producer-lime); flex-shrink: 0; }
 .producer-dim { color: var(--producer-dim); padding-left: 8px; }
 .producer-file-actions { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

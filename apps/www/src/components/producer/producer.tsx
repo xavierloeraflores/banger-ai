@@ -469,7 +469,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     <main className="producer" data-view={vocalStudio ? "vocal" : view}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
-        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || "no project"} / {fileName}</span></div>
+        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
         <div className="producer-file-actions">
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Button variant="secondary" onClick={() => {
