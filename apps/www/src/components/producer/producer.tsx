@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   compileMusic,
+  CompileError,
   serializeMusic,
   programDurationBeats,
   resolvePattern,
@@ -37,6 +38,7 @@ import { SettingsMenu } from "./settings-menu";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import { ProjectStart } from "./project-start";
+import { SourceEditor } from "./source-editor";
 import type { ProjectFolder, WorkspaceFile } from "@/lib/project-workspace";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
@@ -125,7 +127,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const dirty = source !== savedSource;
   const result = useMemo(() => {
     try { return { program: compileMusic(source), error: null }; }
-    catch (cause) { return { program: null, error: diagnose(cause) }; }
+    catch (cause) { return { program: null, error: diagnose(cause), errorOffset: cause instanceof CompileError ? cause.position.offset : undefined }; }
   }, [source]);
   const audibleProgram = useMemo(() => previewSection && program.sections?.some(section => section.name === previewSection)
     ? { ...program, chainEnabled: true, timeline: [{ section: previewSection }] } : program, [program, previewSection]);
@@ -606,11 +608,10 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           <Panel className="producer-editor" aria-labelledby="source-title">
             <div className="producer-editor-heading"><div><p className="producer-eyebrow">The source</p><h2 id="source-title">{fileName}</h2></div><span className={`producer-source-status${result.error ? " has-error" : ""}`}>{result.error ? "Check source" : draft ? "Unapplied" : "In sync"}</span></div>
             <label className="producer-sr-only" htmlFor="producer-source">Banger source code</label>
-            <textarea id="producer-source" ref={editor} value={source} disabled={fileBusy} onChange={event => writeSource(event.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" aria-invalid={Boolean(result.error)} aria-describedby="producer-source-help producer-diagnostics"
-              onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); apply(); } }} />
+            <SourceEditor source={source} error={result.error} errorOffset={result.errorOffset} disabled={fileBusy} editor={editor} onChange={writeSource} onApply={apply} />
             <div className="producer-editor-actions"><Button variant="primary" disabled={!draft || !result.program || fileBusy} onClick={apply}>Apply source</Button><Button variant="ghost" disabled={!draft || fileBusy} onClick={() => { writeSource(appliedSource); setNotice("Draft reverted to the current sequence."); }}>Revert draft</Button><span>⌘ / Ctrl + Enter</span></div>
             <div id="producer-diagnostics" className={result.error ? "producer-diagnostics has-error" : "producer-diagnostics"} role="status">{result.error ?? (draft ? "Source is valid. Apply it to update the sequence." : "Compiled. The source and sequence match.")}</div>
-            <p id="producer-source-help" className="producer-source-help">Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
+            <p id="producer-source-help" className="producer-source-help">The first compiler error is underlined in red. Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>

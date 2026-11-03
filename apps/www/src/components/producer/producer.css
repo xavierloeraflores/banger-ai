@@ -132,7 +132,23 @@ body { margin: 0; background: #141514; }
 .producer-editor { display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
 .producer-editor-heading { grid-column: 1 / -1; border-bottom: 1px solid var(--producer-border); padding: 20px 26px; }
 .producer-source-status { font-size: 10px; color: var(--producer-lime); white-space: nowrap; }
-.producer .producer-editor textarea { grid-column: 1; grid-row: 2 / 5; display: block; width: 100%; min-height: 340px; resize: vertical; border: 0; border-right: 1px solid var(--producer-border); border-radius: 0; background: #161815; color: #d4ddbf; padding: 22px 26px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; line-height: 1.8; tab-size: 2; }
+.producer-source-editor { position: relative; grid-column: 1; grid-row: 2 / 5; min-width: 0; background: #161815; border-right: 1px solid var(--producer-border); }
+.producer .producer-source-editor textarea, .producer .producer-source-highlight { box-sizing: border-box; display: block; width: 100%; margin: 0; border: 0; border-radius: 0; padding: 22px 26px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; font-weight: 400; line-height: 1.8; letter-spacing: normal; tab-size: 2; white-space: pre; overflow-wrap: normal; word-break: normal; }
+.producer .producer-source-editor textarea { position: relative; height: 100%; min-height: 340px; resize: vertical; background: transparent; color: transparent; caret-color: #eeeee5; -webkit-text-fill-color: transparent; }
+.producer .producer-source-editor textarea::selection { background: #798e5655; }
+.producer .producer-source-highlight { position: absolute; inset: 0; height: 100%; overflow: hidden; pointer-events: none; color: #d4ddbf; }
+.producer-source-highlight .source-keyword { color: #d6b0f5; }
+.producer-source-highlight .source-string { color: #c8e58c; }
+.producer-source-highlight .source-number { color: #f2bd81; }
+.producer-source-highlight .source-value { color: #80d7ce; }
+.producer-source-highlight .source-identifier { color: #acd4f2; }
+.producer-source-highlight .source-symbol { color: #d3d6cd; }
+.producer-source-highlight .source-comment { color: #8a9684; }
+.producer-source-highlight .source-error { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: #ff6464; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+@media (forced-colors: active) {
+  .producer-source-highlight .source-error { text-decoration-color: LinkText; }
+  .producer .producer-source-editor textarea { caret-color: CanvasText; }
+}
 .producer-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 22px 20px 0; align-content: start; }
 .producer-editor-actions > span { flex-basis: 100%; color: var(--producer-dim); font-size: 10px; padding: 2px 0; }
 .producer-diagnostics { padding: 20px; color: var(--producer-text); font-size: 12px; overflow-wrap: anywhere; }
@@ -160,7 +176,9 @@ body { margin: 0; background: #141514; }
   .producer-mix-note { padding: 0 16px 16px; }
   .producer-draft-banner { margin: 0 16px 16px; }
   .producer-editor { display: block; }
-  .producer .producer-editor textarea { min-height: 320px; border-right: 0; border-bottom: 1px solid var(--producer-border); padding: 16px; }
+  .producer-source-editor { border-right: 0; border-bottom: 1px solid var(--producer-border); }
+  .producer .producer-source-editor textarea { min-height: 320px; }
+  .producer .producer-source-editor textarea, .producer .producer-source-highlight { padding: 16px; }
   .producer-editor-actions { padding: 16px 16px 0; }
   .producer-diagnostics { padding: 16px; }
   .producer-source-help { padding: 0 16px 16px; }

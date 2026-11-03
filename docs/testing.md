@@ -80,6 +80,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Music workshop | `pnpm --filter @banger/desktop smoke:music`, `smoke:music:web` |
 | Cloud projects | `pnpm --filter @banger/desktop smoke:cloud` |
 | Musical options | `pnpm --filter @banger/desktop smoke:musical` |
+| Raw .banger editor | `pnpm --filter @banger/desktop exec electron scripts/smoke-source-editor.mjs` |
 
 Each abbreviated `smoke:*` command in the table uses the same
 `pnpm --filter @banger/desktop` prefix. Run the full browser/audio matrix for a
