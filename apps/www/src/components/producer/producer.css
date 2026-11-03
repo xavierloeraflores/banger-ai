@@ -35,7 +35,7 @@ body { margin: 0; background: #141514; }
 .producer-project { display: flex; align-items: center; gap: 10px; font-size: 12px; overflow-wrap: anywhere; }
 .producer-file-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--producer-lime); flex-shrink: 0; }
 .producer-dim { color: var(--producer-dim); padding-left: 8px; }
-.producer-file-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.producer-file-actions { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .producer-transport { min-height: 72px; display: flex; align-items: center; gap: 28px; }
 .producer-transport-summary { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 28px; }
 .producer-play-controls { display: flex; gap: 6px; }
@@ -257,7 +257,7 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .producer-tabs [role="tab"] { padding: 12px 16px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--producer-dim); white-space: nowrap; }
 .producer-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--producer-lime); color: var(--producer-lime); }
 .producer-tabs [role="tab"]:hover { color: var(--producer-text); }
-.producer [role="tabpanel"][hidden] { display: none; }
+.producer [role="tabpanel"][hidden], .producer-tabs[hidden] { display: none; }
 
 .piano-roll { grid-column: 1 / -1; margin-top: 16px; border: 1px solid var(--producer-border); border-radius: 6px; overflow: hidden; }
 .piano-roll[aria-disabled="true"] { opacity: .6; }

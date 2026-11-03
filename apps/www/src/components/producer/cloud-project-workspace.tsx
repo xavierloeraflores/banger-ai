@@ -120,7 +120,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
         <option value="">Choose project</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}
       </select></label>
       {snapshot && <>
-        <Button onClick={onOpenMusic}>Open ElevenLabs workshop</Button>
+        <Button onClick={onOpenMusic}>Open Vocal Studio</Button>
         <p>Saved revision {snapshot.revision}{dirty ? ` · Draft based on revision ${draftBase}` : ''}</p>
         <label>Cloud music file<select disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
           <option value="" disabled>Choose a file</option>{snapshot.files.map(file=><option key={file.path}>{file.path}</option>)}
@@ -158,7 +158,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
         <ul aria-label="Cloud audio">{artifacts.map(artifact=><li key={artifact.id}>{artifact.kind} · revision {artifact.revision} · {artifact.status}
           {artifact.status==='ready' && <><Button disabled={busy} onClick={()=>void action(async()=>setPlaying(await audioUrl(connection,artifact.id)))}>Listen</Button>
             <Button disabled={busy} onClick={()=>void action(async()=>{const link=document.createElement('a');link.href=await audioUrl(connection,artifact.id);link.download=`${artifact.id}.${artifact.kind==='wav'?'wav':'audio'}`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),60000);})}>Download audio</Button>
-            {artifact.kind==='wav' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/projects/${snapshot.projectId}/jobs`,'POST',{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('WAV submitted for composition analysis. Open the ElevenLabs song workshop to edit its lyrics.');})}>Submit to ElevenLabs</Button>}
+            {artifact.kind==='wav' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/projects/${snapshot.projectId}/jobs`,'POST',{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('WAV submitted for composition analysis. Open Vocal Studio to edit its lyrics.');})}>Submit to ElevenLabs</Button>}
           </>}
         </li>)}</ul>
         {playing && <audio controls src={playing} aria-label="Cloud audio preview" />}

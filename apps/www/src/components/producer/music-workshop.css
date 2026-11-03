@@ -1,10 +1,10 @@
 .producer [hidden] { display: none !important; }
-.producer[data-view="elevenlabs"] { height: 100dvh; min-height: 680px; display: flex; flex-direction: column; padding-inline: 24px; overflow: hidden; }
-.producer[data-view="elevenlabs"] > .producer-header { min-height: 58px; flex-shrink: 0; }
-.producer[data-view="elevenlabs"] > .producer-transport,
-.producer[data-view="elevenlabs"] > .producer-footer { display: none; }
-.producer[data-view="elevenlabs"] .producer-workspace { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 0; padding-bottom: 0; }
-.producer[data-view="elevenlabs"] #studio-panel-elevenlabs { flex: 1; min-height: 0; }
+.producer[data-view="vocal"] { height: 100dvh; min-height: 680px; display: flex; flex-direction: column; padding-inline: 24px; overflow: hidden; }
+.producer[data-view="vocal"] > .producer-header { min-height: 58px; flex-shrink: 0; }
+.producer[data-view="vocal"] > .producer-transport,
+.producer[data-view="vocal"] > .producer-footer { display: none; }
+.producer[data-view="vocal"] .producer-workspace { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 0; padding-bottom: 0; }
+.producer[data-view="vocal"] #vocal-studio { flex: 1; min-height: 0; }
 .producer-tabs { overflow-x: auto; flex-shrink: 0; }
 .music-workshop { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--producer-text); }
 .music-workshop button { border: 1px solid var(--producer-border); color: inherit; background: #252822; border-radius: 7px; padding: 7px 11px; line-height: 1.4; transition: background .12s; }
@@ -108,7 +108,7 @@
   .music-player-view .music-volume { display: none; }
 }
 @media(max-width:700px) {
-  .producer[data-view="elevenlabs"] { padding-inline: 12px; height: auto; min-height: 100dvh; overflow: visible; }
+  .producer[data-view="vocal"] { padding-inline: 12px; height: auto; min-height: 100dvh; overflow: visible; }
   .music-heading { flex-direction: column; align-items: stretch; gap: 12px; }.music-file-tools { flex-wrap: wrap; }.music-file-tools select { max-width: 150px; }
   .music-body { display: flex; flex-direction: column; }.music-center { padding-right: 0; }.music-editor-scroll { max-height: 60dvh; min-height: 230px; }
   .music-history { border-left: 0; border-top: 1px solid var(--producer-border); padding-left: 0; margin-top: 8px; max-height: 260px; }.music-history > ol { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.music-history-help { margin-bottom: 10px; }

@@ -86,7 +86,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
     <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button>
     <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav')),true);});}}>Use studio WAV</button>
   </div>;
-  return <section className="music-workshop" aria-label="ElevenLabs song workshop">
+  return <section className="music-workshop" aria-label="Vocal Studio">
     {backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
     <header className="music-heading">
       <div><h1>{song?.name??'Make the next version.'}</h1></div>
@@ -116,7 +116,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
           <textarea id="music-lyric-prompt" value={prompt} maxLength={2000} rows={2} disabled={!song||blocked} placeholder="Write a hopeful chorus about finding your way home…" onChange={event=>setPrompt(event.target.value)}/>
           <div><span>Lyrics only. Your music settings stay the same.</span><button type="submit" className="music-primary" aria-label="Generate lyrics for selected chunks" disabled={!song||blocked||dirty||!prompt.trim()||!indices.length}>Generate lyrics ↑</button></div>
         </form>
-        <div className="music-status" role="status">{notice||audio.error||(dirty?'Save your lyrics before generating audio.':null)}{recent&&<span className="music-job-progress">{recent.stage}<progress max={100} value={recent.progress} aria-label="ElevenLabs progress"/>{recent.error&&<span>{recent.error}</span>}</span>}</div>
+        <div className="music-status" role="status">{notice||audio.error||(dirty?'Save your lyrics before generating audio.':null)}{recent&&<span className="music-job-progress">{recent.stage}<progress max={100} value={recent.progress} aria-label="Vocal Studio progress"/>{recent.error&&<span>{recent.error}</span>}</span>}</div>
       </div>
       <aside className="music-history" aria-label="Audio version history">
         <header><h2>History</h2><span>{history.filter(item=>item.operation==='generate').length} variations</span></header>
@@ -132,7 +132,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
       </aside>
     </div>
     <footer className="music-player" aria-label="Song player">
-      <audio ref={attachAudio} src={audio.url||undefined} preload="metadata" aria-label="ElevenLabs song preview" onLoadedMetadata={event=>audio.setDuration(event.currentTarget.duration)} onTimeUpdate={event=>audio.updateTime(event.currentTarget)} onPlay={()=>audio.setPlaying(true)} onPause={()=>audio.setPlaying(false)} onEnded={()=>audio.setPlaying(false)} onError={()=>audio.setError('This audio could not be played. Try selecting it again.')}/>
+      <audio ref={attachAudio} src={audio.url||undefined} preload="metadata" aria-label="Vocal Studio song preview" onLoadedMetadata={event=>audio.setDuration(event.currentTarget.duration)} onTimeUpdate={event=>audio.updateTime(event.currentTarget)} onPlay={()=>audio.setPlaying(true)} onPause={()=>audio.setPlaying(false)} onEnded={()=>audio.setPlaying(false)} onError={()=>audio.setError('This audio could not be played. Try selecting it again.')}/>
       <div className="music-player-controls"><div className="music-player-view"><span>Timeline</span><button onClick={()=>setZoom(1)} disabled={!song}>Fit</button><label>Zoom<input aria-label="Timeline zoom" type="range" min={1} max={4} step={.25} value={zoom} onChange={event=>setZoom(Number(event.target.value))} disabled={!song}/></label><label className="music-volume">Volume<input aria-label="Preview volume" type="range" min={0} max={1} step={.05} value={audio.volume} onChange={event=>audio.setVolume(Number(event.target.value))}/></label></div>
         <div className="music-playback"><time>{clockTime(audio.position)}</time><button className="music-play" aria-label={audio.playing?'Pause song':'Play song'} disabled={!audio.url||audio.loading||!active} onClick={()=>void audio.toggle()}>{audio.playing?'Ⅱ':'▶'}</button><time>{clockTime(duration)}</time></div>
         <button disabled={!song||busy} onClick={()=>void action(async()=>{if(song&&backend)await backend.save(song);})}>↓ Download</button>

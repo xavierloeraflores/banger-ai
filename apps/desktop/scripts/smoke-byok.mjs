@@ -121,10 +121,10 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-settings-dialog').open");
   await evaluate("document.querySelector('#producer-settings-dialog').click()");
   await waitFor("!document.querySelector('#producer-settings-dialog').open");
-  await click("ElevenLabs");
+  await click("Switch to Vocal Studio");
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("document.querySelector('#producer-settings-dialog').open");
-  assert.equal(await evaluate("document.querySelector('#studio-tab-elevenlabs').getAttribute('aria-selected')"), "true");
+  assert.equal(await evaluate("document.querySelector('.producer').dataset.view"), "vocal");
   assert.equal(await evaluate("(() => { const r = document.querySelector('#producer-settings-dialog').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })()"), true);
   assert.equal(await evaluate("(() => { const d = document.querySelector('#producer-settings-dialog'); return d.scrollWidth <= d.clientWidth; })()"), true);
 }

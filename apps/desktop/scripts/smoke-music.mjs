@@ -94,7 +94,14 @@ async function run(){
    await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
    await wait("document.querySelector('details.project-workspace select')");
   }
-  await click('ElevenLabs');await wait("document.querySelector('#studio-tab-elevenlabs').getAttribute('aria-selected')==='true'");
+  await click('Mixer');
+  assert.equal(await evaluate("document.querySelectorAll('.producer-tabs [role=tab]').length"),4);
+  await click('Switch to Vocal Studio');await wait("document.querySelector('.producer').dataset.view==='vocal'");
+  assert.equal(await evaluate("document.querySelector('.producer-tabs').checkVisibility()"),false);
+  assert.equal(await evaluate("document.querySelector('.producer-header .producer-file-actions').textContent.includes('ProjectSwitch to Beat Studio')"),true);
+  await click('Switch to Beat Studio');await wait("document.querySelector('#studio-tab-mixer').getAttribute('aria-selected')==='true'");
+  assert.equal(await evaluate("document.querySelector('#studio-panel-mixer').checkVisibility()"),true);
+  await click('Switch to Vocal Studio');
   assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),true);
   await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===2");
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
@@ -127,7 +134,7 @@ async function run(){
   const original=await evaluate("fetch(document.querySelector('.music-workshop audio').src).then(r=>r.arrayBuffer()).then(b=>crypto.subtle.digest('SHA-256',b)).then(hash=>Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join(''))");assert.equal(original,createHash('sha256').update(wav()).digest('hex'));
   await click('Retry chunk 2');await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 6')");
   assert.equal(generatedInputs.at(-1).version.songId,'original-song');assert.deepEqual(generatedInputs.at(-1).indices,[1]);assert.deepEqual(generatedInputs.at(-1).version.plan,fixturePlan);
-  await click('Play song');await wait("document.querySelector('.music-workshop audio').currentTime>0");await click('Sequencer');await wait("document.querySelector('.music-workshop audio').paused");await click('ElevenLabs');
+  await click('Play song');await wait("document.querySelector('.music-workshop audio').currentTime>0");await click('Switch to Beat Studio');await wait("document.querySelector('.music-workshop audio').paused");await click('Switch to Vocal Studio');
   // A newer server revision cannot silently erase a draft.
   await fill('[aria-label="Lyrics for chunk 1"]','Unsaved local draft');await store.act(id,{operation:'edit',baseVersion:6,edits:[{index:0,lyrics:'External edit'}]},randomUUID());
   await wait("document.querySelector('.music-workshop').textContent.includes('Your lyric draft is preserved')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'Unsaved local draft');
@@ -136,11 +143,14 @@ async function run(){
   await click('Preview chunk 1');await wait("!document.querySelector('.music-workshop audio').paused");
   await wait("document.querySelector('.music-workshop audio').paused&&document.querySelector('.music-workshop audio').currentTime>=4&&document.querySelector('.music-workshop audio').currentTime<5");
   window.setContentSize(390,844);await delay(200);
-  assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Music tab fits a narrow viewport.');
+  assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Vocal Studio fits a narrow viewport.');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-mobile.png'),(await window.webContents.capturePage()).toPNG());
   if(!cloud){
    await evaluate('void(window.confirm=()=>true)');
-   await click('Raw .banger');await fill('#producer-source',source.replace('tempo 120','tempo 60'));await click('Apply source');await click('ElevenLabs');
+   await click('Switch to Beat Studio');await click('Raw .banger');await fill('#producer-source',source.replace('tempo 120','tempo 60'));await click('Apply source');await click('Switch to Vocal Studio');
+   await click('Switch to Beat Studio');assert.equal(await evaluate("document.querySelector('#studio-tab-source').getAttribute('aria-selected')"),'true');
+   assert.ok((await evaluate("document.querySelector('#producer-source').value")).includes('tempo 60'));
+   await click('Switch to Vocal Studio');
    await click('Use studio WAV');
    await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 1')");
    const imported=(await store.list()).find(song=>song.id!==id);assert.ok(imported,'Rendering the studio creates another song.');
