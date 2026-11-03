@@ -34,3 +34,41 @@
 .studio-mixer-strip > button { min-width: 48px; }
 .studio-mixer-detail { margin: 24px 0 !important; padding: 16px !important; background: #141719; border: 1px solid #34383b !important; border-radius: 8px; }
 @media (max-width: 850px) { .studio-song-timeline li { flex-wrap: wrap; gap: 10px; } .studio-song-repeats { margin-left: 0; } .studio-song-row-actions { margin-left: auto; } .studio-song, .studio-mixer { padding: 14px; } }
+
+.studio-mixer .studio-buses { padding: 20px; border-color: #34383b; background: #101315; border-radius: 12px; }
+.studio-buses > .studio-buses-heading { font-size: 14px; color: #e9ece7; }
+.studio-buses-heading > span { margin-left: 10px; padding: 3px 8px; border-radius: 5px; background: #282e28; color: #c6d5be; font-size: 11px; font-variant-numeric: tabular-nums; }
+.studio-buses-help, .studio-buses-empty p { color: #a5ada5; font-size: 12px; line-height: 1.6; margin: 10px 0 20px; }
+.studio-bus-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: start; gap: 16px; }
+.studio-bus-grid .studio-bus { min-width: 0; margin: 0; padding: 0; border: 1px solid #3d473a; border-radius: 10px; background: #181d19; overflow: hidden; }
+.studio-bus-heading { display: flex; align-items: center; gap: 10px; padding: 16px; border-bottom: 1px solid #343e31; }
+.studio-bus-number { display: grid; place-items: center; flex: 0 0 28px; height: 28px; border: 1px solid #596b45; border-radius: 6px; color: var(--producer-lime); font-size: 11px; font-variant-numeric: tabular-nums; }
+.studio-bus-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #edf1e9; }
+.studio-bus-destination { margin-left: auto; flex-shrink: 0; color: #abb8a2; font-size: 11px; }
+.studio-bus-level { padding: 18px 16px; }
+.studio-bus-level .studio-meter { font-size: 0; gap: 12px; }
+.studio-bus-level .studio-meter meter { flex: 1; min-width: 0; height: 10px; }
+.studio-bus-level .studio-meter output { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.studio-bus-gain { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 18px; color: #b9c2b4; font-size: 12px; }
+.studio-bus-gain output { color: #edf1e9; font-variant-numeric: tabular-nums; }
+.studio-bus-gain input { grid-column: 1 / -1; width: 100%; accent-color: var(--producer-lime); }
+.studio-bus .producer-track-effects, .studio-bus .studio-automation, .studio-bus-sends { margin: 0; border: 0; border-top: 1px solid #343e31; border-radius: 0; padding: 0 16px; }
+.studio-bus summary { padding: 14px 0; color: #d5dece; font-size: 12px; overflow-wrap: anywhere; }
+.studio-bus summary span { color: #a5b09d; font-size: 11px; font-weight: 400; margin-left: 8px; }
+.studio-bus .producer-track-effects summary span { display: block; margin: 6px 0 0 16px; line-height: 1.5; }
+.studio-bus details[open] { padding-bottom: 16px; }
+.studio-bus-sends p { color: #a5b09d; font-size: 12px; }
+.studio-bus-sends .studio-sends { display: grid; gap: 14px; }
+.studio-bus-sends .studio-sends label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1fr) 38px; overflow-wrap: anywhere; }
+.studio-bus-sends .studio-sends input { width: 100%; }
+.studio-bus-sends output { text-align: right; font-variant-numeric: tabular-nums; }
+.studio-bus .producer-effect-parameter { grid-template-columns: minmax(0, 1fr) minmax(60px, 1fr) 58px; overflow-wrap: anywhere; }
+.studio-bus-footer { display: flex; justify-content: flex-end; padding: 8px; border-top: 1px solid #343e31; background: #141815; }
+.studio-bus-footer button { color: #c0aaa7; font-size: 11px; overflow-wrap: anywhere; white-space: normal; }
+.studio-buses-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.studio-buses-actions > span { color: #a5b09d; font-size: 11px; }
+.studio-buses-empty { padding: 24px; border: 1px dashed #46513e; border-radius: 8px; text-align: center; }
+.studio-buses-empty strong { color: #d5dece; font-size: 13px; }
+.studio-buses-empty p { margin: 8px 0 0; }
+.studio-buses summary:focus-visible { outline: 2px solid var(--producer-lime); outline-offset: 3px; border-radius: 3px; }
+@media (max-width: 600px) { .studio-mixer .studio-buses { padding: 12px; } .studio-bus-heading { flex-wrap: wrap; } }
