@@ -76,6 +76,7 @@ async function run(window) {
     console.log("Live Muse Glimmer loaded through the model selector. Generating through desktop chat.");
     await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+    await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
     await waitFor("document.querySelector('#ai-chat-dialog').matches(':modal')");
     await input("Create one warm lo-fi loop at 85 BPM with kick, snare, hats and a C minor bass line. Use create_banger_file to produce a playable file.");
     await click("Send");

@@ -324,7 +324,7 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
   .producer-header .producer-file-actions { margin-left: auto; }
 }
 
-.ai-chat-target { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; font-size: .8rem; }
+.ai-chat-target { display: flex; align-items: center; gap: .75rem; padding: .5rem 24px; margin: 0; font-size: .8rem; }
 .ai-chat-target select { min-width: 0; max-width: 100%; border: 1px solid var(--producer-border); border-radius: .5rem; background: var(--producer-panel); color: inherit; padding: .4rem; }
 
 .chatgpt-settings { display: flex; flex-direction: column; gap: .8rem; min-width: 0; }
@@ -356,10 +356,8 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .project-workspace label { display: block; margin: .8rem 0 .4rem; font-size: .85rem; }
 .project-workspace select { display: block; background: var(--producer-panel); color: inherit; border: 1px solid #343745; padding: .5rem; max-width: 100%; }
 .project-workspace textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; background: var(--producer-bg); color: #e5e7eb; border: 1px solid #343745; border-radius: .5rem; padding: .8rem; font: .85rem/1.55 monospace; }
-#workspace-source { min-height: 240px; }
 #workspace-prompt { min-height: 84px; }
 .project-workspace-actions { margin-top: .75rem; }
-.project-workspace-events { max-height: 240px; overflow: auto; font: .8rem/1.6 monospace; overflow-wrap: anywhere; }
 .project-workspace-notice { white-space: pre-wrap; }
 
 /* Song studio */
@@ -611,18 +609,21 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
 .producer-sequence-scroll[data-focused="true"] .producer-step { scroll-margin-inline: 0; }
 .producer-sequence-scroll[data-focused="true"] .producer-track-label { line-height: 1.2; }
 
-.project-song-controls, .project-song-advanced { width: 100%; min-width: 0; }
+.project-song-controls { width: 100%; min-width: 0; }
 .project-song-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; }
 .project-song-controls label { display: grid; flex: 1; min-width: 0; gap: 8px; color: var(--producer-dim); }
 .project-song-controls select { max-width: 100%; min-width: 0; min-height: 52px; border-radius: 10px; }
 .project-song-controls form { display: flex; align-items: flex-end; flex: 1; gap: 12px; min-width: min(100%, 320px); }
 .project-song-controls input { width: 100%; min-height: 52px; }
-.project-song-advanced summary, .project-cloud-controls summary { cursor: pointer; color: var(--producer-dim); }
+.project-cloud-controls summary { cursor: pointer; color: var(--producer-dim); }
 .project-cloud-controls { margin-top: 20px; }
-.project-song-advanced > .project-workspace-actions { margin-block: 16px; }
 @media (max-width: 600px) {
   .project-song-controls { display: grid; }
   .project-song-controls form { flex-wrap: wrap; }
   .producer-project-dialog .project-folder-workspace { padding: 18px; }
   .project-folder-workspace .project-workspace-actions { width: 100%; }
 }
+
+.ai-chat-scope-note { margin: 0; padding: 8px 24px; font-size: 12px; color: var(--producer-dim); overflow-wrap: anywhere; }
+.ai-chat-activity { font-size: 12px; color: var(--producer-dim); overflow-wrap: anywhere; }
+.ai-chat-activity summary { cursor: pointer; }

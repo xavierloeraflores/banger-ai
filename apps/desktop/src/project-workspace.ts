@@ -105,13 +105,14 @@ export function installWorkspaceHandlers(options: {
     catch (error) { throw new Error(safeError(error, "Could not save the file. Reload it to check for external changes.")); }
   });
   ipcMain.handle("banger:workspace-cancel", event => { state(options.senderWindow(event)).controller?.abort(); });
-  ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown) => {
+  ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown, resetHistory: unknown) => {
     const window = options.senderWindow(event);
     const current = state(window);
     if (current.controller || opening.has(window.id)) return { ok: false, error: "A project operation is already running." };
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16000 || (activeFile !== undefined && typeof activeFile !== "string")) return { ok: false, error: "Enter a task under 16,000 characters and choose a music file." };
     const controller = new AbortController();
     current.controller = controller;
+    if (resetHistory === true) delete current.session;
     try {
       const selected = await options.selectModel();
       controller.signal.throwIfAborted();
