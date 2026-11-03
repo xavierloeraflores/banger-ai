@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { MUSIC_LIMITS, resolvePattern, type MusicProgram, type MusicSection } from "@banger/compiler";
 import { Button, Input, Select } from "@banger/shadcn";
 
@@ -26,11 +26,11 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
       {preview && <Button variant="secondary" onClick={() => onPreview()}>Stop preview</Button>}
     </div>
     <fieldset disabled={disabled}>
-      <div className="studio-song-palette" aria-label="Sections to append">{sections.map((item, index) => <Button key={item.name} variant="secondary" style={{ "--section-color": `hsl(${index * 47 + 330} 75% 62%)` } as CSSProperties} disabled={timeline.length >= MUSIC_LIMITS.timeline} aria-label={`Append ${item.name}`} onClick={() => onChange({ ...program, timeline: [...timeline, { section: item.name, repeats: 1 }] })}>{item.name}</Button>)}</div>
+      <div className="studio-song-palette" aria-label="Sections to append">{sections.map(item => <Button key={item.name} variant="secondary" disabled={timeline.length >= MUSIC_LIMITS.timeline} aria-label={`Append ${item.name}`} onClick={() => onChange({ ...program, timeline: [...timeline, { section: item.name, repeats: 1 }] })}>{item.name}</Button>)}</div>
       {!sections.length && <p>Create a section below, then add it to the song.</p>}
       <ol className="studio-song-timeline" aria-label="Song timeline">{timeline.map((entry, index) => {
         const item = sections.find(item => item.name === entry.section)!;
-        return <li key={`${index}-${entry.section}`} draggable={!disabled} data-playing={section === entry.section} data-drop-target={over === index} style={{ "--section-color": `hsl(${sections.indexOf(item) * 47 + 330} 75% 62%)` } as CSSProperties}
+        return <li key={`${index}-${entry.section}`} draggable={!disabled} data-playing={section === entry.section} data-drop-target={over === index}
           onDragStart={event => { if (disabled) { event.preventDefault(); return; } setDragged(index); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(index)); }}
           onDragOver={event => { if (dragged !== null && !disabled) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setOver(index); } }}
           onDrop={event => { event.preventDefault(); if (dragged !== null) move(dragged, index); setDragged(null); setOver(null); }}
