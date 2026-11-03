@@ -1,11 +1,11 @@
 import type { ChatGPTStatus } from "./chatgpt";
 
 export const AI_PROVIDERS = [
-  { id: "vercel", name: "Vercel AI Gateway", hint: "Use a Gateway key and a provider/model ID." },
-  { id: "anthropic", name: "Anthropic", hint: "Use an Anthropic API key and a Claude model ID." },
-  { id: "openai", name: "OpenAI", hint: "Use an OpenAI API key and model ID." },
-  { id: "meta", name: "Meta Muse", hint: "Use a Meta Model API key and a Muse model ID." },
-  { id: "grok", name: "Grok", hint: "Use an xAI API key and a Grok model ID." },
+  { id: "vercel", name: "Vercel AI Gateway", defaultModel: "meta/muse-wonder-1.0", hint: "Muse Wonder. Use a Vercel AI Gateway key." },
+  { id: "anthropic", name: "Anthropic", defaultModel: "claude-opus-5-5", hint: "Claude Opus 5.5. Use an Anthropic API key." },
+  { id: "openai", name: "OpenAI", defaultModel: "gpt-6-astra", hint: "GPT-6 Astra. Use an OpenAI API key." },
+  { id: "meta", name: "Meta Muse", defaultModel: "muse-wonder-1.0", hint: "Muse Wonder. Use a Meta Model API key." },
+  { id: "grok", name: "Grok", defaultModel: "grok-4.7", hint: "Grok 4.7. Use an xAI API key." },
 ] as const;
 
 export type ProviderId = typeof AI_PROVIDERS[number]["id"];

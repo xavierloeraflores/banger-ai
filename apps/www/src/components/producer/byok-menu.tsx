@@ -7,11 +7,16 @@ import { AI_PROVIDERS, aiSettingsBridge, type AISettings, type ProviderId } from
 import { ChatGPTSettings } from "./chatgpt-settings";
 import { LocalModelSettings } from "./local-model";
 
+function providerModel(id: ProviderId | "local" | "chatgpt", settings: AISettings): string {
+  if (id === "local" || id === "chatgpt") return "";
+  return settings.providers[id]?.model ?? AI_PROVIDERS.find(provider => provider.id === id)!.defaultModel;
+}
+
 export function ByokSettings() {
   const pending = useRef(false);
   const [settings, setSettings] = useState<AISettings>({ activeProvider: null, providers: {} });
   const [provider, setProvider] = useState<ProviderId | "local" | "chatgpt">("vercel");
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState<string>(AI_PROVIDERS[0].defaultModel);
   const [key, setKey] = useState("");
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,7 +29,7 @@ export function ByokSettings() {
 
   function select(id: ProviderId | "local" | "chatgpt", next = settings) {
     setProvider(id);
-    setModel((id === "local" || id === "chatgpt") ? "" : next.providers[id]?.model ?? "");
+    setModel(providerModel(id, next));
     setKey("");
     setVisible(false);
     setError(null);
@@ -39,7 +44,7 @@ export function ByokSettings() {
       setSettings(next);
       const id = next.chatgpt?.selected ? "chatgpt" : next.localSelected ? "local" : next.activeProvider ?? "vercel";
       setProvider(id);
-      setModel((id === "local" || id === "chatgpt") ? "" : next.providers[id]?.model ?? "");
+      setModel(providerModel(id, next));
       setLoaded(true);
       setError(next.settingsError ?? null);
     }).catch(cause => {
@@ -65,7 +70,7 @@ export function ByokSettings() {
       const next = await (remove ? bridge.remove(provider) : bridge.save(provider, model, key));
       setSettings(next);
       window.dispatchEvent(new Event("banger:ai-settings-changed"));
-      setModel(next.providers[provider]?.model ?? "");
+      setModel(providerModel(provider, next));
       setKey("");
       setVisible(false);
       setNotice(remove ? `${selected.name} key removed.` : `${selected.name} settings saved. Key has not been verified.`);
@@ -96,7 +101,7 @@ export function ByokSettings() {
           <p className="byok-hint">{selected.hint}</p>
           <fieldset disabled={busy || !loaded}>
             <label htmlFor="byok-model">Model ID</label>
-            <Input id="byok-model" value={model} maxLength={200} placeholder={provider === "vercel" ? "provider/model-id" : "model-id"}
+            <Input id="byok-model" value={model} maxLength={200} placeholder={selected.defaultModel}
               autoComplete="off" spellCheck={false} required onChange={event => setModel(event.target.value)} />
             <label htmlFor="byok-key">{saved ? "Replace API key" : "API key"}</label>
             <div className="byok-key-field">
