@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import type { MusicProgram, MusicTrack } from "@banger/compiler";
 import type { MeterSnapshot } from "@banger/engine";
 import { Button, Range } from "@banger/shadcn";
@@ -18,7 +18,7 @@ export function MixerView({ program, disabled, meters, onTrackChange, onChange }
     <fieldset disabled={disabled} className="studio-mixer-strips">
       {program.tracks.map((track, index) => {
         const pan = track.pan ?? 0, panText = pan === 0 ? "Center" : `${Math.round(Math.abs(pan) * 100)}% ${pan < 0 ? "left" : "right"}`;
-        return <section key={track.name} className="studio-mixer-strip" data-muted={track.muted || (hasSolo && !track.solo)} style={{ "--strip-color": `hsl(${index * 29 + 335} 85% 63%)` } as CSSProperties} aria-label={`${track.name} mixer strip`}>
+        return <section key={track.name} className="studio-mixer-strip" data-muted={track.muted || (hasSolo && !track.solo)} aria-label={`${track.name} mixer strip`}>
           <span className="studio-mixer-number">{index + 1}</span><strong title={track.name}>{track.name}</strong>
           <LevelMeter name={track.name} level={meters.tracks[track.name]?.peak} />
           <label className="studio-mixer-pan">Pan<Range aria-label={`Mixer ${track.name} pan`} min={-1} max={1} step={.01} value={pan} aria-valuetext={panText} onChange={event => onTrackChange(index, { ...track, pan: Number(event.target.value) })} /><output>{panText}</output></label>
