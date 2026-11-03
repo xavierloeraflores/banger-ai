@@ -1,35 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Button } from '@banger/shadcn';
 import type { MusicProgram } from '@banger/compiler';
-import type { StageView } from '@banger/stage';
+import type { PerformanceSnapshot } from '@banger/stage';
 import { createHeroChart, HERO_COLORS, HERO_KEYS, HeroRun } from '@/lib/muse-hero';
-import { usePlayer } from './use-player';
 import { drawHighway } from './muse-highway';
 import './muse-hero.css';
 
 type Phase = 'ready' | 'countdown' | 'playing' | 'finished';
 const clockLabel = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.floor(Math.max(0, seconds) % 60)).padStart(2, '0')}`;
 
-export function MuseHero({ program, fileName, onOpen, disabled }: { program: MusicProgram; fileName: string; onOpen: () => void; disabled: boolean }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  return <>
-    <Button ref={trigger} variant="secondary" disabled={disabled} onClick={() => { onOpen(); setOpen(true); dialog.current?.showModal(); }} aria-haspopup="dialog" aria-controls="muse-hero">Muse Hero</Button>
-    <dialog id="muse-hero" ref={dialog} className="muse-dialog" aria-label="Muse Hero rhythm game" onClose={() => { setOpen(false); trigger.current?.focus(); }}>
-      {open && <HeroGame program={program} fileName={fileName} onClose={() => dialog.current?.close()} />}
-    </dialog>
-  </>;
+interface Props {
+  program: MusicProgram;
+  fileName: string;
+  readPerformance: () => PerformanceSnapshot;
+  play: () => Promise<void>;
+  stop: () => void;
+  starting: boolean;
+  error: string | null;
+  onPrepare: () => void;
+  onClose: () => void;
 }
 
-function HeroGame({ program, fileName, onClose }: { program: MusicProgram; fileName: string; onClose: () => void }) {
-  const player = usePlayer(program);
-  const { readPerformance, play, stop } = player;
-  const viewport = useRef<HTMLDivElement>(null);
+/** Game overlay for the existing stage and audio transport. */
+export function MuseHero({ program, fileName, readPerformance, play, stop, starting, error, onPrepare, onClose }: Props) {
+  const backButton = useRef<HTMLButtonElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [stageError, setStageError] = useState<string | null>(null);
   const [track, setTrack] = useState('');
   const [autoplay, setAutoplay] = useState(false);
   const [phase, setPhase] = useState<Phase>('ready');
@@ -45,15 +41,12 @@ function HeroGame({ program, fileName, onClose }: { program: MusicProgram; fileN
   const request = useRef(0);
   const setMode = useCallback((next: Phase) => { mode.current = next; setPhase(next); }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    let stage: StageView | undefined;
-    void import('@banger/stage').then(({ createStage }) => {
-      if (cancelled || !viewport.current) return;
-      stage = createStage(viewport.current, { readPerformance, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, onError: setStageError });
-    }).catch(error => { if (!cancelled) setStageError(error instanceof Error ? error.message : 'The band could not load.'); });
-    return () => { cancelled = true; stage?.dispose(); };
-  }, [readPerformance]);
+  useEffect(() => { backButton.current?.focus(); }, []);
+
+  useEffect(() => () => {
+    request.current++;
+    if (mode.current !== 'ready') stop();
+  }, [stop]);
 
   useEffect(() => {
     let frame = 0;
@@ -121,20 +114,19 @@ function HeroGame({ program, fileName, onClose }: { program: MusicProgram; fileN
   }, [press, release, end]);
 
   function start() {
-    request.current++; stop(); run.current = new HeroRun(chart); pressed.current.clear();
+    request.current++; onPrepare(); run.current = new HeroRun(chart); pressed.current.clear();
     auto.current = autoplay; currentTime.current = -3; countdownStart.current = performance.now(); startPending.current = false; setMode('countdown');
   }
   const active = phase === 'playing' || phase === 'countdown';
   const progress = Math.min(100, Math.max(0, display.time / chart.duration * 100));
   const title = fileName.replace(/\.banger$/i, '').replaceAll('-', ' ');
-  return <div className="muse-game" data-phase={phase} data-score={display.score} data-time={display.time.toFixed(3)}>
-    <div className="muse-stage" ref={viewport} aria-hidden="true" />
+  return <div id="muse-hero" className="muse-game" role="region" aria-label="Muse Hero rhythm game" data-phase={phase} data-score={display.score} data-time={display.time.toFixed(3)}>
     <div className="muse-vignette" />
     <canvas ref={canvas} className="muse-highway" aria-label="Five fret lanes. Press A, S, D, F or G as notes reach the glowing line. Hold long notes until their tails finish." />
     <header className="muse-heading">
       <h1><span className="muse-mark">m</span> muse<span>hero</span><small>YOUR MUSIC. YOUR STAGE.</small></h1>
       <div className="muse-song"><span>{active ? autoplay ? 'PRACTICE AUTOPLAY' : 'ON STAGE' : 'LOADED FROM .BANGER'}</span><strong>{title}</strong><small>{program.tempo} BPM <i /> {program.tracks.length} tracks <i /> {clockLabel(chart.duration)}</small></div>
-      <button className="muse-exit" onClick={onClose} aria-label="Close Muse Hero">Back to studio <kbd>esc</kbd></button>
+      <button ref={backButton} className="muse-exit" onClick={onClose} aria-label="Hide Muse Hero">Back to band <kbd>esc</kbd></button>
     </header>
     <div className="muse-score muse-glass"><span>SCORE</span><strong>{display.score.toLocaleString().padStart(6, '0')}</strong><small>{autoplay ? 'PRACTICE RUN' : `${chart.notes.length} NOTES IN YOUR CHART`}</small></div>
     <div className="muse-energy"><div className="muse-stars" aria-label={`${Math.min(5, Math.floor(progress / 20 * display.accuracy / 100))} of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <span key={index} className={progress / 20 * display.accuracy / 100 >= index + 1 ? 'earned' : ''}>★</span>)}</div><div className="muse-progress" role="progressbar" aria-label="Song progress" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress}%` }} /></div><small>{clockLabel(display.time)} <span>/ {clockLabel(chart.duration)}</span></small></div>
@@ -147,12 +139,12 @@ function HeroGame({ program, fileName, onClose }: { program: MusicProgram; fileN
       <p>{phase === 'finished' ? `${display.accuracy.toFixed(1)}% accuracy · ${display.best} best streak · ${display.held} holds` : 'Hit the glowing line. Hold the long notes. Find your rhythm.'}</p>
       <label className="muse-track-label">Chart <select aria-label="Muse Hero chart" value={track} onChange={event => { setTrack(event.target.value); setMode('ready'); }}><option value="">Full band</option>{program.tracks.map(track => <option key={track.name} value={track.name}>{track.name}</option>)}</select></label>
       <label className="muse-autoplay"><input type="checkbox" checked={autoplay} onChange={event => setAutoplay(event.target.checked)} /> Practice autoplay</label>
-      <button className="muse-start" onClick={start} disabled={!chart.notes.length || player.starting}>{player.starting ? 'Starting audio…' : phase === 'finished' ? 'Play again' : 'Take the stage'} <span>↗</span></button>
+      <button className="muse-start" onClick={start} disabled={!chart.notes.length || starting}>{starting ? 'Starting audio…' : phase === 'finished' ? 'Play again' : 'Take the stage'} <span>↗</span></button>
       {!chart.notes.length && <p role="status">No audible notes in this chart. Choose another track or unmute tracks in the studio.</p>}
     </section>}
     <div className="muse-frets" aria-label="Fret controls">{HERO_KEYS.map((key, lane) => <button key={key} style={{ '--fret': HERO_COLORS[lane] } as CSSProperties} aria-label={`Fret ${lane + 1}, ${key.slice(-1)}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!event.repeat) press(lane); } }} onKeyUp={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); release(lane); } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); press(lane); }} onPointerUp={() => release(lane)} onPointerCancel={() => release(lane)} onLostPointerCapture={() => release(lane)}><kbd>{key.slice(-1)}</kbd></button>)}</div>
     <footer className="muse-footer"><span>HIT <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd> <i /> HOLD FOR SUSTAINS</span>{active && <button onClick={end}>End run</button>}<span className="muse-footer-right">{autoplay ? 'AUTOPLAY' : 'FIVE FRETS. ONE BAND.'}</span></footer>
     <aside className="muse-stats muse-glass" aria-label="Performance"><span>PERFORMANCE <b>{display.accuracy.toFixed(1)}%</b></span>{(['perfect', 'great', 'good', 'miss'] as const).map(label => <div key={label} className={label}><span>{label}</span><b>{display[label]}</b></div>)}</aside>
-    {(player.error || stageError) && <p className="muse-error" role="alert">{player.error || `Band view unavailable. You can still play. ${stageError}`}</p>}
+    {error && <p className="muse-error" role="alert">{error}</p>}
   </div>;
 }

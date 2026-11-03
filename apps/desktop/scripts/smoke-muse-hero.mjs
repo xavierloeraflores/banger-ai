@@ -18,11 +18,20 @@ const timeout = setTimeout(() => { console.error('Muse Hero smoke timed out'); a
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', async () => {
   const evaluate = code => window.webContents.executeJavaScript(code, true);
   const wait = async (code, name) => {
-    for (let i = 0; i < 1600; i++) { if (await evaluate(code)) return; await delay(10); }
+    for (let i = 0; i < 1600; i++) { if (await evaluate(`Boolean(${code})`)) return; await delay(10); }
     await writeFile("/tmp/muse-hero-failure.png", (await window.webContents.capturePage()).toPNG());
     throw new Error(`Timed out: ${name}; ${await evaluate("document.querySelector('.muse-game')?.dataset.phase + ' / ' + document.querySelector('.muse-game')?.textContent")}`);
   };
-  const click = label => evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)}).click()`);
+  const activate = async selector => {
+    await wait(`(() => { const button = document.querySelector(${JSON.stringify(selector)}); return button && !button.disabled && button.getBoundingClientRect().width > 0; })()`, 'control ready');
+    const point = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
+    window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
+    window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+  };
+  const click = async label => {
+    if (label === 'Band stage') return activate('[aria-controls="performance-stage"]');
+    return evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)}).click()`);
+  };
   const key = (type, keyCode) => window.webContents.sendInputEvent({ type, keyCode });
   const apply = async source => {
     await evaluate(`(() => { const field = document.querySelector('#producer-source'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(source)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -30,16 +39,22 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
   };
   try {
     await enterStudio(window);
-    window.setContentSize(1440, 1000); window.show(); window.focus();
+    window.setContentSize(1440, 1000); window.setAlwaysOnTop(true); window.show(); window.focus(); window.webContents.focus();
     const sample = await evaluate("document.querySelector('#producer-source').value");
     await apply('tempo 120; track keys { instrument "synth/keys"; piano { note "C4" start 1 duration 1.5 velocity .7; note "C4" start 3 duration .5 velocity .7; } }');
-    await click('Muse Hero');
-    await wait("document.querySelector('.muse-stage canvas')?.dataset.characterCount === '1'", 'band ready');
+    await click('Band stage');
+    await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'shared stage ready');
+    await evaluate("void (window.sharedStageCanvas = document.querySelector('.performance-viewport canvas'))");
+    const toggle = await evaluate("(() => { const r = document.querySelector('.performance-hero-trigger').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()");
+    window.webContents.sendInputEvent({ type: 'mouseMove', x: 700, y: 300 });
+    window.webContents.sendInputEvent({ type: 'mouseMove', ...toggle });
+    await wait("document.querySelector('.muse-game')", 'hover opens overlay');
+    await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '1'", 'band ready');
     assert.equal(await evaluate("getComputedStyle(document.querySelector('#muse-hero')).backgroundColor"), 'rgba(0, 0, 0, 0)');
     assert.equal(await evaluate("getComputedStyle(document.body).overflow"), 'hidden');
     assert.equal(await evaluate("getComputedStyle(document.querySelector('.muse-game')).backgroundColor"), 'rgba(0, 0, 0, 0)');
-    assert.ok(await evaluate("document.querySelector('#muse-hero').getBoundingClientRect().width === innerWidth && document.querySelector('#muse-hero').getBoundingClientRect().height === innerHeight"));
-    await evaluate("document.querySelector('.muse-start').click()");
+    assert.ok(await evaluate("document.querySelector('#performance-stage').getBoundingClientRect().width === innerWidth && document.querySelector('#performance-stage').getBoundingClientRect().height === innerHeight"));
+    await activate('.muse-start');
     await wait("document.querySelector('.muse-game').dataset.phase === 'playing' && +document.querySelector('.muse-game').dataset.time >= .47", 'manual note');
     key('keyDown', 'A');
     await wait("+document.querySelector('.muse-game').dataset.score > 0", 'keyboard hit scored');
@@ -52,19 +67,28 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'mouseUp', ...fret, button: 'left', clickCount: 1 });
     await wait(`+document.querySelector('.muse-game').dataset.score > ${beforeTouch}`, 'pointer hit scored');
     await wait("document.querySelector('.muse-game').dataset.phase === 'finished'", 'finite run completes');
+    assert.ok(Number(await evaluate("document.querySelector('.muse-game').dataset.time")) >= 8, 'manual run completes without losing window focus');
     assert.ok(Number(await evaluate("document.querySelector('.muse-stats .miss b').textContent")) > 0);
-    await evaluate("document.querySelector('.muse-autoplay input').click()");
-    await evaluate("document.querySelector('.muse-start').click()");
+    window.focus(); window.webContents.focus();
+    await activate('.muse-autoplay input');
+    await wait("document.querySelector('.muse-autoplay input').checked", 'autoplay selected');
+    await activate('.muse-start');
     await wait("document.querySelector('.muse-game').dataset.phase === 'playing'", 'autoplay begins');
     await wait("document.querySelector('.muse-game').dataset.phase === 'finished'", 'autoplay ends');
     assert.equal(await evaluate("document.querySelector('.muse-stats .perfect b').textContent"), '8');
     assert.equal(await evaluate("document.querySelector('.muse-stats .miss b').textContent"), '0');
     assert.match(await evaluate("document.querySelector('.muse-menu p').textContent"), /100.0% accuracy.*4 holds/);
-    await evaluate("document.querySelector('[aria-label=\"Close Muse Hero\"]').click()");
-    await wait("!document.querySelector('.muse-stage canvas')", 'renderer disposal');
-    assert.equal(await evaluate('document.activeElement.textContent'), 'Muse Hero');
-    await apply(sample); await click('Muse Hero');
-    await wait("document.querySelector('.muse-stage canvas')?.dataset.characterCount === '8'", 'full band rebuilt');
+    await activate('[aria-label="Hide Muse Hero"]');
+    await wait("!document.querySelector('.muse-game')", 'overlay removed');
+    assert.ok(await evaluate("window.sharedStageCanvas === document.querySelector('.performance-viewport canvas')"), 'same renderer survives game');
+    assert.equal(await evaluate("document.querySelectorAll('.performance-viewport canvas').length"), 1);
+    await wait("document.activeElement === document.querySelector('.performance-hero-trigger')", 'toggle focus restored');
+    await activate('[aria-label="Close band stage"]');
+    await wait("!document.querySelector('.performance-viewport canvas')", 'renderer disposal');
+    await apply(sample); await click('Band stage');
+    await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'toggle ready');
+    await activate('.performance-hero-trigger');
+    await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'full band rebuilt');
     await delay(1000);
     await writeFile('/tmp/muse-hero-desktop.png', (await window.webContents.capturePage()).toPNG());
     window.setMinimumSize(0, 0); window.setContentSize(390, 844); await delay(400);
@@ -72,14 +96,29 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await writeFile('/tmp/muse-hero-mobile.png', (await window.webContents.capturePage()).toPNG());
     window.setContentSize(1440, 1000);
     key('keyDown', 'Escape'); key('keyUp', 'Escape');
-    await wait("!document.querySelector('#muse-hero').open", 'Escape closes game');
-    await click('Muse Hero');
-    await wait("document.querySelector('.muse-stage canvas')?.dataset.characterCount === '8'", 'final open');
+    await wait("!document.querySelector('.muse-game')", 'Escape hides game');
+    assert.ok(await evaluate("document.querySelector('#performance-stage').open"));
+    key('keyDown', 'Escape'); key('keyUp', 'Escape');
+    await wait("!document.querySelector('#performance-stage').open && !document.querySelector('.performance-viewport canvas')", 'second Escape closes stage');
+    await click('Band stage');
+    await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'final toggle ready');
+    await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'stage ready for keyboard');
+    await evaluate("document.querySelector('.performance-hero-trigger').focus()");
+    await wait("document.activeElement === document.querySelector('.performance-hero-trigger')", 'keyboard toggle focused');
+    key('keyDown', 'Enter'); key('char', '\r'); key('keyUp', 'Enter');
+    await wait("document.querySelector('.muse-game')", 'keyboard opens overlay');
+    await activate('.muse-start');
+    await wait("document.querySelector('.muse-game').dataset.phase === 'countdown'", 'cancellable countdown');
+    key('keyDown', 'Escape'); key('keyUp', 'Escape');
+    await delay(3500);
+    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.playing"), 'false', 'dismissed countdown cannot start audio');
+    await activate('.performance-hero-trigger');
+    await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'final open');
     assert.deepEqual(graphicsErrors, []);
     clearTimeout(timeout);
     console.log('Muse Hero smoke passed: transparent fullscreen overlay, live Three.js band, keyboard and pointer hits, early hold release, misses, finite run, autoplay with holds, restart, mobile, cleanup and Escape.');
     if (!keepOpen) app.exit(0);
     else { window.show(); window.focus(); console.log('Leaving Muse Hero open.'); }
-  } catch (error) { console.error(error); clearTimeout(timeout); app.exit(1); }
+  } catch (error) { console.error(await evaluate("document.querySelector('.muse-game')?.dataset.time + ' / ' + document.querySelector('.muse-menu')?.textContent")); await writeFile('/tmp/muse-hero-failure.png', (await window.webContents.capturePage()).toPNG()); console.error(error); clearTimeout(timeout); app.exit(1); }
 }));
 await import('../dist/main.js');

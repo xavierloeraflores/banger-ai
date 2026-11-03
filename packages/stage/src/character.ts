@@ -39,16 +39,37 @@ function plushVolume(x: number, y: number, z: number, roundness = 1, pear = 0): 
 }
 
 /** One continuous hood/body profile; the head blend has no visible collar seam. */
-function bodyGeometry(): BufferGeometry {
-  const profile = new CatmullRomCurve3([
+const hoodProfile = new CatmullRomCurve3([
     new Vector3(0, -.16, 0), new Vector3(.43, -.09, 0), new Vector3(.67, .10, 0),
     new Vector3(.76, .43, 0), new Vector3(.75, .77, 0), new Vector3(.69, 1.08, 0),
-    new Vector3(.64, 1.38, 0), new Vector3(.63, 1.68, 0), new Vector3(.54, 1.95, 0),
+    new Vector3(.69, 1.38, 0), new Vector3(.68, 1.68, 0), new Vector3(.56, 1.95, 0),
     new Vector3(.32, 2.12, 0), new Vector3(0, 2.175, 0),
-  ]);
-  const points = profile.getPoints(64).map(point => new Vector2(Math.max(0, point.x), point.y));
+]);
+
+function bodyGeometry(): BufferGeometry {
+  const points = hoodProfile.getPoints(64).map(point => new Vector2(Math.max(0, point.x), point.y));
   const geometry = new LatheGeometry(points, 56);
   geometry.scale(1, 1, .72);
+  return geometry;
+}
+
+/** The face follows the hood curvature, so its sides stay tucked into the plush. */
+function faceGeometry(): BufferGeometry {
+  const geometry = plushVolume(.525, .395, 1, .68);
+  const positions = geometry.getAttribute('position');
+  const profile = hoodProfile.getPoints(256);
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i), y = positions.getY(i), dome = positions.getZ(i);
+    const height = y + 1.6;
+    const next = profile.findIndex(point => point.y >= height);
+    const upper = profile[Math.max(1, next)]!, lower = profile[Math.max(0, next - 1)]!;
+    const t = (height - lower.y) / (upper.y - lower.y);
+    const radius = lower.x + (upper.x - lower.x) * t;
+    const hoodDepth = .72 * Math.sqrt(Math.max(0, radius * radius - x * x));
+    // The back half is buried; the front has a softly padded center and a flush edge.
+    positions.setZ(i, hoodDepth - .47 + .008 + dome * (dome > 0 ? .055 : .06));
+  }
+  geometry.computeVertexNormals();
   return geometry;
 }
 
@@ -78,11 +99,11 @@ function fleeceTexture(): DataTexture {
 }
 
 /** Short, individually lit fibers follow each deformable part's surface. */
-function addFleece(mesh: Mesh, count: number, material: MeshStandardMaterial, seed: number, geometries: Set<BufferGeometry>) {
+function addFleece(mesh: Mesh, count: number, material: MeshStandardMaterial, seed: number, geometries: Set<BufferGeometry>, length = .026) {
   const blade = new BufferGeometry();
   blade.setAttribute('position', new Float32BufferAttribute([
-    -.0025, 0, 0, .0025, 0, 0, .001, .018, .001,
-    0, 0, -.0025, 0, 0, .0025, .001, .018, .001,
+    -.0018, 0, 0, .0018, 0, 0, .004, length, .002,
+    0, 0, -.0018, 0, 0, .0018, .004, length, .002,
   ], 3));
   blade.computeVertexNormals();
   geometries.add(blade);
@@ -133,8 +154,8 @@ function addFleece(mesh: Mesh, count: number, material: MeshStandardMaterial, se
 class SmileCurve extends Curve<Vector3> {
   constructor() { super(); }
   getPoint(t: number, target = new Vector3()): Vector3 {
-    const x = (t - .5) * .155;
-    return target.set(x, -.078 + .032 * Math.pow(2 * t - 1, 2), .045);
+    const x = (t - .5) * .18;
+    return target.set(x, -.105 + .036 * Math.pow(2 * t - 1, 2), .095 - .01 * Math.pow(2 * t - 1, 2));
   }
 }
 
@@ -146,17 +167,17 @@ export function createCharacter(options: { color?: ColorRepresentation } = {}): 
   const material = (color: ColorRepresentation, roughness = 1) => {
     const result = new MeshStandardMaterial({ color, roughness }); materials.add(result); return result;
   };
-  const fur = material(options.color ?? '#e9d9b8');
+  const fur = material(options.color ?? '#eee3cf');
   fur.map = texture; fur.bumpMap = texture; fur.bumpScale = .007;
-  const fibers = material(options.color ?? '#e9d9b8');
+  const fibers = material(options.color ?? '#eee3cf');
   fibers.side = 2;
-  const skin = material('#efbc88', .93), eyes = material('#171512', .14), smile = material('#3e3325');
+  const skin = material('#f0d9b7', .93), eyes = material('#090807', .1), smile = material('#241b15');
   const glint = material('#fff9e8', .15);
   const joint = (name: string, parent: Group, x: number, y: number, z = 0) => { const group = new Group(); group.name = name; group.position.set(x, y, z); parent.add(group); return group; };
-  const volume = (parent: Group | Mesh, geometry: BufferGeometry, surface: MeshStandardMaterial, x = 0, y = 0, z = 0, fleece = 0) => {
+  const volume = (parent: Group | Mesh, geometry: BufferGeometry, surface: MeshStandardMaterial, x = 0, y = 0, z = 0, fleece = 0, fiberLength = .026) => {
     geometries.add(geometry);
     const mesh = new Mesh(geometry, surface); mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh);
-    if (fleece) addFleece(mesh, fleece, fibers, geometries.size * 197, geometries);
+    if (fleece) addFleece(mesh, fleece, fibers, geometries.size * 197, geometries, fiberLength);
     return mesh;
   };
   const body = joint('body', root, 0, .52);
@@ -167,28 +188,30 @@ export function createCharacter(options: { color?: ColorRepresentation } = {}): 
   const baseBone = new Bone(), headBone = new Bone(); body.add(baseBone); head.add(headBone);
   const skeleton = new Skeleton([baseBone, headBone]);
   root.updateMatrixWorld(true); shell.bind(skeleton);
-  addFleece(shell, 3600, fibers, 197, geometries);
+  addFleece(shell, 5200, fibers, 197, geometries);
   // Face is a soft rounded rectangular patch nested in the hood, like the reference.
-  const face = volume(head, plushVolume(.46, .33, .035, .78), skin, 0, .29, .47);
+  const face = volume(head, faceGeometry(), skin, 0, .29, .47);
   face.name = 'face';
   for (const side of [-1, 1]) {
-    volume(face, plushVolume(.055, .06, .036), eyes, side * .235, .035, .033);
-    volume(face, plushVolume(.014, .015, .008), glint, side * .235 - .013, .055, .064);
+    const eye = volume(face, plushVolume(.058, .065, .028), eyes, side * .255, .018, .035);
+    eye.name = side < 0 ? 'left-eye' : 'right-eye';
+    volume(eye, plushVolume(.012, .015, .006), glint, -.014, .023, .024);
     // Layered translucent blush keeps the edges soft without an image texture.
     for (let layer = 0; layer < 4; layer++) {
       const cheek = material('#ec8d7c'); cheek.transparent = true; cheek.opacity = .12;
-      volume(face, plushVolume(.088 - layer * .012, .063 - layer * .008, .004), cheek, side * .28, -.075, .041 + layer * .001);
+      const blush = volume(face, plushVolume(.105 - layer * .014, .073 - layer * .009, .004), cheek, side * .31, -.09, .03 + layer * .001);
+      blush.rotation.y = side * .42;
     }
   }
   const mouth = new TubeGeometry(new SmileCurve(), 18, .009, 7, false);
-  volume(face, mouth, smile);
+  volume(face, mouth, smile).name = 'smile';
   const leftArm = joint('leftArm', body, -.64, .95), rightArm = joint('rightArm', body, .64, .95);
   for (const [arm, side] of [[leftArm, -1], [rightArm, 1]] as const) {
-    const sleeve = volume(arm, plushVolume(.192, .52, .215, .85), fur, side * .16, -.37, .015, 620);
+    const sleeve = volume(arm, plushVolume(.215, .50, .235, .85, -.08), fur, side * .16, -.37, .015, 620);
     sleeve.rotation.z = side * .26;
   }
   const leftLeg = joint('leftLeg', root, -.34, .57), rightLeg = joint('rightLeg', root, .34, .57);
-  for (const leg of [leftLeg, rightLeg]) volume(leg, plushVolume(.255, .285, .29, .57), fur, 0, -.285, .015, 480);
+  for (const leg of [leftLeg, rightLeg]) volume(leg, plushVolume(.27, .285, .31, .62), fur, 0, -.285, .015, 480, .018);
   const sockets = {
     leftHand: joint('leftHandSocket', leftArm, -.27, -.79, .015),
     rightHand: joint('rightHandSocket', rightArm, .27, -.79, .015),

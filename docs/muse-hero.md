@@ -1,8 +1,9 @@
 # Muse Hero
 
-Open a `.banger` project, apply any source edits, then choose **Muse Hero** in
-the studio header. The game fills the window and renders a transparent note
-highway and translucent HUD over the live Three.js band.
+Open a `.banger` project, apply any source edits, then choose **Band stage** in
+the studio header. Hover over the floating **Muse Hero** button to show the
+game overlay. Click, tap or keyboard activation also opens it. The game fills
+the window and renders a transparent note highway and translucent HUD over the live Three.js band.
 
 Choose the full band or a single track for the chart. The full song still plays
 when a single track is selected. Tap **A S D F G**, or the five on-screen frets,
@@ -21,11 +22,14 @@ notes sharing a fret merge, and overlapping holds on one fret are shortened
 to keep the chart playable. Short patterns repeat for at least four bars;
 longer arrangements play once. Runs finish automatically. **End run** stops
 early, and **Play again** restarts from the beginning. Leaving the window ends
-an active run; Escape returns to the studio and stops game audio.
+an active run. **Back to band** or Escape hides the game and stops game audio.
+A second Escape closes the stage and returns to the studio.
 
-The game uses its own player so studio previews cannot alter a run. Input,
-notes and band animation read the same audio clock. Closing the game disposes
-its audio player, animation frame, event listeners and WebGL scene.
+The game and band share the studio audio player and one WebGL scene. Starting
+a run clears any section preview. Input, notes and band animation read the
+same audio clock. Hiding the overlay removes its animation frame and input
+listeners while keeping the stage and camera intact. Closing the stage disposes
+the WebGL scene.
 
 After `pnpm fullbuild`, run:
 

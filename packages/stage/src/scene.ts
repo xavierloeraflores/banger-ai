@@ -9,6 +9,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCharacter, type CharacterRig } from './character.js';
 import { PerformanceScore, trackRole, type PerformanceSnapshot } from './score.js';
 import { animatePerformer, createInstrument } from './animation.js';
+import { createAccessories } from './accessories.js';
 
 export interface StageOptions {
   readPerformance: () => PerformanceSnapshot;
@@ -66,7 +67,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   const cast = new THREE.Group(); scene.add(cast);
   const score = new PerformanceScore();
   let signature = '';
-  let performers: { rig: CharacterRig; anchor: THREE.Group; instrument: THREE.Group; role: ReturnType<typeof trackRole>; target: THREE.Vector3 }[] = [];
+  let performers: { rig: CharacterRig; accessories: ReturnType<typeof createAccessories>; anchor: THREE.Group; instrument: THREE.Group; role: ReturnType<typeof trackRole>; target: THREE.Vector3 }[] = [];
   let positions: StagePosition[] = [];
   let cameraTime = 0;
   let disposed = false;
@@ -97,7 +98,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
     sprite.scale.set(2.4, .6, 1); sprite.position.set(0, .34, 1.65); return sprite;
   }
   function rebuild(snapshot: PerformanceSnapshot) {
-    performers.forEach(({ rig }) => { rig.root.removeFromParent(); rig.dispose(); });
+    performers.forEach(({ rig, accessories }) => { accessories.dispose(); rig.root.removeFromParent(); rig.dispose(); });
     disposeObjects(cast); cast.clear();
     ownedTextures.forEach(texture => texture.dispose()); ownedTextures.clear();
     const tracks = snapshot.program.tracks;
@@ -107,6 +108,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       anchor.add(rig.root);
       const role = trackRole(track);
       const instrument = createInstrument(role, rig);
+      const accessories = createAccessories(rig);
       anchor.add(instrument);
       const height = role === 'drums' ? 1.1 : role === 'keys' ? .45 : .05;
       const platform = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.55, height, 64), new THREE.MeshStandardMaterial({ color: '#191c2c', roughness: .3, metalness: .5 }));
@@ -115,9 +117,10 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       strip.rotation.x = Math.PI / 2; strip.position.y = -.04; anchor.add(strip);
       anchor.add(label(track.name, track.source.name.split('/')[1]!));
       cast.add(anchor);
-      return { rig, anchor, instrument, role, target: new THREE.Vector3() };
+      return { rig, accessories, anchor, instrument, role, target: new THREE.Vector3() };
     });
     renderer.domElement.dataset.characterCount = String(performers.length);
+    renderer.domElement.dataset.outfits = JSON.stringify(performers.map(performer => performer.accessories.selection));
     layout(); resetCamera();
   }
   function layout() {
@@ -193,7 +196,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       if (disposed) return; disposed = true;
       renderer.setAnimationLoop(null); resizeObserver.disconnect(); controls.dispose();
       renderer.domElement.removeEventListener('webglcontextlost', contextLost);
-      performers.forEach(({ rig }) => { rig.root.removeFromParent(); rig.dispose(); });
+      performers.forEach(({ rig, accessories }) => { accessories.dispose(); rig.root.removeFromParent(); rig.dispose(); });
       disposeObjects(scene); ownedTextures.forEach(texture => texture.dispose());
       scenery.dispose(); bloom.dispose(); output.dispose(); renderPass.dispose(); composer.dispose(); key.shadow.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
