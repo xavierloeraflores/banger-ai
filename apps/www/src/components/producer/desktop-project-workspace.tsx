@@ -16,6 +16,7 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
   const [paths, setPaths] = useState<string[]>(initialFolder?.paths ?? []);
+  const songDialog = useRef<HTMLDialogElement>(null);
   const [songName, setSongName] = useState("");
   const [working, setBusy] = useState(false);
   const busy = working || studioBusy;
@@ -81,20 +82,26 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
         }}>
           <option value="" disabled>Choose a song</option>{paths.map(path => <option key={path}>{path}</option>)}
         </select></label>
-        <form onSubmit={event => {
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => { setSongName(""); setNotice(""); songDialog.current?.showModal(); }}>Create Song</Button>
+      </div>}
+    <dialog ref={songDialog} className="producer-project-dialog create-song-dialog" aria-labelledby="create-song-title" onCancel={event => { if (busy) event.preventDefault(); }}>
+        <form aria-busy={busy} onSubmit={event => {
           event.preventDefault();
           if (!canReplace()) return;
           void action(async bridge => {
             const stem = songName.trim().replace(/\.banger$/i, "");
             if (!stem || stem.startsWith(".") || /[\\/:*?"<>|\x00-\x1f]/.test(stem)) throw new Error("Enter a song name without slashes or special characters.");
             const next = await bridge.save(`${stem}.banger`, serializeMusic(createDefaultProgram()), null);
-            setPaths(await bridge.list()); await bridge.activate(); await load(next); setSongName("");
+            setPaths(await bridge.list()); await bridge.activate(); await load(next); setSongName(""); songDialog.current?.close();
           });
         }}>
-          <label>New song name<input aria-label="New song name" value={songName} maxLength={80} disabled={busy} onChange={event => setSongName(event.target.value)} placeholder="Untitled" /></label>
+          <h2 id="create-song-title">Create new song</h2>
+          <label>New song name<input autoFocus aria-label="New song name" value={songName} maxLength={80} disabled={busy} onChange={event => setSongName(event.target.value)} placeholder="Untitled" /></label>
+          {notice && <p role="alert">{notice}</p>}
+          <Button type="button" variant="secondary" disabled={busy} onClick={() => songDialog.current?.close()}>Cancel</Button>
           <Button type="submit" variant="secondary" disabled={busy || !songName.trim()}>Create New Song</Button>
         </form>
-      </div>}
+    </dialog>
     {notice && <p className="project-workspace-notice" role="status">{notice}</p>}
   </section></>;
 }
