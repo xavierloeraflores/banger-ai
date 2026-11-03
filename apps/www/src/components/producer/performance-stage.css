@@ -6,11 +6,11 @@
 .performance-heading p { font-size: 12px; color: #a79eaf; margin: 0; }
 .performance-live { font-size: 9px; letter-spacing: .1em; border: 1px solid #544764; border-radius: 20px; padding: 4px 7px; color: #b3a2cd; }
 .performance-live.playing { color: #bdf1c9; border-color: #466d50; background: #263e2b; }
-.performance-viewport { height: min(61dvh, 650px); min-height: 280px; position: relative; background: #e9e4ec; overflow: hidden; }
+.performance-viewport { height: min(61dvh, 650px); min-height: 280px; position: relative; background: #080b16; overflow: hidden; }
 .performance-viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-.performance-overlay { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #e9e4ecee; color: #51485d; padding: 30px; text-align: center; }
+.performance-overlay { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #080b16ee; color: #eee5f7; padding: 30px; text-align: center; }
 .performance-overlay p { max-width: 540px; margin: 0; font-size: 13px; }
-.performance-camera-hint { position: absolute; pointer-events: none; bottom: 13px; left: 0; right: 0; text-align: center; color: #7d7189; font-size: 10px; letter-spacing: .02em; }
+.performance-camera-hint { position: absolute; pointer-events: none; bottom: 13px; left: 0; right: 0; text-align: center; color: #a6abc3; font-size: 10px; letter-spacing: .02em; }
 .performance-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 19px 28px; flex-wrap: wrap; }
 .performance-transport, .performance-options { display: flex; align-items: center; gap: 10px; }
 .performance-transport > span { color: #a79eaf; font-size: 11px; margin-left: 5px; white-space: nowrap; }

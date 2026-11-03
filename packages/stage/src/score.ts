@@ -11,6 +11,7 @@ export interface TrackMotion {
   /** Seconds since the latest audible onset, Infinity during silence. */
   age: number;
   duration: number;
+  sustained?: boolean;
   midi: number;
   index: number;
 }
@@ -62,7 +63,7 @@ export class PerformanceScore {
       const active = !!held || age < (event?.sustained ? duration : .18);
       const tail = event?.sustained ? Math.max(0, age - duration) : age;
       const energy = audible && event ? Math.max(event.velocity * Math.exp(-tail * 10), held?.velocity ?? 0) * track.gain : 0;
-      return { beat: absoluteBeat, playing: audible, active, energy: energy < .005 ? 0 : energy, age, duration,
+      return { beat: absoluteBeat, playing: audible, active, sustained: !!held || !!event?.sustained && active, energy: energy < .005 ? 0 : energy, age, duration,
         midi: event?.step.kind === 'note' ? event.step.midi : 60, index: event?.index ?? 0 };
     });
   }

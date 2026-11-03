@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { app } from 'electron';
 import { compileMusic } from '../../../packages/compiler/dist/index.js';
 import { enterStudio } from './smoke-startup.mjs';
+
+const profile = await mkdtemp(join(tmpdir(), 'banger-stage-smoke-'));
+app.setPath('userData', profile);
+app.once('will-quit', () => { void rm(profile, { recursive: true, force: true }); });
+const graphicsErrors = [];
+app.on('web-contents-created', (_event, contents) => contents.on('console-message', details => {
+  if (/THREE.WebGLProgram|GL_INVALID|Shader Error|WebGL: INVALID/.test(details.message)) graphicsErrors.push(details.message);
+}));
 
 const keepOpen = process.argv.includes('--keep-open');
 const timeout = setTimeout(() => { console.error('Band stage smoke timed out'); app.exit(1); }, 120000);
@@ -21,6 +31,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await click('Band stage');
     await wait("document.querySelector('#performance-stage').open && document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'one character per track');
     assert.equal(await evaluate("document.querySelectorAll('.performance-viewport canvas').length"), 1);
+    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.concert"), 'true');
     await click('Play band');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.playing === 'true'", 'audio playback');
     const firstBeat = Number(await evaluate("document.querySelector('.performance-viewport canvas').dataset.beat"));
@@ -50,6 +61,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("!document.querySelector('#performance-stage').open", 'Escape closes modal');
     await click('Band stage');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'final stage ready');
+    assert.deepEqual(graphicsErrors, [], 'No WebGL shader errors');
     console.log('Band stage smoke passed: one performer per track, shared transport, beat progression, stopped pose, still mode, repeated disposal/reopen, focus restoration, mobile layout and Escape.');
     clearTimeout(timeout);
     if (!keepOpen) app.exit(0);
