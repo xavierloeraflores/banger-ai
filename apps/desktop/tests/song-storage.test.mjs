@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink } from 'node:f
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { openProject } from '@banger/harness';
 import { createSongStorage } from '../dist/song-storage.js';
 import { createMusicStore } from '../dist/elevenlabs-music.js';
 import { fixtureProvider, fixturePlan, wav } from '../../../packages/elevenlabs/test/fixtures.mjs';
@@ -123,4 +124,19 @@ test('legacy cached lyric versions migrate once and keep their first project bin
   assert.deepEqual(await store.location(key), song);
   assert.equal((await storage.list(song)).lyrics.length, 2);
   assert.equal((await storage.list(song)).instrumentals.length, 1);
+});
+
+
+test('desktop lyrics and harness edits share history numbering and current content', async t => {
+  const { project, storage, song } = await fixture(t);
+  await storage.saveLyrics(song, document('Desktop lyric'));
+  const workspace = await openProject(project);
+  const current = 'midnight.lyrics.json';
+  const original = (await workspace.readLyrics(current)).source;
+  const edited = await workspace.editLyrics(current, 'Desktop lyric', 'Agent lyric', original);
+  await storage.saveLyrics(song, document('Next desktop lyric'));
+  assert.deepEqual((await storage.list(song)).lyrics, ['lyrics-v001.json', 'lyrics-v002.json', 'lyrics-v003.json']);
+  assert.equal((await workspace.readLyrics('.banger/history/midnight/lyrics/lyrics-v001.json')).source, original);
+  assert.equal((await workspace.readLyrics('.banger/history/midnight/lyrics/lyrics-v002.json')).source, edited.source);
+  assert.deepEqual(JSON.parse((await workspace.readLyrics(current)).source), document('Next desktop lyric'));
 });

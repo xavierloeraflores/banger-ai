@@ -28,6 +28,26 @@ studio source, but does not replace an existing file with an unsaved draft.
 Normal project saves continue to control changes to existing `.banger` files.
 Imported WAVs without a corresponding composition do not invent a `.banger` file.
 
+## Project agent lyrics access
+
+The project agent discovers current `<song>.lyrics.json` documents and
+`.banger/history/<song>/lyrics/lyrics-vNNN.json` revisions, including songs in
+visible subfolders. `list_lyrics` lists those paths; `read_lyrics` reads either
+kind and returns `null` for missing lyrics. Discovery does not create storage
+folders. The studio song picker and the existing `.banger` tools remain music-only.
+
+`edit_lyrics` replaces one exact match, and `write_lyrics` saves a complete JSON
+document. Both require reading the existing current lyrics in that task. Saves
+use the same workflow as desktop music generation: append an immutable revision,
+then replace the current file. Historical revisions cannot be edited. The agent
+preserves metadata, timing and styles unless the user requests changes.
+
+Lyrics access retains the harness's 64 KiB UTF-8 limit, project boundary checks,
+symlink and hard-link rejection, and stale-edit protection. JSON must contain
+`plan.chunks` with string `text` values. Hidden paths outside the lyrics history
+subtree remain inaccessible. Files larger than the harness limit remain on disk
+but cannot be read or edited by the agent.
+
 ## Operations for the future library page
 
 The sandboxed `window.bangerStorage` bridge provides:

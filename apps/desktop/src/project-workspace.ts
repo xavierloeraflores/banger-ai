@@ -29,6 +29,8 @@ export function installWorkspaceHandlers(options: {
     const visible = { ...event };
     if ("path" in visible && visible.path && (visible.path.startsWith("/") || visible.path.includes("..") || visible.path.includes("\\"))) delete visible.path;
     if (visible.type === "tool-result" && visible.error) visible.error = safeError(new Error(visible.error), "Project operation failed. Inspect the music file and retry.");
+    // The studio file picker accepts music only; lyric tool activity still reaches chat.
+    if (visible.type === "file-changed" && !visible.file.path.endsWith(".banger")) return;
     window.webContents.send("banger:workspace-event", visible);
   };
   function adopt(window: BrowserWindow, workspace: ProjectWorkspace) {

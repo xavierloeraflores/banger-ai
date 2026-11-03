@@ -1,4 +1,5 @@
 import { enterStudio, smokeStartup } from "./smoke-startup.mjs";
+import { songStorage } from "@banger/harness";
 import { app, BrowserWindow, dialog } from "electron";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -11,6 +12,7 @@ const source = 'tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x
 await writeFile(join(directory, "verse.banger"), source);
 await writeFile(join(directory, "chorus.banger"), source);
 dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+await songStorage.saveLyrics({ root: directory, name: "chorus" }, { plan: { chunks: [{ text: "Original lyric" }] } });
 const calls = [];
 globalThis.fetch = async (url, options) => {
   assert.equal(String(url), "https://ai-gateway.vercel.sh/v4/ai/language-model");
@@ -26,7 +28,11 @@ globalThis.fetch = async (url, options) => {
   });
   const call = (name, input) => ({ type: "tool-call", toolCallId: `${name}-${calls.length}`, toolName: name, input: JSON.stringify(input) });
   let content;
-  if (user.includes("slow task")) content = [call("edit_file", { path: "chorus.banger", search: "gain 0.2;", replacement: "gain 0.1;" })];
+  if (user.includes("revise saved lyrics")) content = !tools.length
+    ? [call("read_lyrics", { path: "chorus.lyrics.json" })]
+    : tools.length === 1 ? [call("edit_lyrics", { path: "chorus.lyrics.json", search: "Original lyric", replacement: "Revised lyric" })]
+    : [{ type: "text", text: "Saved the lyrics revision." }];
+  else if (user.includes("slow task")) content = [call("edit_file", { path: "chorus.banger", search: "gain 0.2;", replacement: "gain 0.1;" })];
   else if (user.includes("fresh task")) content = [{ type: "text", text: "Fresh conversation." }];
   else if (user.includes("softer again")) content = tools.length ? [{ type: "text", text: "Revised chorus again." }] : [call("edit_file", { path: "chorus.banger", search: "gain 0.4;", replacement: "gain 0.2;" })];
   else if (!tools.length) content = [call("read_file", { path: "verse.banger" })];
@@ -173,6 +179,14 @@ async function run(window) {
       assert.equal(saved.toString('ascii', 0, 4), 'RIFF');
     }
     assert.equal((await readdir(join(directory, '.banger/history/verse/instrumentals'))).length, 2);
+    const lyricResult = await evaluate('window.bangerWorkspace.run("revise saved lyrics", "verse.banger", true)');
+    assert.equal(lyricResult.ok, true);
+    assert.equal(lyricResult.reply.status, "completed");
+    assert.deepEqual(lyricResult.reply.changedPaths, ["chorus.lyrics.json"]);
+    assert.equal(JSON.parse(await readFile(join(directory, "chorus.lyrics.json"))).plan.chunks[0].text, "Revised lyric");
+    assert.equal(JSON.parse(await readFile(join(directory, ".banger/history/chorus/lyrics/lyrics-v001.json"))).plan.chunks[0].text, "Original lyric");
+    assert.equal(JSON.parse(await readFile(join(directory, ".banger/history/chorus/lyrics/lyrics-v002.json"))).plan.chunks[0].text, "Revised lyric");
+    assert.equal(await evaluate("[...document.querySelectorAll('#workspace-file option')].some(option => option.value.endsWith('.json'))"), false);
     await evaluate("document.querySelector('.project-workspace').scrollIntoView({ block:'start' })");
     await delay(100);
     await writeFile(join(tmpdir(), "banger-workspace-desktop.png"), (await window.webContents.capturePage()).toPNG());
