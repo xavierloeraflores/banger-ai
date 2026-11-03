@@ -3,6 +3,11 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+function getDevArguments(args) {
+  const hasFilter = args.some((arg) => arg === "--filter" || arg.startsWith("--filter=") || arg === "-F" || arg.startsWith("-F="));
+  return ["run", "dev", ...(!hasFilter ? ["--filter=@banger/api", "--filter=@banger/desktop"] : []), ...args];
+}
+
 export async function findAvailablePort(firstPort = 3000) {
   if (!Number.isInteger(firstPort) || firstPort < 1 || firstPort > 65535) {
     throw new Error("PORT must be an integer between 1 and 65535.");
@@ -26,10 +31,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const url = `http://127.0.0.1:${port}`;
   console.log(`Banger development URL: ${url}`);
   const require = createRequire(import.meta.url);
-  const child = spawn(process.execPath, [require.resolve("turbo/bin/turbo"), "run", "dev", ...process.argv.slice(2)], {
+  const child = spawn(process.execPath, [require.resolve("turbo/bin/turbo"), ...getDevArguments(process.argv.slice(2))], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     stdio: "inherit",
-    env: { ...process.env, PORT: String(port), BANGER_DEV_URL: url },
+    env: { ...process.env, NODE_ENV: "development", PORT: String(port), BANGER_DEV_URL: url },
   });
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
   child.on("error", (error) => { console.error(error); process.exitCode = 1; });

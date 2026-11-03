@@ -61,6 +61,42 @@
         "^typecheck"
       ]
     },
+    "@banger/api#dev": {
+      "passThroughEnv": [
+        "PORT",
+        "BANGER_DEV_URL",
+        "DATABASE_URL",
+        "AUTH_JWKS_URL",
+        "AUTH_ISSUER",
+        "AUTH_AUDIENCE",
+        "CLIENT_ORIGINS",
+        "BLOB_READ_WRITE_TOKEN",
+        "VERCEL_OIDC_TOKEN",
+        "VERCEL_TOKEN",
+        "VERCEL_TEAM_ID",
+        "VERCEL_PROJECT_ID",
+        "BANGER_PROVIDER",
+        "BANGER_MODEL",
+        "BANGER_API_KEY",
+        "SANDBOX_RUNNER_BLOB_PATH",
+        "CRON_SECRET",
+        "ELEVENLABS_API_KEY",
+        "APP_ORIGIN",
+        "BANGER_WEB_PASSWORD",
+        "BANGER_SESSION_SECRET",
+        "BANGER_WEB_USER"
+      ],
+      "cache": false,
+      "persistent": true,
+      "dependsOn": [
+        "@banger/agent#build",
+        "@banger/compiler#build",
+        "@banger/elevenlabs#build",
+        "@banger/engine#build",
+        "@banger/harness#build",
+        "@banger/shadcn#build"
+      ]
+    },
     "@banger/desktop#build": {
       "dependsOn": [
         "@banger/www#build"

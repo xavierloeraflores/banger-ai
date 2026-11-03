@@ -8,7 +8,7 @@ pnpm dev:www
 pnpm dev:desktop
 ```
 
-`pnpm dev` starts both apps and prints the selected local URL, starting at port 3000. The desktop client opens the same music studio in Electron. Restart the desktop command after main-process source changes.
+`pnpm dev` starts the web app with its API and opens the same studio in Electron. It prints the selected local URL, starting at port 3000 and skipping occupied ports. `pnpm dev:www` starts only the web app with its API. `pnpm dev:desktop` starts Electron with the standalone studio. Development builds shared packages without running a production Next.js build. Restart the desktop command after main-process source changes.
 
 | Workspace | Purpose |
 | --- | --- |
