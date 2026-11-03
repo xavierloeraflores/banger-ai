@@ -32,6 +32,15 @@ pnpm fullbuild
 
 After building, use `pnpm --filter @banger/www start` or `pnpm --filter @banger/desktop start`.
 
+## Tests
+
+Use `pnpm test:plan` to see the test sets affected by changes since branching from
+`main`, then `pnpm test` to run them. Run one set with `pnpm test:suite desktop`
+or every automated set with `pnpm test:all`. API integration requires a dedicated
+PostgreSQL test database. CI selects the same sets for pull requests and merges.
+See [test suites](docs/testing.md) for coverage, selection rules and browser/audio
+checks.
+
 ## Songs, mixing and export
 
 Open [night-drive.banger](examples/night-drive.banger) for a 40-bar song with eight tracks, named patterns, sections, buses, sends, sidechain and automation. The [language reference](packages/compiler/LANGUAGE.md) covers syntax and limits. Both music agents use the same language guide.

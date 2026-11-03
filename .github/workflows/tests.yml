@@ -1,0 +1,113 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_ENV: production
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.select.outputs.suites }}
+      has-suites: ${{ steps.select.outputs.has-suites }}
+      integration: ${{ steps.select.outputs.integration }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: select
+        name: Select affected suites
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const { BASE, HEAD, EVENT } = process.env;
+          const args = EVENT === 'workflow_dispatch' || !BASE || /^0+$/.test(BASE)
+            ? ['--all'] : ['--base', BASE, '--head', HEAD];
+          const suites = JSON.parse(execFileSync(process.execPath, ['scripts/test-suites.mjs', ...args, '--json'], { encoding: 'utf8' }));
+          const unit = suites.filter(name => name !== 'api-integration');
+          appendFileSync(process.env.GITHUB_OUTPUT, `suites=${JSON.stringify(unit)}\nhas-suites=${unit.length > 0}\nintegration=${suites.includes('api-integration')}\n`);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Selected suites: ${suites.join(', ') || 'none, documentation only'}\n`);
+          JS
+
+  suites:
+    needs: plan
+    if: needs.plan.outputs.has-suites == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.plan.outputs.suites) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile --prod=false
+      - run: pnpm test:suite "$SUITE"
+        env:
+          SUITE: ${{ matrix.suite }}
+
+  api-integration:
+    needs: plan
+    if: needs.plan.outputs.integration == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: banger
+          POSTGRES_PASSWORD: banger
+          POSTGRES_DB: banger_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://banger:banger@localhost:5432/banger_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile --prod=false
+      - run: pnpm test:suite api-integration
+
+  tests:
+    name: Required tests
+    if: always()
+    needs: [plan, suites, api-integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check selected suites
+        env:
+          PLAN: ${{ needs.plan.result }}
+          SUITES: ${{ needs.suites.result }}
+          INTEGRATION: ${{ needs.api-integration.result }}
+        run: |
+          test "$PLAN" = success
+          test "$SUITES" = success -o "$SUITES" = skipped
+          test "$INTEGRATION" = success -o "$INTEGRATION" = skipped

@@ -15,7 +15,12 @@
     "typecheck": "turbo run typecheck",
     "verify:audio": "pnpm --filter @banger/desktop exec electron ../../packages/engine/test/render.cjs",
     "verify:song": "pnpm --filter @banger/desktop exec electron ../../scripts/verify-song.mjs",
-    "start:web": "pnpm --filter @banger/api start"
+    "start:web": "pnpm --filter @banger/api start",
+    "test": "node scripts/test-suites.mjs",
+    "test:affected": "node scripts/test-suites.mjs",
+    "test:plan": "node scripts/test-suites.mjs --list",
+    "test:all": "node scripts/test-suites.mjs --all",
+    "test:suite": "node scripts/test-suites.mjs --suite"
   },
   "devDependencies": {
     "turbo": "^2.11.10",

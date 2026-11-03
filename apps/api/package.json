@@ -11,7 +11,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "pnpm sandbox:bundle && tsx --test test/*.test.ts",
     "migrate": "node scripts/migrate.mjs",
-    "sandbox:bundle": "node scripts/bundle-sandbox.mjs"
+    "sandbox:bundle": "node scripts/bundle-sandbox.mjs",
+    "test:unit": "pnpm sandbox:bundle && tsx --test test/auth.test.ts test/projects.test.ts test/runner.test.ts test/web-session.test.ts"
   },
   "dependencies": {
     "@banger/agent": "workspace:*",

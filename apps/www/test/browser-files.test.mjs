@@ -4,7 +4,7 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 
-const source = await readFile(new URL("../../www/src/lib/project-files.ts", import.meta.url), "utf8");
+const source = await readFile(new URL("../src/lib/project-files.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
 function browser(bridge) {

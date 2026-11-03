@@ -22,7 +22,7 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   t.after(async()=>{child.kill('SIGTERM');await new Promise<void>(resolve=>jwks.close(()=>resolve()));await db().end();});
   for(let tries=0;tries<100;tries++){if(output.includes('Ready'))break;if(child.exitCode!==null)throw new Error(output);await new Promise(resolve=>setTimeout(resolve,100));}
   assert.match(output,/Ready/);
-  const page=await fetch(webOrigin);assert.equal(page.status,200);const html=await page.text();assert.match(html,/studio-tab-elevenlabs/);assert.ok(!html.includes(webPassword));
+  const page=await fetch(webOrigin);assert.equal(page.status,200);const html=await page.text();assert.match(html,/<h1 id="project-start-title">Start making music<\/h1>/);assert.ok(!html.includes(webPassword));
   assert.equal((await fetch(`${webOrigin}/banger-sidechain.js`)).status,200);
   assert.equal((await(await fetch(`${webOrigin}/api/session`)).json()).authenticated,false);
   const login=await fetch(`${webOrigin}/api/session`,{method:'POST',headers:{Origin:webOrigin,'Content-Type':'application/json'},body:JSON.stringify({password:webPassword})});

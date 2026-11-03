@@ -75,22 +75,17 @@ Agent input is `{baseRevision, prompt, activeFile?}`. ElevenLabs analysis input 
 
 ## Verification
 
-Use a dedicated test database, migrate it, and build the API before the HTTP test:
+Run the selected API set from the repository root:
 
 ```sh
-DATABASE_URL=postgresql://localhost/banger_test pnpm --filter @banger/api test
-BANGER_HTTP_TEST=1 DATABASE_URL=postgresql://localhost/banger_test pnpm --filter @banger/api exec tsx --test test/http.test.ts
-pnpm lint
-pnpm typecheck
-pnpm fullbuild
-pnpm --filter @banger/elevenlabs test
-pnpm --filter @banger/desktop test
-pnpm --filter @banger/desktop smoke:music
-pnpm --filter @banger/desktop smoke:music:web
-pnpm --filter @banger/desktop smoke:cloud
-pnpm --filter @banger/desktop smoke
-pnpm verify:audio
+pnpm test:suite api-unit
+DATABASE_URL=postgresql://localhost/banger_test pnpm test:suite api-integration
 ```
+
+The integration set builds dependencies and the production API, applies
+migrations to the dedicated test database, and enables the HTTP test. The unit
+set requires no database. See [test suites](../../docs/testing.md) for affected
+selection and additional cloud/music browser checks.
 
 API tests cover PostgreSQL concurrency and permissions, JWT verification, upload authorization, job leases, and a bundled harness editing a real local filesystem with a fixture model. The music smoke tests use fixture provider responses, decode and play a synthesized MP3, and verify byte-exact downloads in desktop and browser modes. The cloud browser smoke uses an HTTP API fixture and renders a real WAV. These checks do not substitute for a deployment test against Vercel Sandbox and private Blob with production credentials.
 
