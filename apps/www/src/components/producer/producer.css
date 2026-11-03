@@ -626,3 +626,10 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
   .producer-project-dialog .project-folder-workspace { padding: 18px; }
   .project-folder-workspace .project-workspace-actions { width: 100%; }
 }
+
+.first-song-dialog { width: min(480px, calc(100vw - 32px)); padding: 28px; }
+.first-song-dialog form { display: grid; gap: 16px; }
+.first-song-dialog h2, .first-song-dialog p { margin: 0; }
+.first-song-dialog p { color: var(--producer-dim); overflow-wrap: anywhere; }
+.first-song-dialog input { width: 100%; min-width: 0; box-sizing: border-box; padding: 12px; border: 1px solid var(--producer-border); border-radius: 8px; background: var(--producer-bg); color: var(--producer-text); font: inherit; }
+.first-song-dialog [role="alert"] { color: #ffb4ab; }

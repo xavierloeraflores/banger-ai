@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
   compileMusic,
   CompileError,
-  createDefaultProgram,
   serializeMusic,
   programDurationBeats,
   resolvePattern,
@@ -83,17 +82,17 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
-  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder } | null>(null);
-  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved, folder) => setSession({ file, saved, folder })} />;
-  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} initialFolder={session.folder} />;
+  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; openProjectControls?: boolean } | null>(null);
+  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved, folder, openProjectControls) => setSession({ file, saved, folder, openProjectControls })} />;
+  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} initialFolder={session.folder} openProjectControls={session.openProjectControls} />;
 }
 
-function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder }) {
+function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjectControls }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; openProjectControls?: boolean }) {
   const projectDialog = useRef<HTMLDialogElement>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
-  useEffect(() => { if (initialFolder) projectDialog.current?.showModal(); }, [initialFolder]);
+  useEffect(() => { if (initialFolder && openProjectControls) projectDialog.current?.showModal(); }, [initialFolder, openProjectControls]);
   function showProjects() { projectDialog.current?.showModal(); }
   const [cloudMusicContext,setCloudMusicContext]=useState<CloudMusicContext>();
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
@@ -476,13 +475,10 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
         </div>
         <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile}
+          onFirstSongCreated={() => projectDialog.current?.close()}
           canReplace={() => !filePending.current && (!dirty || window.confirm("Replace unsaved changes in the current song?"))}
           onFolderChange={folder => {
             setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);
-            if (!folder.file) {
-              loadOpenedFile({ name: "Untitled.banger", source: serializeMusic(createDefaultProgram()) });
-              setHasProject(false);
-            }
           }}
           onLoad={async (file, saved, name) => {
             await getProjectWorkspace().activate();

@@ -1,16 +1,22 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { createDefaultProgram, serializeMusic } from "@banger/compiler";
+import { FirstSongDialog } from "./first-song-dialog";
 import { Button } from "@banger/shadcn";
 import type { BangerFile } from "@banger/agent/protocol";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder } from "@/lib/project-workspace";
 
-export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(file: BangerFile, saved: boolean, folder?: ProjectFolder): void }) {
+export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(file: BangerFile, saved: boolean, folder?: ProjectFolder, openProjectControls?: boolean): void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
+  const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
+
+  function start(folder: ProjectFolder, openProjectControls = true) {
+    if (!folder.file) { setEmptyFolder(folder); return; }
+    onStart({ name: folder.file.path.split("/").pop()!, source: folder.file.source }, true, folder, openProjectControls);
+  }
 
   async function choose(action: "create" | "open" | "sample") {
     if (pending.current) return;
@@ -19,11 +25,8 @@ export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(
     setError("");
     try {
       const bridge = getProjectWorkspace();
-      const blank = { name: "Untitled.banger", source: serializeMusic(createDefaultProgram()) };
-      const initial = action === "sample" ? sample : blank;
-      const folder = action === "open" ? await bridge.open() : await bridge.create(initial.name, initial.source);
-      if (!folder) return;
-      onStart(folder.file ? { name: folder.file.path.split("/").pop()!, source: folder.file.source } : blank, Boolean(folder.file), folder);
+      const folder = action === "open" ? await bridge.open() : action === "sample" ? await bridge.create(sample.name, sample.source) : await bridge.create();
+      if (folder) start(folder);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not open the project.");
     } finally {
@@ -44,5 +47,6 @@ export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(
       </div>
       {error && <p role="alert">{error}</p>}
     </section>
+    {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={folder => start(folder, false)} />}
   </main>;
 }

@@ -50,10 +50,10 @@ async function adopt(directory: Directory): Promise<ProjectFolder> {
 const browserWorkspace: WorkspaceBridge = {
   async open() { const directory = await pick(); return directory ? adopt(directory) : null; },
   async create(name, source) {
-    const folderName = window.prompt("Project folder name", name.replace(/\.banger$/i, "") + " Project")?.trim();
+    const folderName = window.prompt("Project folder name", name ? name.replace(/\.banger$/i, "") + " Project" : "New Project")?.trim();
     if (!folderName) return null;
     if (folderName.startsWith(".") || /[\\/:*?"<>|\0]/.test(folderName)) throw new Error("Use a folder name without slashes or special characters.");
-    compileMusic(source);
+    if (source !== undefined) compileMusic(source);
     const parent = await pick();
     if (!parent) return null;
     try { await parent.getDirectoryHandle(folderName); throw new Error("That folder already exists. Choose a new project folder name."); }
@@ -61,7 +61,10 @@ const browserWorkspace: WorkspaceBridge = {
     const directory = await parent.getDirectoryHandle(folderName, { create: true });
     const previous = root;
     root = directory;
-    try { const file = await browserWorkspace.save(name, source, null); return { name: directory.name, paths: [file.path], file }; }
+    try {
+      const file = name !== undefined && source !== undefined ? await browserWorkspace.save(name, source, null) : null;
+      return { name: directory.name, paths: file ? [file.path] : [], file };
+    }
     catch (error) { root = previous; throw error; }
   },
   activate: async () => {},

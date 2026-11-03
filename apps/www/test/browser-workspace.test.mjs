@@ -58,3 +58,15 @@ test('canceling creation does not create a folder; unsupported browsers explain 
   assert.equal(parent.entries.size, 0);
   await assert.rejects(browser({}).open(), /folder access/);
 });
+
+test('new projects stay empty until the first named song is saved', async () => {
+  const parent = directory('Projects');
+  const api = browser({ prompt: () => 'New Project', showDirectoryPicker: async () => parent });
+  const folder = await api.create();
+  assert.equal(folder.file, null);
+  assert.deepEqual(Array.from(folder.paths), []);
+  assert.equal(parent.entries.get('New Project').entries.size, 0);
+  await api.save('My first song.banger', music, null);
+  assert.deepEqual(Array.from(await api.list()), ['My first song.banger']);
+  assert.equal((await api.read('My first song.banger')).source, music);
+});

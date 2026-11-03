@@ -2,7 +2,7 @@ export type WorkspaceFile = { path: string; source: string };
 type Event = { type: string; name?: string; path?: string; text?: string; ok?: boolean; error?: string; file?: WorkspaceFile };
 export type WorkspaceBridge = {
   open(): Promise<ProjectFolder | null>;
-  create(name: string, source: string): Promise<ProjectFolder | null>;
+  create(name?: string, source?: string): Promise<ProjectFolder | null>;
   activate(): Promise<void>;
   list(): Promise<string[]>;
   read(path: string): Promise<WorkspaceFile>;

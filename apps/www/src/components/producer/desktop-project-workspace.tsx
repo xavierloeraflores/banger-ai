@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { FirstSongDialog } from "./first-song-dialog";
 import { ProjectIcon } from "./project-icon";
 import { createDefaultProgram, serializeMusic } from "@banger/compiler";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
@@ -10,7 +11,8 @@ import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspa
 type Bridge = NonNullable<Window["bangerWorkspace"]>;
 const message = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, canReplace, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
+export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onFirstSongCreated, canReplace, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; onFirstSongCreated(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
+  const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
   const [paths, setPaths] = useState<string[]>(initialFolder?.paths ?? []);
@@ -73,18 +75,24 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     await onLoad(next, next.source, project);
     adopt(next);
   }
+  async function openFolder(next: ProjectFolder) {
+    onFolderChange(next); setName(next.name); setPaths(next.paths); setFile(null); setSource(""); setEvents([]); setPrompt("");
+    if (next.file) await load(next.file, next.name);
+    setEmptyFolder(null);
+  }
   function changeProject(create: boolean) {
     if (!discard() || !canReplace()) return;
     void action(async bridge => {
       const next = create
-        ? await bridge.create("Untitled.banger", serializeMusic(createDefaultProgram()))
+        ? await bridge.create()
         : await bridge.open();
       if (!next) return;
-      onFolderChange(next); setName(next.name); setPaths(next.paths); setFile(null); setSource(""); setEvents([]); setPrompt("");
-      if (next.file) await load(next.file, next.name);
+      if (!next.paths.length) setEmptyFolder(next);
+      else await openFolder(next);
     });
   }
   return <>
+    {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={async next => { await openFolder(next); onFirstSongCreated(); }} />}
     <section className="project-workspace project-folder-workspace" aria-label="Project workspace">
       <div className="project-workspace-heading"><div className="project-folder-identity"><ProjectIcon name="folder" /><div><h2>Project Workspace</h2><p>{name || "No project folder selected"}</p></div></div>
         <div className="project-workspace-actions">

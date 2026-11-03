@@ -42,10 +42,10 @@ export function installWorkspaceHandlers(options: {
   ipcMain.handle("banger:workspace-create", async (event, name: unknown, source: unknown) => {
     const window = options.senderWindow(event);
     if (opening.has(window.id) || states.get(window.id)?.controller) throw new Error("Stop the current task before creating another project.");
-    if (typeof name !== "string" || typeof source !== "string") throw new Error("Invalid project song.");
+    if (!(name === undefined && source === undefined) && (typeof name !== "string" || typeof source !== "string")) throw new Error("Invalid project song.");
     opening.add(window.id);
     try {
-      const picked = await dialog.showSaveDialog(window, { title: "Create project folder", buttonLabel: "Create project", defaultPath: name === "Untitled.banger" ? "Untitled Project" : projectName(name).replace(/\.banger$/, ""), properties: ["createDirectory"] });
+      const picked = await dialog.showSaveDialog(window, { title: "Create project folder", buttonLabel: "Create project", defaultPath: typeof name === "string" ? projectName(name).replace(/\.banger$/, "") : "New Project", properties: ["createDirectory"] });
       if (picked.canceled || !picked.filePath) return null;
       try { await mkdir(picked.filePath); }
       catch (error) {
@@ -54,10 +54,10 @@ export function installWorkspaceHandlers(options: {
       }
       try {
         const workspace = await openProject(picked.filePath);
-        const file = await workspace.write(projectName(name), source, null);
+        const file = typeof name === "string" && typeof source === "string" ? await workspace.write(projectName(name), source, null) : null;
         if (window.isDestroyed()) return null;
         adopt(window, workspace);
-        return { name: basename(workspace.root), paths: [file.path], file };
+        return { name: basename(workspace.root), paths: file ? [file.path] : [], file };
       } catch (error) {
         // Only remove a failed, empty creation. Never remove user files.
         await rmdir(picked.filePath).catch(() => {});
