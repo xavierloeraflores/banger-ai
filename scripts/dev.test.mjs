@@ -32,6 +32,7 @@ test("development commands start one web server without production app builds", 
   const root = new URL("../", import.meta.url);
   const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
   const api = JSON.parse(readFileSync(new URL("apps/api/package.json", root), "utf8"));
+  const web = JSON.parse(readFileSync(new URL("apps/www/package.json", root), "utf8"));
   const occupied = createServer();
   occupied.listen(0, "127.0.0.1");
   await once(occupied, "listening");
@@ -59,6 +60,12 @@ test("development commands start one web server without production app builds", 
         assert.equal(task.resolvedTaskDefinition.cache, false);
         assert.ok(task.environmentVariables.passthrough.some((value) => value.startsWith("PORT=")));
         assert.ok(task.environmentVariables.passthrough.some((value) => value.startsWith("BANGER_DEV_URL=")));
+      }
+      // The API serves the studio source without building the web app. Its
+      // compiled libraries must still be ready, including lazy-loaded stages.
+      const studioTask = plan.tasks.find((task) => task.taskId === (expected.includes("@banger/api#dev") ? "@banger/api#dev" : "@banger/www#dev"));
+      for (const dependency of Object.keys(web.dependencies).filter((name) => name.startsWith("@banger/"))) {
+        assert.ok(studioTask.dependencies.includes(`${dependency}#build`), `Build ${dependency} before serving the studio with ${command}`);
       }
       if (expected.includes("@banger/api#dev")) {
         const apiTask = plan.tasks.find((task) => task.taskId === "@banger/api#dev");

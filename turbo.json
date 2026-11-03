@@ -94,7 +94,8 @@
         "@banger/elevenlabs#build",
         "@banger/engine#build",
         "@banger/harness#build",
-        "@banger/shadcn#build"
+        "@banger/shadcn#build",
+        "@banger/stage#build"
       ]
     },
     "@banger/desktop#build": {
