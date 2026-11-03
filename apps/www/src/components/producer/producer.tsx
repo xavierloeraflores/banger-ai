@@ -30,7 +30,7 @@ import { SoundDesign } from "./sound-design";
 import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
 import { usePlayer } from "./use-player";
-import { ByokSettings } from "./byok-menu";
+import { SettingsMenu } from "./settings-menu";
 import { AIModelSelect } from "./ai-model-select";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
@@ -45,7 +45,6 @@ const studioViews = [
   { id: "song", label: "Song" },
   { id: "source", label: "Raw .banger" },
   { id: "elevenlabs", label: "ElevenLabs" },
-  { id: "byok", label: "BYOK" },
 ] as const;
 type StudioView = typeof studioViews[number]["id"];
 
@@ -310,6 +309,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
           <Button variant="secondary" onClick={save} disabled={fileBusy}>Save .banger</Button>
         </div>
+        <SettingsMenu />
       </header>
 
       <section className="producer-transport" aria-label="Transport">
@@ -476,9 +476,6 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
             <div id="producer-diagnostics" className={result.error ? "producer-diagnostics has-error" : "producer-diagnostics"} role="status">{result.error ?? (draft ? "Source is valid. Apply it to update the sequence." : "Compiled. The source and sequence match.")}</div>
             <p id="producer-source-help" className="producer-source-help">Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
           </Panel>
-        </div>
-        <div id="studio-panel-byok" role="tabpanel" aria-labelledby="studio-tab-byok" hidden={view !== "byok"} tabIndex={0}>
-          {view === "byok" && <ByokSettings />}
         </div>
         <div id="studio-panel-elevenlabs" role="tabpanel" aria-labelledby="studio-tab-elevenlabs" hidden={view!=="elevenlabs"}>
           <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={view==="elevenlabs"} onConnect={()=>{setView('sequencer');queueMicrotask(()=>{const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'center'});panel.querySelector<HTMLInputElement>('input')?.focus();}});}}/>

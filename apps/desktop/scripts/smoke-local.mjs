@@ -41,7 +41,7 @@ async function run(window) {
   })()`);
   try {
     await waitFor("window.bangerLocal && document.querySelector('#producer-source')?.value");
-    await click("BYOK");
+    await evaluate("document.querySelector('[aria-label=Settings]').click()");
     await waitFor("[...document.querySelectorAll('.byok-providers button span')].some(span => span.textContent === 'Local model')");
     await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Local model').click()");
     await waitFor("document.querySelector('.local-model-settings')");
@@ -74,6 +74,7 @@ async function run(window) {
     assert.equal(status.phase, "running");
     await writeFile(join(tmpdir(), "banger-local-selector.png"), (await window.webContents.capturePage()).toPNG());
     console.log("Live Muse Glimmer loaded through the model selector. Generating through desktop chat.");
+    await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
     await waitFor("document.querySelector('#ai-chat-dialog').matches(':modal')");
     await input("Create one warm lo-fi loop at 85 BPM with kick, snare, hats and a C minor bass line. Use create_banger_file to produce a playable file.");

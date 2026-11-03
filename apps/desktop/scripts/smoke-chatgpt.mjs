@@ -56,7 +56,7 @@ async function run(window) {
   const select = (id, value) => evaluate(`(() => { const input = document.getElementById(${JSON.stringify(id)}); input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   try {
     await wait("document.querySelector('#producer-source')?.value");
-    await click('BYOK');
+    await evaluate("document.querySelector('[aria-label=Settings]').click()");
     await wait("document.querySelectorAll('.byok-providers button').length === 7");
     await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'ChatGPT').click()");
     await wait("document.querySelector('#chatgpt-title')");
@@ -83,7 +83,7 @@ async function run(window) {
     await wait("document.querySelector('#active-ai-model option[value=chatgpt]')?.textContent.includes('other-chatgpt')");
     await click('Manage usage');
     assert.ok(opened.includes('https://chatgpt.com/settings/usage'));
-    await click('Sequencer');
+    await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
     await wait("document.querySelector('.ai-chat-heading-actions .producer-tag')?.textContent === 'ChatGPT · other-chatgpt'");
     await evaluate(`(() => { const input = document.getElementById('ai-chat-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Make a clap loop'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -105,7 +105,7 @@ async function run(window) {
     await wait("document.querySelector('.project-workspace-notice')?.textContent.includes('clap loop')");
     assert.equal(projectCalls, 2);
     assert.match(await readFile(join(projectDir, 'song.banger'), 'utf8'), /tempo 88;/);
-    await click('BYOK');
+    await evaluate("document.querySelector('[aria-label=Settings]').click()");
     await wait("document.querySelector('#chatgpt-title')");
     await writeFile(join(tmpdir(), 'banger-chatgpt-settings.png'), (await window.webContents.capturePage()).toPNG());
     await click('Sign out');

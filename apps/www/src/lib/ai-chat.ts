@@ -36,7 +36,7 @@ export async function sendChat(request: ChatRequest, signal: AbortSignal): Promi
       throw new Error("Open Banger over HTTPS to use AI chat.");
     }
     const credentials = browserCredentials();
-    if (!credentials) throw new Error("Add a provider key and model in BYOK to start chatting.");
+    if (!credentials) throw new Error("Add a provider key and model in Settings → BYOK to start chatting.");
     const { selectModel, runBangerAgent, publicAIError } = await import("@banger/agent");
     try {
       result = { ok: true, reply: await runBangerAgent(request, selectModel(credentials), signal) };

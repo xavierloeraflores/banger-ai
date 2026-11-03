@@ -75,7 +75,7 @@ export function ByokSettings() {
 
   return <section className="byok-settings" aria-labelledby="byok-title" aria-describedby="byok-description">
       <div className="byok-heading">
-        <div><p className="producer-eyebrow">AI providers</p><h2 id="byok-title">{desktop ? "Choose how to connect" : "Bring your own key"}</h2></div>
+        <div><p className="producer-eyebrow">BYOK · AI providers</p><h2 id="byok-title">{desktop ? "Choose how to connect" : "Bring your own key"}</h2></div>
       </div>
       <p id="byok-description" className="byok-description">Configure your AI options here. Choose the active model from the menu at the top of the app.</p>
       <div className="byok-layout">

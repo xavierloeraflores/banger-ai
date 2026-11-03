@@ -83,7 +83,7 @@ export async function smokeProducer(window, directory) {
 
   await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-  assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 6);
+  assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 5);
   assert.equal(await evaluate("document.querySelectorAll('[role=tabpanel]:not([hidden])').length"), 1);
   await evaluate("document.querySelector('#studio-tab-sequencer').focus()");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Right" });

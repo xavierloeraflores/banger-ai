@@ -40,9 +40,19 @@ async function exercise(window, desktop) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await waitFor("document.querySelector('#producer-source')?.value");
-  await click("BYOK");
-  await waitFor("document.querySelector('#studio-tab-byok')?.getAttribute('aria-selected') === 'true' && !document.querySelector('.byok-form fieldset').disabled");
+  await evaluate("document.querySelector('[aria-label=Settings]').click()");
+  await waitFor("document.querySelector('#producer-settings-dialog')?.matches(':modal') && !document.querySelector('.byok-form fieldset').disabled");
   assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), desktop ? 7 : 5);
+  assert.equal(await evaluate("document.querySelector('#studio-tab-byok')"), null);
+  assert.equal(await evaluate("document.querySelector('#studio-tab-sequencer').getAttribute('aria-selected')"), "true");
+  assert.equal(await evaluate("document.querySelector('#producer-settings-dialog').contains(document.activeElement)"), true);
+  await evaluate("document.querySelector('[aria-label=Settings]').focus()");
+  assert.equal(await evaluate("document.querySelector('#producer-settings-dialog').contains(document.activeElement)"), true, "Modal keeps focus inside settings");
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  await waitFor("!document.querySelector('#producer-settings-dialog').open && !document.querySelector('#byok-key')");
+  await evaluate("document.querySelector('[aria-label=Settings]').focus(); document.querySelector('[aria-label=Settings]').click()");
+  await waitFor("!document.querySelector('.byok-form fieldset').disabled");
   const providers = ["Vercel AI Gateway", "Anthropic", "OpenAI", "Meta Muse", "Grok"];
   for (const name of providers) {
     await evaluate(`([...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === ${JSON.stringify(name)})).click()`);
@@ -84,24 +94,39 @@ async function exercise(window, desktop) {
     assert.equal(JSON.stringify(await evaluate("window.bangerAI.load()")).includes("fake-smoke-key"), false);
     assert.equal(JSON.parse((await safeStorage.decryptStringAsync(bytes)).result).providers.grok.key, "fake-smoke-key");
   }
-  await click("Sequencer");
+  await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
+  await waitFor("!document.querySelector('#producer-settings-dialog').open && !document.querySelector('#byok-key')");
   assert.equal(await evaluate("document.querySelector('#byok-key')"), null);
   await window.loadURL("banger://app/");
   await enterStudio(window);
   await waitFor("document.querySelector('#producer-source')?.value");
-  await click("BYOK");
+  await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("document.querySelector('#byok-model')?.value === 'test-model'");
   assert.equal(await evaluate("document.querySelector('.byok-form h3').textContent"), "Grok");
   await input("byok-model", "second-model");
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=\"status\"]')?.textContent.includes('settings saved')");
+  await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await delay(100);
   await writeFile(join(tmpdir(), desktop ? "banger-byok-desktop.png" : "banger-byok-web.png"), (await window.webContents.capturePage()).toPNG());
   await click("Remove key");
   await waitFor("document.querySelector('.byok-feedback [role=\"status\"]')?.textContent === 'Grok key removed.'");
   assert.equal(await evaluate("document.querySelector('#byok-key').required"), true);
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === 'Remove key').disabled"), true);
-  await click("Sequencer");
-  assert.equal(await evaluate("document.querySelector('#studio-panel-byok').hidden"), true);
+  await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
+  await waitFor("!document.querySelector('#producer-settings-dialog').open && !document.querySelector('#byok-key')");
+  assert.equal(await evaluate("!document.querySelector('#producer-settings-dialog').open"), true);
+  assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), "Settings");
+  await evaluate("document.querySelector('[aria-label=Settings]').click()");
+  await waitFor("document.querySelector('#producer-settings-dialog').open");
+  await evaluate("document.querySelector('#producer-settings-dialog').click()");
+  await waitFor("!document.querySelector('#producer-settings-dialog').open");
+  await click("ElevenLabs");
+  await evaluate("document.querySelector('[aria-label=Settings]').click()");
+  await waitFor("document.querySelector('#producer-settings-dialog').open");
+  assert.equal(await evaluate("document.querySelector('#studio-tab-elevenlabs').getAttribute('aria-selected')"), "true");
+  assert.equal(await evaluate("(() => { const r = document.querySelector('#producer-settings-dialog').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })()"), true);
+  assert.equal(await evaluate("(() => { const d = document.querySelector('#producer-settings-dialog'); return d.scrollWidth <= d.clientWidth; })()"), true);
 }
 
 async function run(desktopWindow) {
@@ -111,7 +136,7 @@ async function run(desktopWindow) {
     await webWindow.loadURL("banger://app/");
     await exercise(webWindow, false);
     webWindow.destroy();
-    console.log("BYOK smoke passed: provider menu with local models, configured-model dropdown, saved-key switching, masked keys, save/replace/remove, reload persistence, encrypted desktop storage, web session storage, mobile layout, and tab navigation.");
+    console.log("BYOK smoke passed: provider menu with local models, configured-model dropdown, saved-key switching, masked keys, save/replace/remove, reload persistence, encrypted desktop storage, web session storage, mobile layout, settings dismissal, and editor preservation.");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

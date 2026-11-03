@@ -119,13 +119,13 @@ async function exercise(window, desktop) {
   await click("Send");
   await waitFor("document.querySelector('.ai-chat-footer [role=alert]')?.textContent.includes('BYOK')");
   await closeChat();
-  await click("BYOK");
+  await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("!document.querySelector('.byok-form fieldset').disabled");
   await input("byok-model", "anthropic/test-model");
   await input("byok-key", "fake-chat-key");
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=status]')");
-  await click("Sequencer");
+  await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
   await openChat();
   await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/test-model'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");

@@ -407,3 +407,17 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .music-chunk { border: 1px solid #343745; border-radius: .6rem; padding: 1rem; }
 .music-chunk input[type=checkbox] { display: inline-block; width: auto; margin-right: .5rem; }
 .music-chunk textarea { min-height: 8rem; }
+
+.producer-settings { margin-left: auto; flex-shrink: 0; }
+.producer-settings-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--producer-border); border-radius: 12px; background: var(--producer-panel); color: var(--producer-text); overflow: auto; }
+.producer-settings-dialog::backdrop { background: #0009; }
+body:has(.producer-settings-dialog[open]) { overflow: hidden; }
+.producer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--producer-border); }
+.producer .producer-settings-heading h2 { margin: 0; font-size: 18px; }
+.producer-settings-heading button { font-size: 24px; }
+.producer-settings-dialog .byok-settings { border: 0; }
+@media (max-width: 900px) {
+  .producer-header { position: relative; padding-right: 52px; }
+  .producer-settings { position: absolute; top: 16px; right: 0; }
+  .producer-settings-heading { padding-inline: 20px; }
+}

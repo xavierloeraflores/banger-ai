@@ -29,7 +29,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
   const [notice, setNotice] = useState("");
   const [targetFile, setTargetFile] = useState<string | null>(null);
   const [local, setLocal] = useState(false);
-  const [connection, setConnection] = useState("Choose a provider in BYOK");
+  const [connection, setConnection] = useState("Choose a provider in Settings → BYOK");
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const request = useRef<AbortController | null>(null);
@@ -56,7 +56,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         if (!active) return;
         const provider = AI_PROVIDERS.find(item => item.id === settings.activeProvider);
         setLocal(Boolean(settings.localSelected));
-        setConnection(settings.chatgpt?.selected ? `ChatGPT · ${settings.chatgpt.accounts.find(account => account.id === settings.chatgpt?.activeAccountId)?.model ?? "Choose a model"}` : settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · ${settings.providers[provider.id]?.model || "Choose a model in BYOK"}` : "Choose a provider in BYOK");
+        setConnection(settings.chatgpt?.selected ? `ChatGPT · ${settings.chatgpt.accounts.find(account => account.id === settings.chatgpt?.activeAccountId)?.model ?? "Choose a model"}` : settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · ${settings.providers[provider.id]?.model || "Choose a model in Settings → BYOK"}` : "Choose a provider in Settings → BYOK");
       }).catch(() => { if (active) setConnection("AI settings unavailable"); });
     };
     refresh();
@@ -173,7 +173,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         : <Button variant="primary" type="submit" disabled={!prompt.trim() || fileBusy}>Send</Button>}
     </form>
     <div className="ai-chat-footer">
-      <p>{local ? "Your current source and recent chat stay on this computer. Muse Glimmer generates files locally." : "Your current source and recent chat are sent to the selected AI provider. Choose a local model or your own key in BYOK."}</p>
+      <p>{local ? "Your current source and recent chat stay on this computer. Muse Glimmer generates files locally." : "Your current source and recent chat are sent to the selected AI provider. Choose a local model or your own key in Settings → BYOK."}</p>
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>

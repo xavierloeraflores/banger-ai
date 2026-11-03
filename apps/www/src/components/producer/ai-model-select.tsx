@@ -16,7 +16,7 @@ export function AIModelSelect() {
       try {
         const next = await aiSettingsBridge().load();
         if (active) { setSettings(next); setError(next.settingsError ?? ""); }
-      } catch { if (active) setError("Could not load AI options. Check BYOK settings."); }
+      } catch { if (active) setError("Could not load AI options. Check Settings → BYOK."); }
     };
     const changed = () => { void refresh(); };
     void refresh();
@@ -48,7 +48,7 @@ export function AIModelSelect() {
   return <div className="ai-model-select">
     <label htmlFor="active-ai-model">AI model</label>
     <select id="active-ai-model" value={selected} disabled={busy || !options.length} onChange={event => void select(event.target.value)}>
-      <option value="" disabled>{options.length ? "Choose a configured model" : "Configure a model in BYOK"}</option>
+      <option value="" disabled>{options.length ? "Choose a configured model" : "Configure a model in Settings → BYOK"}</option>
       {selected && !options.some(option => option.id === selected) && <option value={selected} disabled>Local model needs a download</option>}
       {options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
     </select>
