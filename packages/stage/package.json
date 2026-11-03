@@ -1,0 +1,30 @@
+{
+  "name": "@banger/stage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "pnpm build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@banger/compiler": "workspace:*",
+    "@banger/engine": "workspace:*",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@banger/eslint-config": "workspace:*",
+    "@banger/typescript-config": "workspace:*",
+    "@types/three": "^0.187.0",
+    "eslint": "^9.39.0",
+    "typescript": "^5.9.3"
+  }
+}

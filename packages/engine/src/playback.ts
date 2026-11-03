@@ -30,6 +30,13 @@ export class BangerPlayer {
 
   get meters(): MeterSnapshot { return this.renderer?.meters ?? silentMeters(); }
 
+  /** The score actually being heard, including updates queued for the next bar. */
+  get performance() {
+    const now = this.context?.currentTime ?? 0;
+    const current = this.bars.findLast(bar => bar.start <= now && bar.end > now);
+    return { program: current?.program ?? this.bars.at(-1)?.program, state: this.state, fill: this.fill };
+  }
+
   get state(): PlaybackState {
     const now = this.context?.currentTime ?? 0;
     const current = this.bars.findLast(bar => bar.start <= now && bar.end > now);

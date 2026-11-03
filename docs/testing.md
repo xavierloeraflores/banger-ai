@@ -23,6 +23,7 @@ retrying. After a merge, use `--base HEAD^ --head HEAD` to test that merge.
 | `tooling` | Development launcher and test selector | None |
 | `compiler` | Parser, arrangement, mixer, synth and performance | None |
 | `engine` | Audio scheduling and engine unit tests | None |
+| `stage` | Character rig, instrument animations and score synchronization | None |
 | `agent` | Provider adapters and generated file validation | Fixture models |
 | `harness` | Project filesystem and agent CLI | Fixture models |
 | `elevenlabs` | Music adapter and protocol | Fixture provider |
@@ -60,13 +61,13 @@ introducing a workspace or a cross-workspace test input.
 
 GitHub Actions uses the same selector for pull requests, pushes to `main` and
 merge queues. Only the selected jobs run; PostgreSQL starts only for API
-integration. Manual workflow runs execute all ten suites. `Required tests`
+integration. Manual workflow runs execute all eleven suites. `Required tests`
 provides one stable status check, including for documentation-only changes. Make
 that check required in branch protection if merges should be enforced by GitHub.
 
 ## Browser and audio checks
 
-`test:all` runs all ten automated suites. Interactive Electron smoke tests and
+`test:all` runs all eleven automated suites. Interactive Electron smoke tests and
 rendered audio verification remain separate because they need a graphical
 session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 
@@ -81,6 +82,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Cloud projects | `pnpm --filter @banger/desktop smoke:cloud` |
 | Musical options | `pnpm --filter @banger/desktop smoke:musical` |
 | Raw .banger editor | `pnpm --filter @banger/desktop exec electron scripts/smoke-source-editor.mjs` |
+| Band stage | `pnpm --filter @banger/desktop exec electron scripts/smoke-stage.mjs` |
 
 Each abbreviated `smoke:*` command in the table uses the same
 `pnpm --filter @banger/desktop` prefix. Run the full browser/audio matrix for a

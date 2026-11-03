@@ -89,12 +89,15 @@ test('queues copied edits for the next bar and changes tempo at its boundary', a
   const context = Context.instances[0]; context.currentTime = .5;
   const next = song(); next.tempo = 240; next.tracks[0].gain = .3;
   player.update(next); next.tempo = 60;
+  assert.equal(player.performance.program.tempo, 120, 'Visuals retain the score currently heard');
   assert.equal(player.state.hasPendingUpdate, true); assert.equal(player.state.tempo, 120);
   context.currentTime = 1.96; env.tick();
+  assert.equal(player.performance.program.tempo, 120, 'Lookahead scheduling must not advance visuals');
   assert.equal(context.sources.length, 8);
   near(context.sources[5].starts[0], 2.3);
   assert.equal(player.state.hasPendingUpdate, true);
   context.currentTime = 2.06;
+  assert.equal(player.performance.program.tempo, 240, 'Visual score switches at the audio boundary');
   assert.equal(player.state.tempo, 240); assert.equal(player.state.bar, 2); assert.equal(player.state.hasPendingUpdate, false);
   await player.dispose();
 });

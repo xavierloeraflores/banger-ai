@@ -17,6 +17,7 @@
     "@banger/elevenlabs": "workspace:*",
     "@banger/engine": "workspace:*",
     "@banger/shadcn": "workspace:*",
+    "@banger/stage": "workspace:*",
     "@vercel/blob": "^2.8.2",
     "next": "16.4.3",
     "react": "^19.3.1",

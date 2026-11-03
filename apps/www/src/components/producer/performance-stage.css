@@ -1,0 +1,21 @@
+.performance-dialog { width: min(1320px, calc(100vw - 48px)); max-width: none; max-height: calc(100dvh - 48px); padding: 0; border: 1px solid #423b50; border-radius: 20px; background: #19161f; color: #eeeaf5; box-shadow: 0 30px 100px #0009; overflow: auto; }
+.performance-dialog::backdrop { background: #0c0a13b8; backdrop-filter: blur(8px); }
+.performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 25px 28px 23px; }
+.performance-eyebrow { color: #b3a2cd; font-size: 10px; letter-spacing: .17em; font-weight: 700; }
+.performance-heading h2 { display: flex; align-items: center; gap: 13px; font-size: 25px; line-height: 1.25; letter-spacing: -.035em; margin: 7px 0; font-weight: 650; }
+.performance-heading p { font-size: 12px; color: #a79eaf; margin: 0; }
+.performance-live { font-size: 9px; letter-spacing: .1em; border: 1px solid #544764; border-radius: 20px; padding: 4px 7px; color: #b3a2cd; }
+.performance-live.playing { color: #bdf1c9; border-color: #466d50; background: #263e2b; }
+.performance-viewport { height: min(61dvh, 650px); min-height: 280px; position: relative; background: #e9e4ec; overflow: hidden; }
+.performance-viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.performance-overlay { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #e9e4ecee; color: #51485d; padding: 30px; text-align: center; }
+.performance-overlay p { max-width: 540px; margin: 0; font-size: 13px; }
+.performance-camera-hint { position: absolute; pointer-events: none; bottom: 13px; left: 0; right: 0; text-align: center; color: #7d7189; font-size: 10px; letter-spacing: .02em; }
+.performance-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 19px 28px; flex-wrap: wrap; }
+.performance-transport, .performance-options { display: flex; align-items: center; gap: 10px; }
+.performance-transport > span { color: #a79eaf; font-size: 11px; margin-left: 5px; white-space: nowrap; }
+.performance-divider { margin: 0 9px; color: #554a61; }
+.performance-options label { font-size: 11px; color: #b7adc4; display: flex; gap: 7px; align-items: center; cursor: pointer; }
+.performance-options input { accent-color: #c2acf4; }
+.performance-error { margin: 0; padding: 0 28px 16px; color: #ffb6b6; font-size: 12px; }
+@media (max-width: 700px) { .performance-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 14px; } .performance-heading { padding: 18px; } .performance-heading h2 { font-size: 20px; } .performance-heading p { max-width: 220px; line-height: 1.5; } .performance-viewport { height: 52dvh; } .performance-footer { padding: 15px; gap: 13px; } .performance-transport { flex-wrap: wrap; } }

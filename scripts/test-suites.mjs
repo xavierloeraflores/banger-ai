@@ -20,6 +20,7 @@ export const suites = {
   tooling: { paths: ["scripts/"], description: "Development launcher and test selection" },
   compiler: { workspace: "@banger/compiler", description: "Parser, songs, mixer, synth and performance" },
   engine: { workspace: "@banger/engine", description: "Audio engine unit tests" },
+  stage: { workspace: "@banger/stage", description: "Character rig and music-driven performance" },
   agent: { workspace: "@banger/agent", description: "Model adapters and generation" },
   harness: { workspace: "@banger/harness", description: "Project files and agent CLI" },
   elevenlabs: { workspace: "@banger/elevenlabs", description: "Music provider and fixtures" },

@@ -17,9 +17,13 @@ test("desktop tests cover their shared provider definitions", () => {
   assert.deepEqual(selectSuites(["apps/desktop/src/ai-settings.ts"]), ["desktop"]);
 });
 test("package changes include transitive consumers and shared fixtures", () => {
-  assert.deepEqual(selectSuites(["packages/compiler/src/index.ts"]), ["compiler", "engine", "agent", "harness", "desktop", "web", "api-unit", "api-integration"]);
+  assert.deepEqual(selectSuites(["packages/compiler/src/index.ts"]), ["compiler", "engine", "stage", "agent", "harness", "desktop", "web", "api-unit", "api-integration"]);
   assert.deepEqual(selectSuites(["packages/elevenlabs/test/fixtures.mjs"]), ["elevenlabs", "desktop", "web", "api-unit", "api-integration"]);
   assert.deepEqual(selectSuites(["apps/api/migrations/001.sql"]), ["api-unit", "api-integration"]);
+});
+test("stage changes select their suite and studio consumers", () => {
+  assert.deepEqual(selectSuites(["packages/stage/src/score.ts"]), ["stage", "web", "api-integration"]);
+  assert.ok(buildWorkspaces(["stage"]).includes("@banger/engine"));
 });
 test("runtime language docs and example songs are test inputs", () => {
   assert.ok(selectSuites(["packages/compiler/LANGUAGE.md"]).includes("harness"));
