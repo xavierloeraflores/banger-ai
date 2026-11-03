@@ -15,6 +15,7 @@ export function usePlayer(program: MusicProgram) {
   const audioError = useRef<string | null>(null);
   const [state, setState] = useState<PlaybackState>(idle);
   const [meters, setMeters] = useState<MeterSnapshot>({ master: { peak: 0, rms: 0 }, tracks: {}, buses: {} });
+  const [fill, setFillState] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,10 +85,14 @@ export function usePlayer(program: MusicProgram) {
   const stop = useCallback(() => {
     generation.current += 1;
     player.current?.stop();
+    setFillState(false);
     setState({ ...idle, tempo: latestProgram.current.tempo });
   }, []);
 
-  const setFill = useCallback((active: boolean) => player.current?.setFill(active), []);
+  const setFill = useCallback((active: boolean) => {
+    player.current?.setFill(active);
+    setFillState(active);
+  }, []);
 
-  return { state, meters, starting, error, play, stop, setFill };
+  return { state, meters, starting, error, play, stop, fill, setFill };
 }

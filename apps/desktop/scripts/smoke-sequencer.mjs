@@ -7,6 +7,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { app, dialog } from 'electron';
 import { compileMusic } from '../../../packages/compiler/dist/index.js';
 
+const profile = await mkdtemp(join(tmpdir(), 'banger-performance-profile-'));
+app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 const timeout = setTimeout(() => { console.error('Sequencer smoke timed out'); app.exit(1); }, 120000);
 async function run(window) {
@@ -38,6 +40,9 @@ async function run(window) {
   };
   try {
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'No Fill steps');
+    await text('Fill');
+    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Set a step condition to F or !F');
     await apply('tempo 120; track kick { sound "drums/kick"; rhythm "x x x x"; } section intro { bars 2; play kick; } song { play intro; }');
     const originalSong = (await program()).timeline;
     window.show(); window.focus(); window.webContents.focus();
@@ -71,18 +76,45 @@ async function run(window) {
     assert.equal((await program()).tracks[0].patterns[0].steps[1].kind, 'hit');
     await set('Master volume', .4); await text('Click');
     assert.equal((await program()).masterGain, .4); assert.equal((await program()).metronome, true);
-    await text('Tap tempo'); await delay(500); await text('Tap tempo');
-    assert.ok((await program()).tempo >= 100 && (await program()).tempo <= 125, 'Tap sets plausible tempo.');
+    await text('Tap tempo');
+    assert.equal(await evaluate("document.querySelector('#producer-tap-status').textContent"), 'Tap again to set tempo');
+    await delay(650); await text('Tap tempo');
+    assert.ok((await program()).tempo >= 80 && (await program()).tempo <= 100, 'Tap sets plausible tempo.');
+    assert.match(await evaluate("document.querySelector('#producer-tap-status').textContent"), /BPM · 2 taps/);
+    assert.equal(Number(await evaluate("document.querySelector('#producer-tempo').value")), (await program()).tempo);
+    await delay(3300);
+    await text('Tap tempo');
+    assert.equal(await evaluate("document.querySelector('#producer-tap-status').textContent"), 'Tap again to set tempo');
     await evaluate("document.querySelector('.producer-play').click()");
     await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0", 'live audio');
     const position = await evaluate("document.querySelector('.producer-position').textContent"); await delay(350);
     assert.notEqual(await evaluate("document.querySelector('.producer-position').textContent"), position);
     await text('Base'); await waitFor("document.querySelector('.producer-transport-state').textContent === 'Playing'", 'launch on bar boundary');
     await text('A'); await waitFor("document.querySelector('.producer-transport-state').textContent === 'Playing'", 'relaunch A');
-    await evaluate("(() => { const el = [...document.querySelectorAll('button')].find(el => el.textContent.trim() === 'Fill'); el.dispatchEvent(new KeyboardEvent('keydown', {key:' ',bubbles:true})); })()");
-    await waitFor("[...document.querySelectorAll('button')].find(el => el.textContent.trim() === 'Fill').getAttribute('aria-pressed') === 'true'", 'held fill');
-    await evaluate("(() => { const el = [...document.querySelectorAll('button')].find(el => el.textContent.trim() === 'Fill'); el.dispatchEvent(new KeyboardEvent('keyup', {key:' ',bubbles:true})); })()");
+    await text('Fill');
+    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Fill on');
     await click('Stop playback');
+    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Fill off');
+    const beforeFillCheck = await source();
+    await apply('tempo 240; track kick { sound "drums/kick"; rhythm "x!fill x!fill x!fill x!fill"; }');
+    await evaluate("document.querySelector('.producer-play').click()");
+    await delay(350);
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Master output meter\"]').value"), 0, 'Fill-only sequence is silent with Fill off.');
+    await text('Fill');
+    await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0.01", 'Fill click produces live audio');
+    await evaluate("document.querySelector('[aria-describedby=producer-fill-status]').focus()");
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Space' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
+    await waitFor("document.querySelector('#producer-fill-status').textContent === 'Fill off'", 'keyboard toggles Fill off');
+    await delay(1200);
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Master output meter\"]').value"), 0, 'Turning Fill off silences conditional notes.');
+    await click('Stop playback');
+    await text('Fill');
+    await evaluate("document.querySelector('.producer-play').click()");
+    await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0.01", 'Fill armed before playback');
+    await click('Stop playback');
+    assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Fill off');
+    await apply(beforeFillCheck);
     // Exercise sound edits through the native app before saving the combined project.
     await click('Edit kick');
     const soundScope = "document.querySelector('#track-editor-0 .sound-design')";
@@ -109,13 +141,15 @@ async function run(window) {
     await set('kick saved patch', 'Native bell', 'HTMLSelectElement');
     assert.equal((await program()).tracks[0].modular.name, 'Native bell');
     const saved = await source(), projectPath = join(directory, 'performance.banger');
-    dialog.showSaveDialog = async () => ({ canceled:false, filePath:projectPath }); await text('Save .banger');
+    dialog.showSaveDialog = async () => ({ canceled:false, filePath:projectPath }); await text('Project'); await text('Save .banger');
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')", 'native save');
     assert.equal(await readFile(projectPath, 'utf8'), saved);
-    dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[projectPath] }); await text('Open');
+    await text('Close', "document.querySelector('#project-controls')");
+    dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[projectPath] }); await text('Project'); await text('Open');
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Opened ')", 'native reopen');
     assert.equal(await source(), saved);
     assert.deepEqual(compileMusic(saved), await program());
+    await text('Close', "document.querySelector('#project-controls')");
     await evaluate("document.querySelector('.studio-export').open = true");
     const mix = await download('Export WAV'), stem = await download('Export stem');
     for (const output of [mix, stem]) {
@@ -130,7 +164,7 @@ async function run(window) {
     await writeFile('/tmp/banger-features-sequencer.png', (await window.webContents.capturePage()).toPNG());
     console.log('Feature smoke passed: pointer velocity, probability/conditions, pattern copy/paste/launch, tap/click/master/fill, synth controls and step locks, modular preview/save/load/clear, real playback, native combined project save/reopen and mix/stem WAV export.');
   } catch (error) { console.error(error); process.exitCode = 1; }
-  finally { clearTimeout(timeout); window.destroy(); await rm(directory, { recursive:true, force:true }); app.exit(process.exitCode ?? 0); }
+  finally { clearTimeout(timeout); window.destroy(); await rm(directory, { recursive:true, force:true }); await rm(profile, { recursive:true, force:true }); app.exit(process.exitCode ?? 0); }
 }
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', () => void run(window)));
 await import('../dist/main.js');

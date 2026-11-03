@@ -330,7 +330,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
 
       <dialog ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
         <div className="producer-project-dialog-heading">
-          <div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, and manage your music files.</p></div>
+          <div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div>
           <Button variant="ghost" onClick={() => projectDialog.current?.close()} aria-label="Close project controls">Close</Button>
         </div>
         <section className="project-workspace producer-panel" aria-label="Studio file">
@@ -341,6 +341,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </div>
           {notice && <p role="status">{notice}</p>}
         </section>
+        <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
         <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => setWorkspaceFile(null)} onLoad={(file, saved) => {
           if (filePending.current || (dirty && !window.confirm("Load this workspace file and replace unsaved studio edits?"))) return;
           loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
@@ -366,7 +367,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           <span>{playback.state.playing ? `${String(Math.max(1, playback.state.bar)).padStart(2, "0")}.${String(playback.state.step + 1).padStart(2, "0")}` : "01.01"}</span>
         </div>
         <span className="producer-transport-state">{playback.state.hasPendingUpdate ? "Changes next bar" : playback.state.playing ? "Playing" : null}</span>
-        <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill}
+        <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill} fill={playback.fill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
           onLaunch={(name, next = program) => { const launch = { ...next, chainEnabled: false }; if (name) launch.activePattern = name; else delete launch.activePattern; if (edit(launch)) { setPreviewSection(undefined); setPatterns(Object.fromEntries(next.tracks.map((track, index) => [index, track.patterns?.some(pattern => pattern.name === name) ? name : ""]))); } }} />
         <LevelMeter name="Master" level={playback.meters.master.peak} />
@@ -495,9 +496,6 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
             </div>
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
             <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button></div>
-            <div className="producer-song-tools">
-              <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
-            </div>
           </Panel>
 
         </div>
