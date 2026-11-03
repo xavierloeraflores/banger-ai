@@ -11,6 +11,10 @@ test('plush proportions, face direction and accessory attachment points', () => 
   assert.ok(bounds.max.x - bounds.min.x > 1.9);
   const face = rig.root.getObjectByName('face');
   assert.ok(face.getWorldPosition(new Vector3()).z > .4);
+  face.geometry.computeBoundingBox();
+  const faceSize = face.geometry.boundingBox.getSize(new Vector3());
+  assert.ok(faceSize.x > 1 && faceSize.y > .75, 'the broad face fills the hood');
+  assert.ok(faceSize.z > .15, 'face wraps into the sides of the hood');
   for (const node of Object.values(rig.sockets)) assert.ok(node.parent);
   rig.root.updateMatrixWorld(true);
   const hand = rig.sockets.rightHand.getWorldPosition(new Vector3());
