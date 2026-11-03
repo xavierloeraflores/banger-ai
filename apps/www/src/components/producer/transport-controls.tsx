@@ -31,12 +31,11 @@ export function TransportControls({ program, disabled, onChange, onTempo, onLaun
   return <fieldset className="producer-transport-extras" disabled={disabled} aria-label="Performance controls">
     <div className="producer-performance-control">
       <Button aria-pressed={fill} variant={fill ? "primary" : "secondary"} aria-describedby="producer-fill-status"
-        title="Toggle steps marked F or !F. Exports use Fill off."
         onClick={() => { setFillHint(true); if (hasFillSteps) onFill(!fill); }}>Fill</Button>
       <span id="producer-fill-status" role="status">{!hasFillSteps ? fillHint ? "Set a step condition to F or !F" : "No Fill steps" : fill ? "Fill on" : "Fill off"}</span>
     </div>
     <div className="producer-performance-control">
-      <Button variant="secondary" onClick={tap} aria-describedby="producer-tap-status" title="Tap at least twice to set tempo">Tap tempo</Button>
+      <Button variant="secondary" onClick={tap} aria-describedby="producer-tap-status">Tap tempo</Button>
       <span id="producer-tap-status" role="status">{tapStatus}</span>
     </div>
     <Button variant={program.metronome ? "primary" : "secondary"} aria-pressed={program.metronome ?? false} onClick={() => onChange({ ...program, metronome: !program.metronome })} title="Live metronome. Excluded from exports.">Click</Button>
