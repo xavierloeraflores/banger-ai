@@ -49,13 +49,10 @@ export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(
       <h1 id="project-start-title">Start making music</h1>
       <p>Create a .banger project or open {desktop ? "a file or project folder" : "one you already have"}.</p>
       <div className="producer-start-actions">
-        <Button variant="primary" disabled={busy} onClick={() => void choose("create")}>Create project</Button>
-        <Button variant="secondary" disabled={busy} onClick={() => void choose("file")}>Open project</Button>
+        <Button variant="primary" disabled={busy} onClick={() => void choose("create")}>Create new banger</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => void choose("file")}>Open existing banger</Button>
         {desktop && <Button variant="secondary" disabled={busy} onClick={() => void choose("folder")}>Open project folder</Button>}
-      </div>
-      <div className="producer-start-sample">
-        <Button variant="ghost" disabled={busy} onClick={() => onStart(sample, false)}>Work without a project</Button>
-        <p>Start with {sample.name}. You can edit, play, and save it later.</p>
+        <Button variant="secondary" disabled={busy} onClick={() => onStart(sample, false)}>Load sample banger</Button>
       </div>
       {error && <p role="alert">{error}</p>}
     </section>
