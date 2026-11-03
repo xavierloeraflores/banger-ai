@@ -82,6 +82,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Cloud projects | `pnpm --filter @banger/desktop smoke:cloud` |
 | Musical options | `pnpm --filter @banger/desktop smoke:musical` |
 | Raw .banger editor | `pnpm --filter @banger/desktop exec electron scripts/smoke-source-editor.mjs` |
+| Muse Hero | `pnpm --filter @banger/desktop exec electron scripts/smoke-muse-hero.mjs` |
 | Band stage | `pnpm --filter @banger/desktop exec electron scripts/smoke-stage.mjs` |
 
 Each abbreviated `smoke:*` command in the table uses the same

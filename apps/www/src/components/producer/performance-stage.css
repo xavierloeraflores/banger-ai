@@ -19,3 +19,29 @@
 .performance-options input { accent-color: #c2acf4; }
 .performance-error { margin: 0; padding: 0 28px 16px; color: #ffb6b6; font-size: 12px; }
 @media (max-width: 700px) { .performance-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 14px; } .performance-heading { padding: 18px; } .performance-heading h2 { font-size: 20px; } .performance-heading p { max-width: 220px; line-height: 1.5; } .performance-viewport { height: 52dvh; } .performance-footer { padding: 15px; gap: 13px; } .performance-transport { flex-wrap: wrap; } }
+
+/* One window-sized scene, with either band controls or the transparent game UI. */
+body:has(.performance-dialog[open]) { overflow: hidden; }
+.performance-dialog { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: hidden; background: #080b16; }
+.performance-viewport { position: absolute; inset: 0; height: 100%; min-height: 0; }
+.performance-heading { position: absolute; z-index: 3; top: 0; left: 0; right: 0; padding: 25px 28px; background: linear-gradient(#080b16d9, transparent); pointer-events: none; }
+.performance-heading button { pointer-events: auto; }
+.performance-heading > div { max-width: calc(100% - 260px); }
+.performance-footer { position: absolute; z-index: 3; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, #080b16ed 35%); padding-top: 38px; }
+.performance-camera-hint { bottom: 100px; }
+.performance-hero-trigger { position: absolute; z-index: 3; top: 27px; right: 145px; gap: 18px; border: 1px solid #d4b1ff70; background: #271f3dc9; color: #f0e3ff; box-shadow: 0 0 25px #b78cff20; backdrop-filter: blur(12px); }
+.performance-hero-trigger:hover, .performance-hero-trigger:focus-visible { background: #584174; box-shadow: 0 0 28px #b78cff55; }
+.performance-dialog > [hidden] { display: none; }
+.performance-dialog > .muse-game { z-index: 3; }
+.performance-error { position: absolute; z-index: 4; bottom: 100px; left: 0; right: 0; text-align: center; }
+.performance-with-hero .performance-viewport { pointer-events: none; }
+@media (max-width: 700px) {
+  .performance-heading { padding: 18px; }
+  .performance-heading > div { max-width: calc(100% - 88px); }
+  .performance-heading h2 { font-size: 20px; }
+  .performance-heading p { max-width: 220px; }
+  .performance-hero-trigger { top: auto; bottom: 174px; right: 18px; }
+  .performance-footer { padding: 30px 18px 18px; }
+  .performance-camera-hint { bottom: 151px; }
+  .performance-error { bottom: 208px; }
+}

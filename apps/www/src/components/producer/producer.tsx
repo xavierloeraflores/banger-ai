@@ -465,7 +465,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
         <div className="producer-file-actions">
-          <PerformanceStage readPerformance={playback.readPerformance} playing={playback.state.playing} starting={playback.starting} tempo={playback.state.tempo ?? program.tempo} tracks={program.tracks.length} error={playback.error} onPlay={playback.play} onStop={stopPlayback} />
+          <PerformanceStage program={program} fileName={fileName} heroDisabled={draft || fileBusy || workspaceBusy} stopGame={playback.stop} readPerformance={playback.readPerformance} playing={playback.state.playing} starting={playback.starting} tempo={playback.state.tempo ?? program.tempo} tracks={program.tracks.length} error={playback.error} onPlay={playback.play} onStop={stopPlayback} />
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
             stopPlayback();
