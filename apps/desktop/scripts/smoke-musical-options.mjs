@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
@@ -13,6 +14,7 @@ const timeout = setTimeout(() => { console.error('Musical options smoke timed ou
 let server;
 
 async function run(window) {
+  await enterStudio(window);
   const evaluate = code => window.webContents.executeJavaScript(code, true);
   const waitFor = async (code, label) => {
     const deadline = Date.now() + 5000;

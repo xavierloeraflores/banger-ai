@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import { Buffer } from "node:buffer";
 import { app, BrowserWindow, safeStorage } from "electron";
 import assert from "node:assert/strict";
@@ -19,6 +20,7 @@ app.on("browser-window-created", (_event, window) => {
 await import("../dist/main.js");
 
 async function exercise(window, desktop) {
+  await enterStudio(window);
   const evaluate = script => window.webContents.executeJavaScript(script, true);
   async function waitFor(script) {
     for (let attempt = 0; attempt < 200; attempt++) {
@@ -85,6 +87,7 @@ async function exercise(window, desktop) {
   await click("Sequencer");
   assert.equal(await evaluate("document.querySelector('#byok-key')"), null);
   await window.loadURL("banger://app/");
+  await enterStudio(window);
   await waitFor("document.querySelector('#producer-source')?.value");
   await click("BYOK");
   await waitFor("document.querySelector('#byok-model')?.value === 'test-model'");

@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import { app, BrowserWindow, dialog } from "electron";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -43,6 +44,7 @@ app.on("browser-window-created", (_event, window) => {
 await import("../dist/main.js");
 
 async function exercise(window, desktop) {
+  await enterStudio(window);
   const evaluate = script => window.webContents.executeJavaScript(script, true);
   async function waitFor(script) {
     for (let attempt = 0; attempt < 300; attempt++) {

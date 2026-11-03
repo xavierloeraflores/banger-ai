@@ -82,14 +82,16 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
   const duration=audio.duration||start;
   const recent=jobs[0];
   const editing=history.filter(item=>item.operation==='edit'||item.operation==='lyrics');
+  const wavActions=<div className="music-wav-actions" aria-label="Add a WAV">
+    <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button>
+    <button disabled={blocked} onClick={()=>{if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav')),true);});}}>Use studio WAV</button>
+  </div>;
   return <section className="music-workshop" aria-label="ElevenLabs song workshop">
+    {backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
     <header className="music-heading">
       <div><span className="music-eyebrow">ELEVENLABS / MUSIC</span><h1>{song?.name??'Make the next version.'}</h1></div>
       <div className="music-file-tools">
         {songs.length>0&&<select aria-label="Music project" value={song?.id??''} disabled={blocked} onChange={event=>{const id=event.target.value;if(discard())void action(()=>load(id));}}>{songs.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>}
-        {backend&&<><input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>
-          <button disabled={blocked} onClick={()=>{if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button>
-          <button disabled={blocked} onClick={()=>{if(discard())void action(async()=>{setNotice('Rendering the studio song…');const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav')),true);});}}>Use studio WAV</button></>}
       </div>
     </header>
     <div className="music-body">
@@ -106,7 +108,8 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
               <textarea aria-label={`Lyrics for chunk ${index+1}`} placeholder="Write lyrics for this chunk…" value={lyrics[index]??''} rows={Math.min(5,Math.max(2,(lyrics[index]??'').split('\n').length))} maxLength={6200} disabled={blocked} onChange={event=>{epoch.current++;const value=event.target.value;setLyrics(previous=>previous.map((text,i)=>i===index?value:text));}}/>
             </article>)}</div>
             <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><button disabled={blocked||!dirty} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)?[]:[{index,lyrics:lyrics[index]??''}])}))}>Save lyrics</button><button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></button></div>
-          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>Your song, a new direction.</h2><p>Start with a WAV. Keep the original, write lyrics by chunk, and try new variations.</p>{!backend&&<button className="music-primary" onClick={onConnect}>Connect a cloud project</button>}{backend&&<p className="music-subtle">Upload a WAV or bring in your studio song above.</p>}</div>}
+            <div className="music-replace-wav"><p>Start from another WAV</p>{wavActions}</div>
+          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>Your song, a new direction.</h2><p>Start with a WAV. Keep the original, write lyrics by chunk, and try new variations.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
         </div>
         <form className="music-lyric-composer" onSubmit={event=>{event.preventDefault();if(song&&prompt.trim()&&indices.length&&!blocked&&!dirty)void action(()=>submit({operation:'lyrics',...actionBase,prompt,indices}));}}>
           <label htmlFor="music-lyric-prompt">Generate lyrics <span>for {indices.length||'selected'} chunks</span></label>

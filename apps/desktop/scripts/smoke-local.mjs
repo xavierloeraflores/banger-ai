@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 // Live integration test. Downloads the real model if needed; never calls a cloud provider.
 // --keep-open leaves the desktop and local runtime running for manual use.
 import { app, BrowserWindow, dialog } from "electron";
@@ -18,6 +19,7 @@ app.on("browser-window-created", (_event, window) => {
 await import("../dist/main.js");
 
 async function run(window) {
+  await enterStudio(window);
   const evaluate = script => window.webContents.executeJavaScript(script, true).catch(error => { throw new Error(`${error.message} Script: ${script}`); });
   async function waitFor(script, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;

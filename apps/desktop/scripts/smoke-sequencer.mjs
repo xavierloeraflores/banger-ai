@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,6 +10,7 @@ import { compileMusic } from '../../../packages/compiler/dist/index.js';
 app.on('window-all-closed', () => {});
 const timeout = setTimeout(() => { console.error('Sequencer smoke timed out'); app.exit(1); }, 120000);
 async function run(window) {
+  await enterStudio(window);
   window.webContents.setBackgroundThrottling(false);
   const directory = await mkdtemp(join(tmpdir(), 'banger-sequencer-'));
   const evaluate = code => window.webContents.executeJavaScript(code, true);

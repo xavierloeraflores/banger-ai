@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,6 +23,7 @@ const gridSnapshot = `[...document.querySelectorAll('.producer-track')].map(trac
 }))`;
 
 export async function smokeProducer(window, directory) {
+  await enterStudio(window);
   const evaluate = (script) => window.webContents.executeJavaScript(script, true);
   async function waitFor(script, label, timeout = 5_000) {
     const deadline = Date.now() + timeout;
@@ -95,7 +97,7 @@ export async function smokeProducer(window, directory) {
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   assert.equal(originalSource, await readFile(new URL("../../../examples/night-drive.banger", import.meta.url), "utf8"));
   assert.equal(await evaluate("document.querySelector('#source-title').textContent"), "night-drive.banger");
-  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Local project");
+  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "No project");
   assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 0, 'Track editors start collapsed.');
   assert.equal(await evaluate("document.querySelectorAll('.producer-song-tools details[open]').length"), 0, 'Song tools start collapsed.');
   assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 64)"), 'Collapsed tracks, including step performance badges, form a compact rack.');

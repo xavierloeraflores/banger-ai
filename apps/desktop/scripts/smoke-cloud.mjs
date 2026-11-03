@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
 import { app, BrowserWindow } from 'electron';
@@ -51,7 +52,7 @@ const wait=expression=>evaluate(`new Promise((resolve,reject)=>{const end=Date.n
 const click=text=>evaluate(`[...document.querySelectorAll('button')].find(button=>button.textContent===${JSON.stringify(text)}).click()`);
 const fill=(selector,value)=>evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event(input instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
 try {
-  await window.loadURL(`http://127.0.0.1:${web.address().port}`);
+  await window.loadURL(`http://127.0.0.1:${web.address().port}`);await enterStudio(window);
   console.log('Loaded cloud fixture');
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   await wait("document.querySelector('details.project-workspace')");

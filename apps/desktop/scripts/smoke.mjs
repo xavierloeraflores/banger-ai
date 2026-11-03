@@ -1,3 +1,4 @@
+import { smokeStartup } from "./smoke-startup.mjs";
 import { app, dialog } from "electron";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -59,6 +60,7 @@ async function run(window) {
     await writeFile(path, new Uint8Array([0xff, 0xfe]));
     await assert.rejects(window.webContents.executeJavaScript("window.bangerProjects.openProject()"), /UTF-8/);
     await assert.rejects(window.webContents.executeJavaScript("window.bangerProjects.saveProject({}, 'song')"), /text/);
+    await smokeStartup(window, directory);
     await smokeProducer(window, directory);
     console.log("Desktop smoke passed: static Next assets, secure sandbox, scoped bridge, native Unicode round trip, cancellation, invalid input.");
   } catch (error) {

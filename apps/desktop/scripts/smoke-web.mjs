@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import { Buffer } from "node:buffer";
 import assert from "node:assert/strict";
 import { app, BrowserWindow } from "electron";
@@ -20,7 +21,7 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const window = new BrowserWindow({ width: 1400, height: 1000, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
 const evaluate = code => window.webContents.executeJavaScript(code, true);
 try {
-  await window.loadURL(`http://127.0.0.1:${server.address().port}/`);
+  await window.loadURL(`http://127.0.0.1:${server.address().port}/`);await enterStudio(window);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   assert.equal(await evaluate('typeof window.bangerProjects'), 'undefined');
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8'));

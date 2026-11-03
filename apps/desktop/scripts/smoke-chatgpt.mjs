@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import { app, BrowserWindow, safeStorage, shell, dialog } from 'electron';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
@@ -45,6 +46,7 @@ app.on('browser-window-created', (_event, window) => {
 await import('../dist/main.js');
 
 async function run(window) {
+  await enterStudio(window);
   const evaluate = async code => { try { return await window.webContents.executeJavaScript(code, true); } catch (error) { throw new Error(`Renderer check failed: ${code}`, { cause: error }); } };
   const wait = async expression => {
     for (let i = 0; i < 300; i++) { if (await evaluate(`Boolean(${expression})`)) return; await delay(25); }

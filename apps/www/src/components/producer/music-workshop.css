@@ -75,7 +75,11 @@
 .music-empty-mark { color: var(--producer-lime); font-size: 64px; line-height: 1; }
 .music-empty h2 { font-size: 23px; margin-top: 16px; letter-spacing: -.5px; }
 .music-empty p { color: var(--producer-dim); line-height: 1.8; }
-.music-empty .music-subtle { font-size: 11px; margin-top: 22px; }
+.music-wav-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.music-replace-wav { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--producer-border); }
+.music-replace-wav p { color: var(--producer-dim); font-size: 11px; margin: 0; }
+.music-replace-wav .music-wav-actions { justify-content: flex-start; margin-top: 10px; }
+@media(max-width:700px) { .music-empty { margin-block: 24px; } }
 .music-player { border-top: 1px solid var(--producer-border); padding: 12px 0 8px; flex-shrink: 0; }
 .music-player > audio { display: none; }
 .music-player-controls { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; margin-bottom: 10px; }

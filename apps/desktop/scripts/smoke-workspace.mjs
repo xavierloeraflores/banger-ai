@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import { app, BrowserWindow, dialog } from "electron";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -41,6 +42,7 @@ app.on("browser-window-created", (_event, window) => {
 });
 await import("../dist/main.js");
 async function run(window) {
+  await enterStudio(window);
   const evaluate = script => window.webContents.executeJavaScript(script, true);
   async function wait(script) {
     for (let count = 0; count < 250; count++) { if (await evaluate(`Boolean(${script})`)) return; await delay(30); }

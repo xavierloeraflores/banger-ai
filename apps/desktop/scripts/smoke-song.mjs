@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
@@ -14,6 +15,7 @@ app.on('window-all-closed', () => {});
 const timeout = setTimeout(() => { console.error('Song studio smoke timed out'); app.exit(1); }, 120000);
 let server;
 async function run(window) {
+  await enterStudio(window);
   const directory = await mkdtemp(join(tmpdir(), 'banger-song-'));
   const evaluate = code => window.webContents.executeJavaScript(code, true);
   const waitFor = async (code, label, milliseconds = 7000) => {

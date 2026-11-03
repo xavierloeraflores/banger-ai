@@ -1,3 +1,4 @@
+import { enterStudio } from "./smoke-startup.mjs";
 import {Buffer} from 'node:buffer';
 import assert from 'node:assert/strict';
 import {app,BrowserWindow,dialog,ipcMain} from 'electron';
@@ -88,16 +89,23 @@ async function run(){
  const click=async text=>{await wait(`[...document.querySelectorAll('button')].some(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled).click()`);};
  const fill=(selector,value)=>evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:input instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event(input instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
  try{
-  await window.loadURL(`http://127.0.0.1:${web.address().port}`);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  await window.loadURL(`http://127.0.0.1:${web.address().port}`);await enterStudio(window);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(cloud){
    await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
    await wait("document.querySelector('details.project-workspace select')");
   }
   await click('ElevenLabs');await wait("document.querySelector('#studio-tab-elevenlabs').getAttribute('aria-selected')==='true'");
   assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),true);
+  await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===2");
+  assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
+  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
   if(cloud){await wait("document.querySelector('.music-workshop input[type=file]')");await evaluate(`(()=>{const file=new File([Uint8Array.from(atob(${JSON.stringify(wav().toString('base64'))}),c=>c.charCodeAt(0))],'input.wav',{type:'audio/wav'});const data=new DataTransfer();data.items.add(file);const input=document.querySelector('.music-workshop input[type=file]');input.files=data.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
   else await click('↑ Upload WAV');
   await wait("document.querySelectorAll('.music-chunk').length===2");
+  assert.equal(await evaluate("document.querySelector('.music-empty')"),null);
+  assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),2);
+  assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   const id=(await store.list())[0].id;assert.deepEqual((await store.get(id)).plan,fixturePlan);
   await fill('[aria-label="Lyrics for chunk 1"]','We write our own tomorrow');await click('Save lyrics');
   await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 2')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'We write our own tomorrow');
@@ -130,6 +138,15 @@ async function run(){
   window.setContentSize(390,844);await delay(200);
   assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Music tab fits a narrow viewport.');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-mobile.png'),(await window.webContents.capturePage()).toPNG());
+  if(!cloud){
+   await evaluate('void(window.confirm=()=>true)');
+   await click('Raw .banger');await fill('#producer-source',source.replace('tempo 120','tempo 60'));await click('Apply source');await click('ElevenLabs');
+   await click('Use studio WAV');
+   await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 1')");
+   const imported=(await store.list()).find(song=>song.id!==id);assert.ok(imported,'Rendering the studio creates another song.');
+   const rendered=await store.audio(imported.id,1);assert.equal(Buffer.from(rendered.bytes).subarray(0,4).toString(),'RIFF');
+   assert.equal(provider.calls.analyze,2);
+  }
   console.log(`${cloud?'Cloud browser':'Desktop'} music smoke passed: WAV upload, extracted chunks, lyric edits, AI lyrics, full and selective generation, decoded playback, original-version switching, historical chunk retries, download, and preserved conflicting draft.`);
  }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);console.error('Fixture state:',{uploaded:uploaded?.length,operations:await store.operations()});exitCode=1;}
  finally{clearTimeout(timer);window.destroy();api.close();web.close();await rm(root,{recursive:true,force:true});app.exit(exitCode);}

@@ -34,6 +34,7 @@ import { ByokSettings } from "./byok-menu";
 import { AIModelSelect } from "./ai-model-select";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
+import { ProjectStart } from "./project-start";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
 import "./mixer-song.css";
@@ -77,14 +78,25 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
+  const [session, setSession] = useState<{ file: BangerFile; saved: boolean } | null>(null);
+  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved) => setSession({ file, saved })} />;
+  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} />;
+}
+
+function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean }) {
   const [cloudMusicContext,setCloudMusicContext]=useState<CloudMusicContext>();
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
-  const [view, setView] = useState<StudioView>("sequencer");
-  const [program, setProgram] = useState<MusicProgram>(() => compileMusic(initialFile.source));
-  const [appliedSource, setAppliedSource] = useState(initialFile.source);
-  const [source, setSource] = useState(appliedSource);
-  const [savedSource, setSavedSource] = useState(appliedSource);
+  const [initialProgram] = useState(() => {
+    try { return { program: compileMusic(initialFile.source), source: initialFile.source }; }
+    catch { return { program: compileMusic(sample.source), source: sample.source }; }
+  });
+  const [view, setView] = useState<StudioView>(initialProgram.source === initialFile.source ? "sequencer" : "source");
+  const [program, setProgram] = useState<MusicProgram>(initialProgram.program);
+  const [appliedSource, setAppliedSource] = useState(initialProgram.source);
+  const [source, setSource] = useState(initialFile.source);
+  const [savedSource, setSavedSource] = useState(initialFile.source);
+  const [hasProject, setHasProject] = useState(initiallySaved);
   const [fileName, setFileName] = useState(initialFile.name);
   const [tempoDraft, setTempoDraft] = useState(String(program.tempo));
   const [previewSection, setPreviewSection] = useState<string | undefined>();
@@ -206,6 +218,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
       writeSource(file.source);
       setSavedSource(file.source);
       setFileName(file.name);
+      setHasProject(true);
       try {
         const next = compileMusic(file.source);
         setProgram(next);
@@ -233,6 +246,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
       const file = await saveProject(snapshot, fileName);
       if (file) {
         setFileName(file.name);
+        setHasProject(true);
         setSavedSource(snapshot);
         setNotice(revision.current === savedRevision ? `Saved ${file.name}.` : "Saved the earlier version. Your newer edits are still unsaved.");
       }
@@ -290,7 +304,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
     <main className="producer" data-view={view}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
-        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : "Local project"}</span></div>
+        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : hasProject ? "Local project" : "No project"}</span></div>
         {view!=="elevenlabs"&&<AIModelSelect />}
         <div className="producer-file-actions" hidden={view==="elevenlabs"}>
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
