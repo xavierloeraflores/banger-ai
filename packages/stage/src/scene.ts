@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StageCamera } from './camera.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -16,7 +17,7 @@ export interface StageOptions {
   onError?: (message: string) => void;
   reducedMotion?: boolean;
 }
-export interface StageView { dispose(): void; resetCamera(): void }
+export interface StageView { dispose(): void; resetCamera(): void; setManualCamera(manual: boolean): void; zoomCamera(factor: number): void }
 const palette = ['#e5d6b5', '#c1b7e4', '#b6d4c5', '#e6bcb4', '#b8cee5', '#c6dfc2', '#d9c1e5', '#c4dce2'];
 
 /** Owns one WebGL context. Call dispose whenever the modal closes. */
@@ -35,15 +36,19 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   scene.background = new THREE.Color('#080b16');
   scene.fog = new THREE.Fog('#080b16', 35, 100);
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 250);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const cameraRig = new StageCamera(camera, options.reducedMotion);
+  const controls = new OrbitControls(cameraRig.input, renderer.domElement);
+  controls.target = cameraRig.target;
+  controls.enabled = false;
   controls.enableDamping = true;
-  controls.enablePan = false;
+  controls.enablePan = true;
+  controls.panSpeed = .6;
+  controls.zoomSpeed = .65;
+  controls.rotateSpeed = .55;
   controls.minPolarAngle = .45;
   controls.maxPolarAngle = Math.PI / 2.05;
   controls.minDistance = 4;
   controls.maxDistance = 140;
-  let cameraTouched = false;
-  controls.addEventListener('start', () => { cameraTouched = true; });
   scene.add(new THREE.HemisphereLight('#f4dfd1', '#222345', 1.4));
   const key = new THREE.DirectionalLight('#ffe1bb', 2.4);
   key.position.set(-3, 8, 10); key.castShadow = true;
@@ -69,7 +74,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   let signature = '';
   let performers: { rig: CharacterRig; accessories: ReturnType<typeof createAccessories>; anchor: THREE.Group; instrument: THREE.Group; role: ReturnType<typeof trackRole>; target: THREE.Vector3 }[] = [];
   let positions: StagePosition[] = [];
-  let cameraTime = 0;
+  let previousFrame: number | undefined;
   let disposed = false;
   const ownedTextures = new Set<THREE.Texture>();
 
@@ -121,7 +126,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
     });
     renderer.domElement.dataset.characterCount = String(performers.length);
     renderer.domElement.dataset.outfits = JSON.stringify(performers.map(performer => performer.accessories.selection));
-    layout(); resetCamera();
+    layout(); frameCamera();
   }
   function layout() {
     positions = concertLayout(performers.map(performer => performer.role), camera.aspect < 1);
@@ -134,8 +139,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
     });
     scenery.layout(positions);
   }
-  function resetCamera() {
-    cameraTouched = false; cameraTime = 0;
+  function frameCamera() {
     const minZ = Math.min(-2, ...positions.map(p => p.z - 1.6));
     const maxZ = Math.max(2, ...positions.map(p => p.z + 1.8));
     const center = (minZ + maxZ) / 2;
@@ -147,20 +151,38 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       const viewZ = (y - 1.8) * sin + (z - center) * cos;
       distance = Math.max(distance, viewZ + Math.max((Math.abs(position.x) + 1.6) / (tangent * camera.aspect), Math.abs(viewY) / tangent));
     }
-    distance *= 1.08;
-    camera.position.set(0, 1.8 + distance * sin, center + distance * cos);
-    controls.target.set(0, 1.8, center); controls.update();
+    // Leave room for the slow side-to-side tour, including portrait layouts.
+    distance *= 1.2;
+    cameraRig.frame(new THREE.Vector3(0, 1.8, center), distance, elevation);
+    controls.maxDistance = Math.max(140, distance * 2);
+  }
+  function clearCameraInertia() {
+    controls.enableDamping = false; controls.update(); controls.enableDamping = true;
+  }
+  function setManualCamera(manual: boolean) {
+    clearCameraInertia();
+    cameraRig.setManual(manual);
+    controls.enabled = manual;
+    renderer.domElement.dataset.cameraMode = manual ? 'manual' : 'auto';
+  }
+  function resetCamera() {
+    clearCameraInertia(); cameraRig.reset();
   }
   function resize() {
     const { width, height } = container.getBoundingClientRect();
     if (!width || !height) return;
-    renderer.setSize(width, height); composer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix(); layout(); resetCamera();
+    renderer.setSize(width, height); composer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix();
+    if (signature) { layout(); frameCamera(); }
+    cameraRig.input.aspect = camera.aspect; cameraRig.input.updateProjectionMatrix();
   }
   const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(container); resize();
   function contextLost(event: Event) { event.preventDefault(); renderer.setAnimationLoop(null); options.onError?.('The 3D view lost its graphics connection. Close the stage and reopen it to retry.'); }
   renderer.domElement.addEventListener('webglcontextlost', contextLost);
-  renderer.setAnimationLoop(() => {
-    if (disposed || document.hidden) return;
+  renderer.domElement.dataset.cameraMode = 'auto';
+  renderer.setAnimationLoop((timestamp: number) => {
+    if (disposed || document.hidden) { previousFrame = undefined; return; }
+    const delta = previousFrame === undefined ? 0 : (timestamp - previousFrame) / 1000;
+    previousFrame = timestamp;
     try {
       const snapshot = options.readPerformance();
       const nextSignature = JSON.stringify(snapshot.program.tracks.map(track => [track.name, track.source]));
@@ -175,16 +197,15 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       const signals = concertSignals(snapshot.program, motions, options.reducedMotion);
       const time = options.reducedMotion ? 0 : (motions[0]?.beat ?? 0) * 60 / (snapshot.state.tempo ?? snapshot.program.tempo);
       scenery.update(time, signals, performers.map(performer => performer.target));
-      // Stop automatic moves as soon as the listener takes control.
-      if (!cameraTouched && !options.reducedMotion && snapshot.state.playing) {
-        const offset = Math.sin(time * .08) * .35;
-        camera.position.x += offset - cameraTime; cameraTime = offset;
-      }
+      if (cameraRig.manual) controls.update();
+      cameraRig.update(delta);
+      renderer.domElement.dataset.cameraPosition = camera.position.toArray().map(value => value.toFixed(5)).join(',');
+      renderer.domElement.dataset.cameraDistance = camera.position.distanceTo(controls.target).toFixed(5);
       renderer.domElement.dataset.concert = 'true';
       renderer.domElement.dataset.chorus = String(signals.chorus);
       renderer.domElement.dataset.playing = String(snapshot.state.playing);
       renderer.domElement.dataset.beat = (motions[0]?.beat ?? 0).toFixed(3);
-      controls.update(); composer.render();
+      composer.render();
     } catch (error) {
       renderer.setAnimationLoop(null);
       options.onError?.(error instanceof Error ? error.message : 'Could not render the band.');
@@ -192,6 +213,8 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   });
   return {
     resetCamera,
+    setManualCamera,
+    zoomCamera(factor) { cameraRig.zoom(factor, controls.minDistance, controls.maxDistance); },
     dispose() {
       if (disposed) return; disposed = true;
       renderer.setAnimationLoop(null); resizeObserver.disconnect(); controls.dispose();

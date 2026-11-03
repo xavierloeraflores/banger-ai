@@ -45,3 +45,11 @@ body:has(.performance-dialog[open]) { overflow: hidden; }
   .performance-camera-hint { bottom: 151px; }
   .performance-error { bottom: 208px; }
 }
+
+.performance-options { flex-wrap: wrap; }
+.performance-camera-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.performance-camera-controls [aria-pressed="true"] { background: #443353; border-color: #c2acf4; color: #f0e3ff; }
+@media (max-width: 700px) {
+  .performance-camera-hint { bottom: 200px; padding: 0 18px; }
+  .performance-hero-trigger { bottom: 228px; }
+}
