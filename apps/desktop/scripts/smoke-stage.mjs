@@ -32,14 +32,18 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelector('#performance-stage').open && document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'one character per track');
     assert.equal(await evaluate("document.querySelectorAll('.performance-viewport canvas').length"), 1);
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.concert"), 'true');
+    const outfits = await evaluate("document.querySelector('.performance-viewport canvas').dataset.outfits");
+    assert.equal(JSON.parse(outfits).length, trackCount, 'each performer receives an outfit');
     await click('Play band');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.playing === 'true'", 'audio playback');
     const firstBeat = Number(await evaluate("document.querySelector('.performance-viewport canvas').dataset.beat"));
     await delay(600);
     assert.ok(Number(await evaluate("document.querySelector('.performance-viewport canvas').dataset.beat")) > firstBeat);
+    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.outfits"), outfits, 'outfits stay fixed during playback');
     await writeFile('/tmp/banger-band-stage.png', (await window.webContents.capturePage()).toPNG());
     await click('Stop');
     await wait("document.querySelector('.performance-viewport canvas').dataset.playing === 'false'", 'stopped pose');
+    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.outfits"), outfits, 'stopping preserves outfits');
     await evaluate("document.querySelector('.performance-options input').click()");
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'still mode rebuild');
     await evaluate("document.querySelector('.performance-options input').click()");
