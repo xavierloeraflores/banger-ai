@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {app,BrowserWindow,dialog,ipcMain} from 'electron';
 import {createServer} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -75,6 +75,9 @@ async function run(){
  await Promise.all([new Promise(resolve=>api.listen(0,'127.0.0.1',resolve)),new Promise(resolve=>web.listen(0,'127.0.0.1',resolve))]);
  window=new BrowserWindow({show:false,width:1440,height:1080,webPreferences:{backgroundThrottling:false,sandbox:true,contextIsolation:true,nodeIntegration:false,...(!cloud?{preload:resolve('dist/preload.cjs')}:{})}});
  if(!cloud){
+  await mkdir(join(root,'library','Cover song'),{recursive:true});
+  await writeFile(join(root,'library','Cover song','Cover song.wav'),wav());
+  await writeFile(join(root,'library','Cover song','cover.png'),Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1kAAAAASUVORK5CYII=','base64'));
   const senderWindow=event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;};
   const storage=installSongStorage(senderWindow);
   installWorkspaceHandlers({senderWindow,onOpen:(window,root)=>storage.setRoot(window,root),selectModel:async()=>{throw new Error('Music smoke must not request a project model');}});
@@ -101,12 +104,12 @@ async function run(){
   }
   await click('Mixer');
   assert.equal(await evaluate("document.querySelectorAll('.producer-tabs [role=tab]').length"),4);
-  await click('Switch to Vocal Studio');await wait("document.querySelector('.producer').dataset.view==='vocal'");
+  await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await wait("document.querySelector('.producer').dataset.view==='vocal'");
   assert.equal(await evaluate("document.querySelector('.producer-tabs').checkVisibility()"),false);
-  assert.equal(await evaluate("document.querySelector('.producer-header .producer-file-actions').textContent.includes('ProjectSwitch to Beat Studio')"),true);
-  await click('Switch to Beat Studio');await wait("document.querySelector('#studio-tab-mixer').getAttribute('aria-selected')==='true'");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"View\"]').options.length===3"),true);
+  await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await wait("document.querySelector('#studio-tab-mixer').getAttribute('aria-selected')==='true'");
   assert.equal(await evaluate("document.querySelector('#studio-panel-mixer').checkVisibility()"),true);
-  await click('Switch to Vocal Studio');
+  await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),true);
   await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===2");
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
@@ -151,7 +154,7 @@ async function run(){
   const original=await evaluate("fetch(document.querySelector('.music-workshop audio').src).then(r=>r.arrayBuffer()).then(b=>crypto.subtle.digest('SHA-256',b)).then(hash=>Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join(''))");assert.equal(original,createHash('sha256').update(wav()).digest('hex'));
   await click('Retry chunk 2');await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 6')");
   assert.equal(generatedInputs.at(-1).version.songId,'original-song');assert.deepEqual(generatedInputs.at(-1).indices,[1]);assert.deepEqual(generatedInputs.at(-1).version.plan,fixturePlan);
-  await click('Play song');await wait("document.querySelector('.music-workshop audio').currentTime>0");await click('Switch to Beat Studio');await wait("document.querySelector('.music-workshop audio').paused");await click('Switch to Vocal Studio');
+  await click('Play song');await wait("document.querySelector('.music-workshop audio').currentTime>0");await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await wait("document.querySelector('.music-workshop audio').paused");await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   // A newer server revision cannot silently erase a draft.
   await fill('[aria-label="Lyrics for chunk 1"]','Unsaved local draft');await store.act(id,{operation:'edit',baseVersion:6,edits:[{index:0,lyrics:'External edit'}]},randomUUID());
   await wait("document.querySelector('.music-workshop').textContent.includes('Your lyric draft is preserved')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'Unsaved local draft');
@@ -164,16 +167,42 @@ async function run(){
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-mobile.png'),(await window.webContents.capturePage()).toPNG());
   if(!cloud){
    await evaluate('void(window.confirm=()=>true)');
-   await click('Switch to Beat Studio');await click('Raw .banger');await fill('#producer-source',source.replace('tempo 120','tempo 60'));await click('Apply source');await click('Switch to Vocal Studio');
-   await click('Switch to Beat Studio');assert.equal(await evaluate("document.querySelector('#studio-tab-source').getAttribute('aria-selected')"),'true');
+   await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await click('Raw .banger');await fill('#producer-source',source.replace('tempo 120','tempo 60'));await click('Apply source');await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+   await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);assert.equal(await evaluate("document.querySelector('#studio-tab-source').getAttribute('aria-selected')"),'true');
    assert.ok((await evaluate("document.querySelector('#producer-source').value")).includes('tempo 60'));
-   await click('Switch to Vocal Studio');
+   await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
    await click('Use studio WAV');
    await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 1')");
    const imported=(await store.list()).find(song=>song.id!==id);assert.ok(imported,'Rendering the studio creates another song.');
    const rendered=await store.audio(imported.id,1);assert.equal(Buffer.from(rendered.bytes).subarray(0,4).toString(),'RIFF');
    assert.equal(provider.calls.analyze,2);
   }
+  // Library playback must leave both editors intact and release audio on exit.
+  const selectView = value => fill('[aria-label="View"]',value);
+  await selectView('library');
+  await wait("document.querySelectorAll('.library-card').length>=2");
+  assert.equal(await evaluate("document.querySelector('.producer-transport').checkVisibility()"),false);
+  await evaluate("[...document.querySelectorAll('.library-card')].find(card=>/Vocal Studio|Cloud vocals/.test(card.textContent)).click()");
+  await wait("document.querySelector('.library-player audio').currentTime>0");
+  assert.equal(await evaluate("document.querySelector('.music-workshop audio').paused"),true);
+  await click('Pause library song');await wait("document.querySelector('.library-player audio').paused");
+  await click('Play library song');await wait("!document.querySelector('.library-player audio').paused");
+  if(!cloud){
+   await click('Play Cover song');await wait("document.querySelector('.library-now-playing').textContent.includes('Cover song')&&!document.querySelector('.library-player audio').paused");
+   await wait("document.querySelector('.library-card img').naturalWidth===1");
+  }
+  // Render and play the open beat without loading it into either editor.
+  await evaluate("document.querySelector('.library-card').click()");
+  await wait("document.querySelector('.library-player audio').currentTime>0 && !document.querySelector('.library-player button').disabled");
+  assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Library fits a narrow viewport.');
+  if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-library-mobile.png'),(await window.webContents.capturePage()).toPNG());
+  window.setContentSize(1440,1080);await delay(100);
+  if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-library.png'),(await window.webContents.capturePage()).toPNG());
+  await evaluate("void(window.libraryAudio=document.querySelector('.library-player audio'))");
+  await selectView('beat');await wait("window.libraryAudio.paused");
+  assert.equal(await evaluate("document.querySelector('.song-library')"),null);
+  await selectView('library');await wait("document.querySelectorAll('.library-card').length>=2");
+  assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
   console.log(`${cloud?'Cloud browser':'Desktop'} music smoke passed: WAV upload, extracted chunks, lyric edits, AI lyrics, full and selective generation, decoded playback, original-version switching, historical chunk retries, download, and preserved conflicting draft.`);
  }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);console.error('Fixture state:',{uploaded:uploaded?.length,operations:await store.operations()});exitCode=1;}
  finally{clearTimeout(timer);window.destroy();api.close();web.close();await rm(root,{recursive:true,force:true});app.exit(exitCode);}

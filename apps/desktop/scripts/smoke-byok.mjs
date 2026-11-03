@@ -121,7 +121,7 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-settings-dialog').open");
   await evaluate("document.querySelector('#producer-settings-dialog').click()");
   await waitFor("!document.querySelector('#producer-settings-dialog').open");
-  await click("Switch to Vocal Studio");
+  await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("document.querySelector('#producer-settings-dialog').open");
   assert.equal(await evaluate("document.querySelector('.producer').dataset.view"), "vocal");

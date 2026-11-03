@@ -25,6 +25,7 @@ import { TrackRouting, LevelMeter } from "./mixer-routing";
 import { MixerView } from "./mixer-view";
 import { ProjectIcon } from "./project-icon";
 import { AudioExport } from "./audio-export";
+import { SongLibrary } from "./song-library";
 import { MusicWorkshop } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
 import type { CloudMusicContext } from "@/lib/elevenlabs";
@@ -102,7 +103,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
     try { return { program: compileMusic(initialFile.source), source: initialFile.source }; }
     catch { return { program: compileMusic(sample.source), source: sample.source }; }
   });
-  const [vocalStudio, setVocalStudio] = useState(false);
+  const [studio, setStudio] = useState<"beat" | "vocal" | "library">("beat");
+  const vocalStudio = studio === "vocal";
+  const beatStudio = studio === "beat";
   const [view, setView] = useState<StudioView>(initialProgram.source === initialFile.source ? "sequencer" : "source");
   const [program, setProgram] = useState<MusicProgram>(initialProgram.program);
   const [appliedSource, setAppliedSource] = useState(initialProgram.source);
@@ -403,7 +406,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
         <label className="producer-focused-pattern">Pattern <Select aria-label={`${track.name} pattern`} value={selectedPattern ?? ""} onChange={event => setPatterns({ ...patterns, [index]: event.target.value })}><option value="">Base pattern</option>{track.patterns?.map(pattern => <option key={pattern.name}>{pattern.name}</option>)}</Select></label>
         <TrackEditorTabs id={`track-${index}`} name={track.name} active={editorTab} onSelect={setEditorTab} panels={{
           notes: <>
-            {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={draft || fileBusy} visible={!vocalStudio && view === "sequencer" && expandedTrack === index && editorTab === "notes"} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
+            {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={draft || fileBusy} visible={beatStudio && view === "sequencer" && expandedTrack === index && editorTab === "notes"} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
             {track.source.kind === "sound" && <p className="producer-empty">Edit this pattern with the steps in the track list.</p>}
             <details className="producer-pattern-settings"><summary>Pattern settings</summary>
               <PatternControls hidePicker track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })}
@@ -456,16 +459,20 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
   });
 
   return (
-    <main className="producer" data-view={vocalStudio ? "vocal" : view}>
+    <main className="producer" data-view={beatStudio ? view : studio}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
         <div className="producer-file-actions">
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
-          <Button variant="secondary" onClick={() => {
-            if (!vocalStudio) stopPlayback();
-            setVocalStudio(!vocalStudio);
-          }}>{vocalStudio ? "Switch to Beat Studio" : "Switch to Vocal Studio"}</Button>
+          <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
+            stopPlayback();
+            setStudio(event.target.value as "beat" | "vocal" | "library");
+          }}>
+            <option value="vocal">Vocal Studio</option>
+            <option value="beat">Beat Studio</option>
+            <option value="library">Library</option>
+          </Select>
         </div>
         <SettingsMenu />
       </header>
@@ -494,7 +501,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
             {notice && <p role="status">{notice}</p>}
           </>}
           cloudControls={<details className="project-cloud-controls"><summary>Cloud projects</summary>
-            <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setVocalStudio(true);}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
+            <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
               if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
               loadGeneratedFile(file, sourceRevision); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close();
             }} />
@@ -503,7 +510,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
         <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy || workspaceBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
       </dialog>
 
-      <section className="producer-transport" aria-label="Transport">
+      <section hidden={!beatStudio} className="producer-transport" aria-label="Transport">
         <div className="producer-play-controls">
           <Button variant="primary" onClick={() => void playback.play()} disabled={playback.starting || playback.state.playing} className="producer-play">
             <span aria-hidden="true">▶</span> {playback.starting ? "Starting" : "Play"}
@@ -533,7 +540,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
       </section>
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
       <div className="producer-workspace" id="studio">
-        <div className="producer-tabs" hidden={vocalStudio} role="tablist" aria-label="Studio views">
+        <div className="producer-tabs" hidden={!beatStudio} role="tablist" aria-label="Studio views">
           {studioViews.map((item, index) => <button key={item.id} type="button" role="tab"
             id={`studio-tab-${item.id}`} aria-controls={`studio-panel-${item.id}`} aria-selected={view === item.id}
             tabIndex={view === item.id ? 0 : -1} onClick={() => setView(item.id)}
@@ -548,7 +555,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
               document.getElementById(`studio-tab-${next.id}`)?.focus();
             }}>{item.label}</button>)}
         </div>
-        <div id="studio-panel-sequencer" role="tabpanel" aria-labelledby="studio-tab-sequencer" hidden={vocalStudio || view !== "sequencer"} tabIndex={0}>
+        <div id="studio-panel-sequencer" role="tabpanel" aria-labelledby="studio-tab-sequencer" hidden={!beatStudio || view !== "sequencer"} tabIndex={0}>
           <Panel className="producer-sequencer" aria-labelledby="sequence-title">
             <div className="producer-panel-heading">
               <div className="producer-rack-title"><h1 id="sequence-title">Sequencer</h1><span>{program.tracks.length} tracks</span></div>
@@ -592,13 +599,13 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
           </Panel>
 
         </div>
-        <div id="studio-panel-mixer" role="tabpanel" aria-labelledby="studio-tab-mixer" hidden={vocalStudio || view !== "mixer"} tabIndex={0}>
+        <div id="studio-panel-mixer" role="tabpanel" aria-labelledby="studio-tab-mixer" hidden={!beatStudio || view !== "mixer"} tabIndex={0}>
           <Panel><MixerView program={program} disabled={draft || fileBusy} meters={playback.meters} onTrackChange={editTrack} onChange={edit} /></Panel>
         </div>
-        <div id="studio-panel-song" role="tabpanel" aria-labelledby="studio-tab-song" hidden={vocalStudio || view !== "song"} tabIndex={0}>
+        <div id="studio-panel-song" role="tabpanel" aria-labelledby="studio-tab-song" hidden={!beatStudio || view !== "song"} tabIndex={0}>
           <Panel><SongArrangement program={program} disabled={draft || fileBusy} section={playback.state.section} preview={previewSection} onPreview={preview} onChange={edit} /></Panel>
         </div>
-        <div id="studio-panel-source" role="tabpanel" aria-labelledby="studio-tab-source" hidden={vocalStudio || view !== "source"} tabIndex={0}>
+        <div id="studio-panel-source" role="tabpanel" aria-labelledby="studio-tab-source" hidden={!beatStudio || view !== "source"} tabIndex={0}>
           <Panel className="producer-editor" aria-labelledby="source-title">
             <div className="producer-editor-heading"><div><p className="producer-eyebrow">The source</p><h2 id="source-title">{fileName}</h2></div><span className={`producer-source-status${result.error ? " has-error" : ""}`}>{result.error ? "Check source" : draft ? "Unapplied" : "In sync"}</span></div>
             <label className="producer-sr-only" htmlFor="producer-source">Banger source code</label>
@@ -611,6 +618,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
         <div id="vocal-studio" hidden={!vocalStudio}>
           <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={vocalStudio} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
+        {studio === "library" && <SongLibrary key={`${projectEpoch}-${cloudMusicContext?.projectId ?? "local"}`} cloud={cloudMusicContext} studioFile={{ name: fileName, source }} folderName={folderName} onOpenProject={showProjects} />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onProjectBusy={setWorkspaceBusy} onProjectFile={(file, requestRevision) => {

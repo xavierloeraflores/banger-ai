@@ -72,3 +72,8 @@ contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
   audio: (id, version) => ipcRenderer.invoke("banger:music-audio", id, version),
   save: (id, version) => ipcRenderer.invoke("banger:music-save", id, version),
 }));
+
+contextBridge.exposeInMainWorld("bangerLibrary", {
+  list: () => ipcRenderer.invoke("banger:library-list"),
+  read: id => ipcRenderer.invoke("banger:library-read", id),
+});

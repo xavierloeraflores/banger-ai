@@ -155,12 +155,12 @@ async function run(window) {
     await closeChat();
     await click("Project");
     await evaluate("document.querySelector('#project-controls').close()");
-    await click("Switch to Vocal Studio");
+    await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').checkVisibility()"), true);
     await openChat();
     assert.ok(await evaluate("document.querySelector('.ai-chat-transcript').textContent.includes('Fresh conversation')"));
     await closeChat();
-    await click("Switch to Beat Studio");
+    await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await click("Project");
     // Renderer receives relative names, and traversal is rejected by the real IPC handler.
     await assert.rejects(evaluate("window.bangerWorkspace.read('../secret.banger')"));
