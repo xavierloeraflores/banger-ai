@@ -6,7 +6,7 @@ import {Button} from '@banger/shadcn';
 import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnection,type CloudJob,type CloudSnapshot} from '@/lib/cloud-projects';
 type Artifact={id:string;kind:string;revision:number;status:string};
 const message=(error:unknown)=>error instanceof Error ? error.message : 'The cloud operation failed.';
-export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicContextChange,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding):void;onDisconnect():void;onMusicContextChange?(context:CloudMusicContext|undefined):void;onOpenMusic?():void}) {
+export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicContextChange,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding,projectName:string):void;onDisconnect():void;onMusicContextChange?(context:CloudMusicContext|undefined):void;onOpenMusic?():void}) {
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
   const [password,setPassword]=useState('');
@@ -136,7 +136,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
             })}>Save cloud file</Button>
             <Button disabled={busy} onClick={()=>{if(discard())void action(async()=>{const next=await cloudRequest<CloudSnapshot>(connection,`/projects/${snapshot.projectId}`);setSnapshot(next);setSource(next.files.find(file=>file.path===path)?.source ?? '');setDraftBase(null);});}}>Reload saved file</Button>
             <Button disabled={busy || !dirty || draftBase===snapshot.revision} onClick={()=>{if(window.confirm('Use the latest revision as the base for this draft? Review and merge the saved changes first.'))setDraftBase(snapshot.revision);}}>Use latest revision as draft base</Button>
-            <Button disabled={busy || dirty} onClick={()=>{compileMusic(source);onLoad({name:path.split('/').pop()!,source},{...connection,projectId:snapshot.projectId,revision:snapshot.revision,path,source});}}>Load cloud file in studio</Button>
+            <Button disabled={busy || dirty} onClick={()=>{compileMusic(source);onLoad({name:path.split('/').pop()!,source},{...connection,projectId:snapshot.projectId,revision:snapshot.revision,path,source},snapshot.name);}}>Load cloud file in studio</Button>
           </div>
           {dirty && <details><summary>Compare saved source at revision {snapshot.revision}</summary><pre>{file?.source ?? "This file was deleted in the saved revision."}</pre></details>}
         </>}

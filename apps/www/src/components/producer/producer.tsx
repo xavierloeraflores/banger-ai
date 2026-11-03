@@ -104,6 +104,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const [appliedSource, setAppliedSource] = useState(initialProgram.source);
   const [source, setSource] = useState(initialFile.source);
   const [savedSource, setSavedSource] = useState(initialFile.source);
+  const [projectName, setProjectName] = useState(initialFolder?.name ?? "");
   const [hasProject, setHasProject] = useState(initiallySaved);
   const [fileName, setFileName] = useState(initialFile.name);
   const [tempoDraft, setTempoDraft] = useState(String(program.tempo));
@@ -273,6 +274,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
       if (!file) return;
       loadOpenedFile(file);
       setWorkspaceFile(null);
+      setProjectName("");
       setCloudBinding(null);
     } catch (cause) { setNotice(message(cause)); }
     finally { filePending.current = false; setFileBusy(false); }
@@ -310,6 +312,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
       setAppliedSource(file.source);
       writeSource(file.source);
       setSavedSource("");
+      setProjectName("");
       setWorkspaceFile(null);
       setFileName(file.name);
       setTempoDraft(String(next.tempo));
@@ -466,7 +469,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     <main className="producer" data-view={vocalStudio ? "vocal" : view}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
-        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}{(dirty || !hasProject) && <span className="producer-dim">{dirty ? "Unsaved" : "No project"}</span>}</div>
+        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || "no project"} / {fileName}</span></div>
         <div className="producer-file-actions">
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Button variant="secondary" onClick={() => {
@@ -491,15 +494,15 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           {notice && <p role="status">{notice}</p>}
         </section>
         <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
-        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => setWorkspaceFile(null)} onLoad={(file, saved) => {
+        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => { setWorkspaceFile(null); setProjectName(""); }} onLoad={(file, saved, name) => {
           if (filePending.current || (dirty && !window.confirm("Load this workspace file and replace unsaved studio edits?"))) return;
           loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
-          setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
+          setProjectName(name); setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
           projectDialog.current?.close();
         }} />
-        <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setVocalStudio(true);}} studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
+        <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setVocalStudio(true);}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
           if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
-          loadGeneratedFile(file, sourceRevision); setCloudBinding(binding); projectDialog.current?.close();
+          loadGeneratedFile(file, sourceRevision); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close();
         }} />
       </dialog>
 
