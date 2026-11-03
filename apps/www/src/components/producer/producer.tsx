@@ -90,6 +90,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
 function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjectControls }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; openProjectControls?: boolean }) {
   const projectDialog = useRef<HTMLDialogElement>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
+  const [projectEpoch, setProjectEpoch] = useState(0);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
   useEffect(() => { if (initialFolder && openProjectControls) projectDialog.current?.showModal(); }, [initialFolder, openProjectControls]);
@@ -474,11 +475,11 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
           <div className="project-dialog-title"><span className="project-dialog-emblem"><ProjectIcon name="folder" /></span><div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div></div>
           <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
         </div>
-        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile}
+        <DesktopProjectWorkspace studioBusy={fileBusy || workspaceBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile}
           onFirstSongCreated={() => projectDialog.current?.close()}
           canReplace={() => !filePending.current && (!dirty || window.confirm("Replace unsaved changes in the current song?"))}
           onFolderChange={folder => {
-            setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);
+            setProjectEpoch(value => value + 1); setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);
           }}
           onLoad={async (file, saved, name) => {
             await getProjectWorkspace().activate();
@@ -610,7 +611,16 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
         <div id="vocal-studio" hidden={!vocalStudio}>
           <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={vocalStudio} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
-        <div hidden={vocalStudio}><AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} /></div>
+        <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
+          folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
+          onProjectBusy={setWorkspaceBusy} onProjectFile={(file, requestRevision) => {
+            if (revision.current !== requestRevision) {
+              setNotice("The agent saved project changes. Your newer studio edits are preserved. Reopen the song from Project to review the saved version.");
+              return;
+            }
+            loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
+            setWorkspaceFile(file); setProjectName(folderName); setCloudBinding(null);
+          }} />
       </div>
       <footer className="producer-footer"><span role="status">{notice}</span></footer>
     </main>

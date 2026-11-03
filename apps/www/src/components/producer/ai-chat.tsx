@@ -7,8 +7,13 @@ import { sendChat } from "@/lib/ai-chat";
 import { saveProject } from "@/lib/project-files";
 import { AI_PROVIDERS, aiSettingsBridge } from "@/lib/ai-providers";
 
-type Turn = { prompt: string; reply: ChatReply; revision: number };
-type Props = { source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number): void };
+import type { WorkspaceFile } from "@/lib/project-workspace";
+
+type Turn = { prompt: string; reply: ChatReply; revision: number; project?: string; activity?: string[] };
+type Props = { source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number): void;
+  folderName: string; projectEpoch: number; activeFile?: string; projectDirty: boolean;
+  onProjectBusy(busy: boolean): void; onProjectFile(file: WorkspaceFile, revision: number): void;
+};
 const suggestions = [
   "Write a synth-pop song with an intro, verse, chorus and outro",
   "Make a lo-fi beat at 85 BPM with swung drums and mellow keys chords",
@@ -18,7 +23,14 @@ const suggestions = [
   "Build tension in this song with a rising filter sweep before the chorus",
 ];
 
-export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) {
+export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onProjectBusy, onProjectFile }: Props) {
+  const [scope, setScope] = useState<"studio" | "project">("studio");
+  const [desktop, setDesktop] = useState(false);
+  const [activity, setActivity] = useState<string[]>([]);
+  const activityRef = useRef<string[]>([]);
+  const projectRequest = useRef(false);
+  const resetProjectHistory = useRef(false);
+  const projectMode = desktop && !!folderName && scope === "project";
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const launcher = useRef<HTMLButtonElement>(null);
@@ -50,6 +62,31 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
   }
 
   useEffect(() => {
+    queueMicrotask(() => {
+      setDesktop(Boolean(window.bangerWorkspace));
+      setScope(window.bangerWorkspace && folderName ? "project" : "studio");
+    });
+  }, [folderName, projectEpoch]);
+
+  useEffect(() => window.bangerWorkspace?.onEvent(event => {
+    if (!projectRequest.current) return;
+    const text = event.type === "file-changed" ? `Saved ${event.file?.path}`
+      : event.type === "tool-start" ? `${event.name}${event.path ? ` · ${event.path}` : ""}`
+      : event.type === "tool-result" && !event.ok ? event.error : "";
+    if (text) {
+      activityRef.current = [...activityRef.current, text].slice(-80);
+      setActivity(activityRef.current);
+    }
+  }), []);
+
+  useEffect(() => {
+    if (!busy || !projectMode) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy, projectMode]);
+
+  useEffect(() => {
     let active = true;
     const refresh = () => {
       void aiSettingsBridge().load().then(settings => {
@@ -66,17 +103,45 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
 
   useEffect(() => {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: "instant" });
-  }, [turns, pendingPrompt, error, open]);
+  }, [turns, pendingPrompt, error, open, activity]);
 
   async function send() {
     const text = prompt.trim();
-    if (!text || request.current) return;
+    if (!text || request.current || fileBusy || (projectMode && projectDirty)) return;
     const controller = new AbortController();
     request.current = controller;
     setPendingPrompt(text);
     setError(null);
     setNotice("");
     const snapshotRevision = revision;
+    if (projectMode && window.bangerWorkspace) {
+      const bridge = window.bangerWorkspace;
+      projectRequest.current = true;
+      activityRef.current = [];
+      setActivity([]);
+      onProjectBusy(true);
+      try {
+        const result = await bridge.run(text, activeFile, resetProjectHistory.current);
+        resetProjectHistory.current = false;
+        setTurns(previous => [...previous, { prompt: text, revision: snapshotRevision, project: folderName,
+          reply: { text: result.ok ? result.reply.text : result.error, files: [], model: connection }, activity: activityRef.current }]);
+        setPrompt("");
+        // Cancelled tasks can still have saved files. Refresh only an unchanged studio.
+        if (activeFile) {
+          const saved = await bridge.read(activeFile);
+          if (saved.source !== source) onProjectFile(saved, snapshotRevision);
+        }
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not run the project task.");
+      } finally {
+        projectRequest.current = false;
+        request.current = null;
+        setPendingPrompt(null);
+        onProjectBusy(false);
+        if (dialog.current?.open) input.current?.focus();
+      }
+      return;
+    }
     const recent = turns.slice(-5);
     const messages: ChatMessage[] = recent.flatMap(turn => [
       { role: "user", content: turn.prompt },
@@ -99,6 +164,12 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
         if (dialog.current?.open) input.current?.focus();
       }
     }
+  }
+
+  function stop() {
+    if (projectRequest.current) {
+      void window.bangerWorkspace?.cancel().catch(cause => setError(cause instanceof Error ? cause.message : "Could not stop the project task."));
+    } else request.current?.abort();
   }
 
   async function save(file: BangerFile) {
@@ -131,49 +202,57 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad }: Props) 
       }}>
     <Panel className="producer-ai" aria-labelledby="ai-chat-title">
     <div className="producer-panel-heading">
-      <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Describe your next banger</h2></div>
+      <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Banger AI</h2></div>
       <div className="ai-chat-heading-actions"><span className="producer-tag">{connection}</span>
-        <Button variant="ghost" disabled={busy || !turns.length} onClick={() => { setTurns([]); setTargetFile(null); setPrompt(""); setError(null); setNotice(""); }}>New chat</Button>
+        <Button variant="ghost" disabled={busy || !turns.length} onClick={() => { resetProjectHistory.current = true; setActivity([]); setTurns([]); setTargetFile(null); setPrompt(""); setError(null); setNotice(""); }}>New chat</Button>
         <IconButton className="ai-chat-close" variant="ghost" aria-label="Close AI chat" onClick={() => dialog.current?.close()}>×</IconButton>
       </div>
     </div>
     <div ref={transcript} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
       {!turns.length && !busy && <div className="ai-chat-empty">
-        <p>Create a loop or a full song with sections, layer chords and melodies, or reshape this project with effects and automation. Preview the files, then load one into the studio or save it.</p>
+        <p>{projectMode ? `Edit songs across ${folderName}. Describe the changes you want, and the agent will compile and save them to your project folder.` : "Create a song or reshape the current one. Preview the files, then load one into the studio or save it."}</p>
         <div className="ai-chat-suggestions">{suggestions.map(text => <Button key={text} variant="ghost" onClick={() => { setPrompt(text); input.current?.focus(); }}>{text}</Button>)}</div>
       </div>}
       {turns.map((turn, index) => <div className="ai-chat-turn" key={index}>
         <p className="ai-chat-user"><span className="producer-sr-only">You: </span>{turn.prompt}</p>
+        {turn.project && <p className="ai-chat-model">Project · {turn.project}</p>}
         <p className="ai-chat-answer"><span className="producer-sr-only">Banger: </span>{turn.reply.text}</p>
         <div className="ai-chat-files">{turn.reply.files.map(file => <article className="ai-chat-file" key={file.name}>
           <div className="ai-chat-file-heading"><strong>{file.name}</strong><span>{file.operation === "edit" ? "Revision compiled" : "Compiled"}</span></div>
           <details><summary>Preview source</summary><pre>{file.source}</pre></details>
           <div className="ai-chat-file-actions">
             <Button variant="primary" disabled={fileBusy || saving} onClick={() => onLoad(file, turn.revision)}>Load in studio</Button>
-            <Button disabled={busy} onClick={() => { setTargetFile(file.name); input.current?.focus(); }}>Edit this file</Button>
+            <Button disabled={busy} onClick={() => { setScope("studio"); setTargetFile(file.name); input.current?.focus(); }}>Edit this file</Button>
             <Button disabled={fileBusy || saving} onClick={() => void save(file)}>Save file</Button>
           </div>
         </article>)}</div>
+        {!!turn.activity?.length && <details className="ai-chat-activity"><summary>Project activity</summary><ol>{turn.activity.map((item, index) => <li key={index}>{item}</li>)}</ol></details>}
         <p className="ai-chat-model">{turn.reply.model}</p>
       </div>)}
-      {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">Composing and checking your files…</p></div>}
+      {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{projectMode ? "Working on your project…" : "Composing and checking your files…"}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
     </div>
-    <label className="ai-chat-target">Editing
+    {desktop && folderName && <label className="ai-chat-target">Scope
+      <select aria-label="Chat scope" value={scope} disabled={busy} onChange={event => setScope(event.target.value as "studio" | "project")}>
+        <option value="studio">Studio proposals</option><option value="project">Project folder · {folderName}</option>
+      </select>
+    </label>}
+    {projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
       <select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
         <option value="">{fileName} · current editor</option>
         {availableFiles.map(file => <option key={file.name} value={file.name}>{file.name} · latest proposal</option>)}
       </select>
-    </label>
+    </label>}
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
       <label className="producer-sr-only" htmlFor="ai-chat-prompt">Message Banger AI</label>
-      <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={4000} value={prompt} disabled={busy}
-        placeholder="Describe a song, a loop, or a change to this project…" onChange={event => setPrompt(event.target.value)}
+      <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={projectMode ? 16000 : 4000} value={prompt} disabled={busy}
+        placeholder={projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-      {busy ? <Button variant="secondary" onClick={() => request.current?.abort()}>Stop generating</Button>
-        : <Button variant="primary" type="submit" disabled={!prompt.trim() || fileBusy}>Send</Button>}
+      {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
+        : <Button variant="primary" type="submit" disabled={!prompt.trim() || fileBusy || (projectMode && projectDirty)}>Send</Button>}
     </form>
     <div className="ai-chat-footer">
-      <p>{local ? "Your current source and recent chat stay on this computer. Muse Glimmer generates files locally." : "Your current source and recent chat are sent to the selected AI provider. Choose a local model or your own key in Settings → BYOK."}</p>
+      {projectMode && projectDirty && <p role="status">Save your studio changes before running a project task.</p>}
+      <p>{projectMode ? (local ? "Project files and task history stay on this computer." : "Project files and task history are sent to the selected AI provider.") : local ? "Your current source and recent chat stay on this computer. Muse Glimmer generates files locally." : "Your current source and recent chat are sent to the selected AI provider. Choose a local model or your own key in Settings → BYOK."}</p>
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>

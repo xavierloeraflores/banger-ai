@@ -45,7 +45,7 @@ await import("../dist/main.js");
 
 async function exercise(window, desktop) {
   await enterStudio(window);
-  const evaluate = script => window.webContents.executeJavaScript(script, true);
+  const evaluate = script => window.webContents.executeJavaScript(script, true).catch(error => { throw new Error(`${error.message} Script: ${script}`); });
   async function waitFor(script) {
     for (let attempt = 0; attempt < 300; attempt++) {
       if (await evaluate(`Boolean(${script})`)) return;
@@ -114,6 +114,7 @@ async function exercise(window, desktop) {
       };
     })()`);
   }
+  if (desktop) await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
   // Missing keys produce a useful UI error without a network call.
   await input("ai-chat-prompt", "Create two loops");
   await click("Send");
@@ -155,7 +156,7 @@ async function exercise(window, desktop) {
   await click("Load in studio");
   await waitFor("document.querySelector('#producer-tempo').value === '105'");
   assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
-  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Unsaved");
+  assert.equal(await evaluate("document.querySelector('.project-file-identity p').textContent"), "Unsaved changes");
   await evaluate("document.querySelectorAll('.ai-chat-file button')[3].click()");
   await waitFor("document.querySelector('#producer-tempo').value === '85'");
   await input("ai-chat-prompt", "Make the second loop softer");
@@ -243,7 +244,7 @@ async function run(desktop) {
     clearTimeout(timeout);
     for (const window of BrowserWindow.getAllWindows()) window.destroy();
     server.close();
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     app.exit(process.exitCode ?? 0);
   }
 }

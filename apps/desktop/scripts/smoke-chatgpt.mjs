@@ -86,6 +86,7 @@ async function run(window) {
     assert.ok(opened.includes('https://chatgpt.com/settings/usage'));
     await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+    await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
     await wait("document.querySelector('.ai-chat-heading-actions .producer-tag')?.textContent === 'ChatGPT · other-chatgpt'");
     await evaluate(`(() => { const input = document.getElementById('ai-chat-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Make a clap loop'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await click('Send');
@@ -100,15 +101,16 @@ async function run(window) {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [projectDir] });
     await click('Project');
     await click('Open Project');
-    await evaluate("document.querySelector('.project-song-advanced').open = true");
-    await wait("document.querySelector('#workspace-source')?.value.includes('tempo 101')");
-    await evaluate(`(() => { const input = document.getElementById('workspace-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Slow this song to 88 BPM'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-    await click('Run project task');
-    await wait("document.querySelector('#workspace-source')?.value.includes('tempo 88')");
-    await wait("document.querySelector('.project-workspace-notice')?.textContent.includes('clap loop')");
+    await evaluate("document.querySelector('#project-controls').close()");
+    await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+    await wait("document.querySelector('#producer-source')?.value.includes('tempo 101')");
+    await evaluate(`(() => { const input = document.getElementById('ai-chat-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Slow this song to 88 BPM'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await click('Send');
+    await wait("document.querySelector('#producer-source')?.value.includes('tempo 88')");
+    await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('clap loop')");
     assert.equal(projectCalls, 2);
     assert.match(await readFile(join(projectDir, 'song.banger'), 'utf8'), /tempo 88;/);
-    await evaluate("document.querySelector('#project-controls')?.close()");
+    await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
     await evaluate("document.querySelector('[aria-label=Settings]').click()");
     await wait("document.querySelector('#chatgpt-title')");
     await writeFile(join(tmpdir(), 'banger-chatgpt-settings.png'), (await window.webContents.capturePage()).toPNG());
@@ -119,5 +121,5 @@ async function run(window) {
     assert.equal(decrypted.includes('fake-ui-refresh'), false);
     console.log('ChatGPT UI smoke passed: real browser launch/cancel IPC, encrypted fake-account selection, models, plan indicator, usage link, namespaced chat and project-harness generation, and sign-out. No real account or paid request used.');
   } catch (error) { console.error(error); process.exitCode = 1; }
-  finally { clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true }); app.exit(process.exitCode ?? 0); }
+  finally { clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); app.exit(process.exitCode ?? 0); }
 }
