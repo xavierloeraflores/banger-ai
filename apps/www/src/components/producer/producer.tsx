@@ -31,7 +31,6 @@ import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
 import { usePlayer } from "./use-player";
 import { SettingsMenu } from "./settings-menu";
-import { AIModelSelect } from "./ai-model-select";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import { ProjectStart } from "./project-start";
@@ -323,7 +322,6 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}{(dirty || !hasProject) && <span className="producer-dim">{dirty ? "Unsaved" : "No project"}</span>}</div>
-        {view!=="elevenlabs"&&<AIModelSelect />}
         <div className="producer-file-actions">
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
         </div>

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { IconButton } from "@banger/shadcn";
+import { AIModelSelect } from "./ai-model-select";
 import { ByokSettings } from "./byok-menu";
 
 export function SettingsMenu() {
@@ -24,7 +25,7 @@ export function SettingsMenu() {
           <h2 id="producer-settings-title">Settings</h2>
           <IconButton aria-label="Close settings" variant="ghost" onClick={() => dialog.current?.close()}><span aria-hidden="true">×</span></IconButton>
         </div>
-        {open && <ByokSettings />}
+        {open && <><AIModelSelect /><ByokSettings /></>}
       </div>
     </dialog>
   </div>;

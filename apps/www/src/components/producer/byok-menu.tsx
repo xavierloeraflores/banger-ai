@@ -77,7 +77,7 @@ export function ByokSettings() {
       <div className="byok-heading">
         <div><p className="producer-eyebrow">BYOK · AI providers</p><h2 id="byok-title">{desktop ? "Choose how to connect" : "Bring your own key"}</h2></div>
       </div>
-      <p id="byok-description" className="byok-description">Configure your AI options here. Choose the active model from the menu at the top of the app.</p>
+      <p id="byok-description" className="byok-description">Configure your AI options here. Choose the active model from the AI model menu above.</p>
       <div className="byok-layout">
         <nav className="byok-providers" aria-label="AI providers">
           {desktop && <button type="button" aria-pressed={provider === "chatgpt"} disabled={busy} onClick={() => select("chatgpt")}>

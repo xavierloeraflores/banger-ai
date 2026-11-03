@@ -295,15 +295,13 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .local-model-progress progress { flex: 1; accent-color: var(--producer-lime); }
 .local-model-size { display: grid; gap: 8px; font-size: 13px; max-width: 480px; }
 .local-model-size select { padding: 10px; border-radius: 6px; background: var(--producer-panel); color: var(--producer-text); border: 1px solid var(--producer-border); }
-.ai-model-select { margin-left: auto; display: grid; gap: 4px; min-width: 180px; max-width: 350px; }
-.ai-model-select label { color: var(--producer-dim); font-size: 10px; }
+.ai-model-select { display: grid; gap: 8px; min-width: 0; margin: 24px 26px 0; }
+.ai-model-select label { color: var(--producer-dim); font-size: 12px; }
 .ai-model-select select { width: 100%; padding: 8px; border: 1px solid var(--producer-border); border-radius: 6px; background: var(--producer-panel); color: var(--producer-text); text-overflow: ellipsis; }
 .ai-model-select p { margin: 0; max-width: 350px; font-size: 11px; color: #ffaba0; }
-.producer-header .producer-file-actions { margin-left: 0; }
 .byok-layout > .local-model-settings { margin: 0; min-width: 0; border: 0; padding: 0; }
 @media (max-width: 900px) {
   .producer-header { flex-wrap: wrap; gap: 16px; padding: 16px 0; }
-  .ai-model-select { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; }
   .producer-header .producer-file-actions { margin-left: auto; }
 }
 
@@ -408,7 +406,7 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .music-chunk input[type=checkbox] { display: inline-block; width: auto; margin-right: .5rem; }
 .music-chunk textarea { min-height: 8rem; }
 
-.producer-settings { margin-left: auto; flex-shrink: 0; }
+.producer-settings { flex-shrink: 0; }
 .producer-settings-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--producer-border); border-radius: 12px; background: var(--producer-panel); color: var(--producer-text); overflow: auto; }
 .producer-settings-dialog::backdrop { background: #0009; }
 body:has(.producer-settings-dialog[open]) { overflow: hidden; }

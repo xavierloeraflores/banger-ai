@@ -62,7 +62,7 @@ export function LocalModelSettings() {
     {!status.supported && <p role="alert">Automatic installation is unavailable on this operating system.</p>}
     <p role="status">{status.message}</p>
     {downloading && <div className="local-model-progress"><progress aria-label="Local model download" max={status.total} value={status.completed} /><span>{(status.completed / 1e9).toFixed(2)} / {(status.total / 1e9).toFixed(2)} GB</span></div>}
-    <p className="byok-storage">Choose a downloaded model from the AI model menu at the top of the app to use it for chat.</p>
+    <p className="byok-storage">Choose a downloaded model from the AI model menu at the top of Settings to use it for chat.</p>
     <div className="byok-actions">
       {!status.installed && !working && <Button variant="primary" disabled={busy || !status.supported} onClick={() => void act("download")}>Download model</Button>}
       {status.installed && !working && status.phase !== "running" && <Button variant="primary" disabled={busy} onClick={() => void act("start")}>Start model</Button>}
