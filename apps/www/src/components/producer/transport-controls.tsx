@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { resolvePattern, type MusicProgram, type MusicPattern } from "@banger/compiler";
 import { Button, Range } from "@banger/shadcn";
 
 export function TransportControls({ program, disabled, onChange, onTempo, onLaunch, onFill, fill }: { program: MusicProgram; disabled: boolean; onChange: (program: MusicProgram) => unknown; onTempo: (tempo: number) => void; onLaunch: (name: string, next?: MusicProgram) => void; onFill: (active: boolean) => void; fill: boolean }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialogId = useId();
   const taps = useRef<number[]>([]);
   const tapReset = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tapStatus, setTapStatus] = useState("Tap twice or more");
@@ -28,8 +31,13 @@ export function TransportControls({ program, disabled, onChange, onTempo, onLaun
       setTapStatus("Tap slower · 20–300 BPM");
     }
   };
-  return <details className="producer-performance">
-    <summary>Performance</summary>
+  return <>
+    <Button ref={trigger} variant="secondary" aria-haspopup="dialog" aria-controls={dialogId} onClick={() => dialog.current?.showModal()}>Performance</Button>
+    <dialog ref={dialog} id={dialogId} className="producer-performance-dialog" aria-labelledby={`${dialogId}-title`} onClose={() => trigger.current?.focus()}>
+    <div className="producer-performance-dialog-heading">
+      <h2 id={`${dialogId}-title`}>Performance</h2>
+      <Button variant="secondary" aria-label="Close performance controls" onClick={() => dialog.current?.close()}>Close</Button>
+    </div>
     <fieldset className="producer-transport-extras" disabled={disabled} aria-label="Performance controls">
     <div className="producer-performance-control">
       <Button aria-pressed={fill} variant={fill ? "primary" : "secondary"} aria-describedby="producer-fill-status"
@@ -59,5 +67,6 @@ export function TransportControls({ program, disabled, onChange, onTempo, onLaun
         return active ? { ...track, patterns: track.patterns!.map(pattern => pattern === active ? { ...pattern, steps, pianoRoll, bars } : pattern) } : { ...track, steps, pianoRoll, bars };
       }) })}>Paste</Button>
     </fieldset>
-  </details>;
+    </dialog>
+  </>;
 }

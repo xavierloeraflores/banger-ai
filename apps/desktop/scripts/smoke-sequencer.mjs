@@ -41,9 +41,10 @@ async function run(window) {
   try {
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'No Fill steps');
-    await evaluate("document.querySelector('.producer-performance').open = true");
+    await text('Performance');
     await text('Fill');
     assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Set a step condition to Fill or Not fill');
+    await click('Close performance controls');
     await apply('tempo 120; track kick { sound "drums/kick"; rhythm "x x x x"; } section intro { bars 2; play kick; } song { play intro; }');
     const originalSong = (await program()).timeline;
     window.show(); window.focus(); window.webContents.focus();
@@ -65,14 +66,17 @@ async function run(window) {
     await set('Selected step condition', 'fill', 'HTMLSelectElement');
     assert.equal((await program()).tracks[0].steps[0].probability, .9);
     assert.equal((await program()).tracks[0].steps[0].condition, 'fill');
+    await text('Performance');
     await text('Copy to new pattern');
     assert.equal((await program()).activePattern, 'A');
     assert.equal((await program()).chainEnabled, false);
     assert.deepEqual((await program()).timeline, originalSong);
     assert.equal((await program()).tracks[0].patterns[0].steps[0].condition, 'fill');
     await text('Copy');
+    await click('Close performance controls');
     await evaluate("document.querySelectorAll('.producer-step')[1].click()"); await delay(40);
     assert.equal((await program()).tracks[0].patterns[0].steps[1], null);
+    await text('Performance');
     await text('Paste');
     assert.equal((await program()).tracks[0].patterns[0].steps[1].kind, 'hit');
     await set('Master volume', .4); await text('Click');
@@ -86,14 +90,17 @@ async function run(window) {
     await delay(3300);
     await text('Tap tempo');
     assert.equal(await evaluate("document.querySelector('#producer-tap-status').textContent"), 'Tap again to set tempo');
+    await click('Close performance controls');
     await evaluate("document.querySelector('.producer-play').click()");
     await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0", 'live audio');
     const position = await evaluate("document.querySelector('.producer-position').textContent"); await delay(350);
     assert.notEqual(await evaluate("document.querySelector('.producer-position').textContent"), position);
     await set('Launch pattern', '', 'HTMLSelectElement'); await waitFor("!document.querySelector('.producer-transport-state')", 'launch on bar boundary');
     await set('Launch pattern', 'A', 'HTMLSelectElement'); await waitFor("!document.querySelector('.producer-transport-state')", 'relaunch A');
+    await text('Performance');
     await text('Fill');
     assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Fill on');
+    await click('Close performance controls');
     await click('Stop playback');
     assert.equal(await evaluate("document.querySelector('#producer-fill-status').textContent"), 'Fill off');
     const beforeFillCheck = await source();
@@ -101,6 +108,7 @@ async function run(window) {
     await evaluate("document.querySelector('.producer-play').click()");
     await delay(350);
     assert.equal(await evaluate("document.querySelector('[aria-label=\"Master output meter\"]').value"), 0, 'Fill-only sequence is silent with Fill off.');
+    await text('Performance');
     await text('Fill');
     await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0.01", 'Fill click produces live audio');
     await evaluate("document.querySelector('[aria-describedby=producer-fill-status]').focus()");
@@ -109,8 +117,11 @@ async function run(window) {
     await waitFor("document.querySelector('#producer-fill-status').textContent === 'Fill off'", 'keyboard toggles Fill off');
     await delay(1200);
     assert.equal(await evaluate("document.querySelector('[aria-label=\"Master output meter\"]').value"), 0, 'Turning Fill off silences conditional notes.');
+    await click('Close performance controls');
     await click('Stop playback');
+    await text('Performance');
     await text('Fill');
+    await click('Close performance controls');
     await evaluate("document.querySelector('.producer-play').click()");
     await waitFor("document.querySelector('[aria-label=\"Master output meter\"]').value > 0.01", 'Fill armed before playback');
     await click('Stop playback');
