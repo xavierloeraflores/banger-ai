@@ -43,11 +43,32 @@ try {
     const left = audible.buffer.getChannelData(0).reduce((sum, value) => sum + value * value, 0);
     const right = audible.buffer.getChannelData(1).reduce((sum, value) => sum + value * value, 0);
     check(left > right * 2, 'Pan did not change stereo audio');
+    // Compare deterministic rendered audio through the same graph used for playback.
+    const routing = compileMusic('tempo 240; track tone { instrument "synth/keys"; notes "C4"; gain .6; }');
+    const renderedEnergy = async program => energy((await renderWav(compileMusic(serializeMusic(program)), options)).buffer);
+    const reference = await renderedEnergy(routing);
+    const ratio = async (program, expected, label) => {
+      const actual = await renderedEnergy(program) / reference;
+      check(Math.abs(actual - expected) < .001, label + ': ' + actual);
+      return actual;
+    };
+    const routed = { ...routing, buses: [{ name: 'group', gain: .5 }], tracks: routing.tracks.map(track => ({ ...track, output: 'group' })) };
+    const routedRatio = await ratio(routed, .25, 'Track output bypassed bus gain');
+    const sent = { ...routing, buses: [{ name: 'silent', gain: 0 }, { name: 'return', gain: 1 }], tracks: routing.tracks.map(track => ({ ...track, output: 'silent', sends: [{ bus: 'return', gain: .5 }] })) };
+    const sendRatio = await ratio(sent, .25, 'Send did not reach return bus');
+    await ratio({ ...sent, tracks: sent.tracks.map(track => ({ ...track, gain: .3 })) }, .0625, 'Send is not post-fader');
+    await ratio({ ...sent, tracks: sent.tracks.map(track => ({ ...track, muted: true, automation: [{ target: 'gain', points: [{ beat: 0, value: .6 }, { beat: 4, value: 1 }] }] })) }, 0, 'Muted send leaked audio');
+    await ratio({ ...sent, tracks: [...sent.tracks, { name: 'solo_silence', source: { kind: 'sound', name: 'drums/kick' }, gain: 1, steps: [null], solo: true }] }, 0, 'Solo exclusion leaked through send');
+    await ratio({ ...sent, tracks: sent.tracks.map(track => ({ ...track, solo: true })) }, .25, 'Solo lost routed send');
+    await ratio({ ...sent, tracks: sent.tracks.map(track => ({ ...track, muted: true, solo: true })) }, 0, 'Solo bypassed mute');
+    await ratio({ ...routed, masterGain: .5 }, .0625, 'Master did not scale routed output');
+    await ratio({ ...routed, masterGain: 0 }, 0, 'Master zero leaked output');
+    const busSendRatio = await ratio({ ...routed, buses: [{ name: 'group', gain: .5, sends: [{ bus: 'return', gain: .5 }] }, { name: 'return', gain: 1 }] }, .5625, 'Bus send did not preserve direct master output');
     const player = new BangerPlayer();
     await player.start(loop); await new Promise(resolve => setTimeout(resolve, 180));
     check(player.state.playing && player.state.section === undefined, 'Unchained playback retained section label');
     player.stop(); await player.dispose();
-    return { chainedSeconds: chained.duration, loopSeconds: audible.duration, audibleEnergy: energy(audible.buffer), panEnergyRatio: left / right, mutedMixAndStem: 'silent', solo: 'silent', livePlayback: 'passed' };
+    return { chainedSeconds: chained.duration, loopSeconds: audible.duration, audibleEnergy: energy(audible.buffer), panEnergyRatio: left / right, mutedMixAndStem: 'silent', solo: 'silent', livePlayback: 'passed', routedRatio, sendRatio, busSendRatio, routedMuteSoloAndMaster: 'passed' };
   })()`, true);
   console.log(JSON.stringify(report, null, 2));
 } catch (error) { console.error(error); process.exitCode = 1; }
