@@ -1,40 +1,94 @@
-import { useState } from "react";
-import type { MusicProgram, MusicTrack } from "@banger/compiler";
+import { useRef, useState } from "react";
+import { programDurationBeats, type MusicProgram, type MusicTrack } from "@banger/compiler";
 import type { MeterSnapshot } from "@banger/engine";
 import { Button, Range } from "@banger/shadcn";
-import { BusMixer, LevelMeter, TrackRouting } from "./mixer-routing";
+import { LevelMeter, Sends, TrackRouting } from "./mixer-routing";
 import { TrackEffects } from "./track-effects";
+import { AutomationEditor } from "./automation-editor";
+
+const gainText = (gain: number) => gain > 0 ? `${(20 * Math.log10(gain)).toFixed(1)} dB` : "−∞ dB";
+type Channel = { kind: "track" | "bus"; name: string } | { kind: "master" };
+
+function Fader({ name, gain, onChange }: { name: string; gain: number; onChange: (gain: number) => unknown }) {
+  return <label className="studio-mixer-fader"><output>{gainText(gain)}</output><Range aria-label={`Mixer ${name} gain`} aria-orientation="vertical" min={0} max={1} step={.01} value={gain} aria-valuetext={gainText(gain)} onChange={event => onChange(Number(event.target.value))} /><span>Level</span></label>;
+}
 
 export function MixerView({ program, disabled, meters, onTrackChange, onChange }: {
   program: MusicProgram; disabled: boolean; meters: MeterSnapshot;
   onTrackChange: (index: number, track: MusicTrack) => unknown; onChange: (program: MusicProgram) => unknown;
 }) {
-  const [panel, setPanel] = useState<{ index: number; kind: "effects" | "routing" } | null>(null);
-  const selected = panel ? program.tracks[panel.index] : undefined;
-  const hasSolo = program.tracks.some(track => track.solo);
-  const show = (index: number, kind: "effects" | "routing") => setPanel(panel?.index === index && panel.kind === kind ? null : { index, kind });
+  const [selection, setSelection] = useState<Channel>(() => program.tracks[0] ? { kind: "track", name: program.tracks[0].name } : { kind: "master" });
+  const inspectorHeading = useRef<HTMLHeadingElement>(null);
+  const masterButton = useRef<HTMLButtonElement>(null);
+  const buses = program.buses ?? [];
+  const trackIndex = selection.kind === "track" ? program.tracks.findIndex(track => track.name === selection.name) : -1;
+  const busIndex = selection.kind === "bus" ? buses.findIndex(bus => bus.name === selection.name) : -1;
+  const track = program.tracks[trackIndex], bus = buses[busIndex];
+  const selected = track ?? bus;
+  const masterSelected = !selected;
+  const hasSolo = program.tracks.some(item => item.solo);
+  const inspect = (channel: Channel) => { setSelection(channel); inspectorHeading.current?.focus(); };
+  const updateBus = (next: typeof buses[number]) => onChange({ ...program, buses: buses.map((item, index) => index === busIndex ? next : item) });
+  const removeBus = () => {
+    if (!bus) return;
+    const result = onChange({ ...program, buses: buses.filter(item => item.name !== bus.name).map(item => ({ ...item, sends: item.sends?.filter(send => send.bus !== bus.name) })), tracks: program.tracks.map(item => {
+      const next = { ...item, sends: item.sends?.filter(send => send.bus !== bus.name) };
+      if (next.output === bus.name) delete next.output;
+      return next;
+    }) });
+    if (result !== false) { setSelection({ kind: "master" }); masterButton.current?.focus(); }
+  };
+  const addBus = () => {
+    let number = buses.length + 1;
+    while ([...buses, ...program.tracks].some(item => item.name === `bus_${number}`)) number++;
+    const name = `bus_${number}`;
+    if (onChange({ ...program, buses: [...buses, { name, gain: .8 }] }) !== false) inspect({ kind: "bus", name });
+  };
   return <section className="studio-mixer" aria-labelledby="mixer-title">
-    <div className="studio-song-heading"><h2 id="mixer-title">Mixer</h2><span>{program.tracks.length} tracks</span><LevelMeter name="Master mix" level={meters.master.peak} /></div>
-    <fieldset disabled={disabled} className="studio-mixer-strips">
-      {program.tracks.map((track, index) => {
-        const pan = track.pan ?? 0, panText = pan === 0 ? "Center" : `${Math.round(Math.abs(pan) * 100)}% ${pan < 0 ? "left" : "right"}`;
-        return <section key={track.name} className="studio-mixer-strip" data-muted={track.muted || (hasSolo && !track.solo)} aria-label={`${track.name} mixer strip`}>
-          <span className="studio-mixer-number">{index + 1}</span><strong title={track.name}>{track.name}</strong>
-          <LevelMeter name={track.name} level={meters.tracks[track.name]?.peak} />
-          <label className="studio-mixer-pan">Pan<Range aria-label={`Mixer ${track.name} pan`} min={-1} max={1} step={.01} value={pan} aria-valuetext={panText} onChange={event => onTrackChange(index, { ...track, pan: Number(event.target.value) })} /><output>{panText}</output></label>
-          <label className="studio-mixer-fader">Level<Range aria-label={`Mixer ${track.name} gain`} aria-orientation="vertical" min={0} max={1} step={.01} value={track.gain} aria-valuetext={`${Math.round(track.gain * 100)} percent`} onChange={event => onTrackChange(index, { ...track, gain: Number(event.target.value) })} /><output>{Math.round(track.gain * 100)}%</output></label>
-          <Button variant={track.muted ? "primary" : "secondary"} aria-label={`Mixer mute ${track.name}`} aria-pressed={!!track.muted} onClick={() => onTrackChange(index, { ...track, muted: !track.muted })}>M</Button>
-          <Button variant={track.solo ? "primary" : "secondary"} aria-label={`Mixer solo ${track.name}`} aria-pressed={!!track.solo} onClick={() => onTrackChange(index, { ...track, solo: !track.solo })}>S</Button>
-          <Button variant="ghost" aria-label={`${track.name} effects`} aria-expanded={panel?.index === index && panel.kind === "effects"} aria-controls="mixer-detail" onClick={() => show(index, "effects")}>FX</Button>
-          <Button variant="ghost" aria-label={`${track.name} routing`} aria-expanded={panel?.index === index && panel.kind === "routing"} aria-controls="mixer-detail" onClick={() => show(index, "routing")}>Routing</Button>
-        </section>;
-      })}
-      {!program.tracks.length && <p>Add a track in the Sequencer to start mixing.</p>}
-    </fieldset>
-    {panel && selected && <fieldset id="mixer-detail" className="studio-mixer-detail" disabled={disabled}>
-      <div className="studio-song-heading"><h3>{selected.name} {panel.kind}</h3><Button variant="ghost" onClick={() => setPanel(null)}>Close</Button></div>
-      {panel.kind === "effects" ? <TrackEffects key={selected.name} open track={selected} disabled={disabled} tracks={program.tracks.map(track => track.name)} onChange={next => onTrackChange(panel.index, { ...selected, ...next })} /> : <TrackRouting program={program} index={panel.index} onChange={onChange} />}
-    </fieldset>}
-    <BusMixer program={program} disabled={disabled} levels={meters.buses} onChange={onChange} />
+    <div className="studio-song-heading"><h2 id="mixer-title">Mixer</h2><span>{program.tracks.length} tracks · {buses.length} buses</span><span className="studio-mixer-hint">Select a channel to edit its effects and routing.</span></div>
+    <div className="studio-mixer-workspace">
+      <div className="studio-mixer-console">
+        <fieldset disabled={disabled} className="studio-mixer-bank" aria-label="Mixer channels">
+          <div className="studio-mixer-strips" tabIndex={0} role="region" aria-label="Track channels, scroll horizontally for more">
+            {program.tracks.map((item, index) => {
+              const pan = item.pan ?? 0, panText = pan === 0 ? "Center" : `${Math.round(Math.abs(pan) * 100)}% ${pan < 0 ? "left" : "right"}`;
+              const active = trackIndex === index;
+              return <section key={item.name} className="studio-mixer-strip" data-selected={active} data-muted={item.muted || (hasSolo && !item.solo)} aria-label={`${item.name} mixer strip`}>
+                <Button className="studio-mixer-channel" variant="ghost" aria-label={`Select ${item.name} channel`} aria-pressed={active} aria-controls="mixer-detail" onClick={() => setSelection({ kind: "track", name: item.name })}><span>{String(index + 1).padStart(2, "0")}</span><strong title={item.name}>{item.name}</strong></Button>
+                <div className="studio-mixer-chips"><Button variant="ghost" title={`Output: ${item.output ?? "Master"}`} aria-label={`${item.name} output: ${item.output ?? "Master"}. Inspect routing`} aria-controls="mixer-detail" onClick={() => inspect({ kind: "track", name: item.name })}>{item.output ?? "Master"}</Button><Button variant="ghost" aria-label={`${item.name}: ${item.effects?.length ?? 0} effects. Inspect effects`} aria-controls="mixer-detail" onClick={() => inspect({ kind: "track", name: item.name })}>{item.effects?.length ?? 0} FX</Button></div>
+                <LevelMeter name={item.name} level={meters.tracks[item.name]?.peak} />
+                <Fader name={item.name} gain={item.gain} onChange={gain => onTrackChange(index, { ...item, gain })} />
+                <label className="studio-mixer-pan"><span>Pan <output>{pan === 0 ? "C" : `${pan < 0 ? "L" : "R"} ${Math.round(Math.abs(pan) * 100)}`}</output></span><Range aria-label={`Mixer ${item.name} pan`} min={-1} max={1} step={.01} value={pan} aria-valuetext={panText} onChange={event => onTrackChange(index, { ...item, pan: Number(event.target.value) })} /></label>
+                <div className="studio-mixer-switches"><Button variant={item.muted ? "primary" : "secondary"} aria-label={`Mixer mute ${item.name}`} title={`Mute ${item.name}`} aria-pressed={!!item.muted} onClick={() => onTrackChange(index, { ...item, muted: !item.muted })}>M</Button><Button variant={item.solo ? "primary" : "secondary"} aria-label={`Mixer solo ${item.name}`} title={`Solo ${item.name}`} aria-pressed={!!item.solo} onClick={() => onTrackChange(index, { ...item, solo: !item.solo })}>S</Button></div>
+              </section>;
+            })}
+            {!program.tracks.length && <p>Add a track in the Sequencer to start mixing.</p>}
+          </div>
+          <section className="studio-mixer-strip studio-mixer-master" data-selected={masterSelected} aria-label="Master mixer strip">
+            <Button ref={masterButton} className="studio-mixer-channel" variant="ghost" aria-pressed={masterSelected} aria-controls="mixer-detail" onClick={() => setSelection({ kind: "master" })}><span>OUT</span><strong>Master</strong></Button>
+            <span className="studio-mixer-output">Stereo out</span>
+            <LevelMeter name="Master mix" level={meters.master.peak} />
+            <Fader name="Master" gain={program.masterGain ?? 1} onChange={masterGain => onChange({ ...program, masterGain })} />
+            <span className="studio-mixer-master-note">Full mix</span>
+          </section>
+        </fieldset>
+        <fieldset disabled={disabled} className="studio-mixer-buses" aria-label="Mixer buses">
+          <div className="studio-mixer-bus-heading"><h3>Buses <span>{buses.length} / 8</span></h3><Button variant="secondary" disabled={buses.length >= 8} onClick={addBus}>+ Add bus</Button></div>
+          <div className="studio-mixer-bus-list">{buses.map((item, index) => <div key={item.name} className="studio-mixer-bus-card"><Button className="studio-mixer-bus-chip" variant="ghost" aria-label={`Select ${item.name} bus`} aria-pressed={busIndex === index} aria-controls="mixer-detail" onClick={() => setSelection({ kind: "bus", name: item.name })}><strong>{item.name}</strong><span>{gainText(item.gain)}</span><span>{item.effects?.length ?? 0} FX</span></Button><LevelMeter name={`${item.name} bus`} level={meters.buses[item.name]?.peak} /></div>)}</div>
+          {!buses.length && <p>Add a bus to group tracks or receive sends.</p>}
+        </fieldset>
+      </div>
+      <aside id="mixer-detail" className="studio-mixer-detail" aria-labelledby="mixer-channel-title">
+        <header><span>{track ? "Track" : bus ? "Bus" : "Output"}</span><h3 ref={inspectorHeading} tabIndex={-1} id="mixer-channel-title">{selected?.name ?? "Master"}</h3></header>
+        <fieldset disabled={disabled} key={selected ? `${track ? "track" : "bus"}:${selected.name}` : "master"}>
+          {track && <><h4>Routing &amp; sends</h4><TrackRouting program={program} index={trackIndex} onChange={onChange} /></>}
+          {bus && <><h4>Routing &amp; sends</h4><p>Output <strong>Master</strong></p><label className="studio-mixer-bus-gain">Level <output>{gainText(bus.gain)}</output><Range aria-label={`${bus.name} gain`} aria-valuetext={gainText(bus.gain)} min={0} max={1} step={.01} value={bus.gain} onChange={event => updateBus({ ...bus, gain: Number(event.target.value) })} /></label><Sends isBus name={bus.name} buses={buses} sends={bus.sends} onChange={sends => updateBus({ ...bus, sends })} /></>}
+          {selected && <><h4>Effects · {selected.effects?.length ?? 0}</h4><TrackEffects open track={selected} disabled={disabled} tracks={program.tracks.map(item => item.name)} onChange={next => track ? onTrackChange(trackIndex, { ...track, ...next }) : updateBus({ ...bus!, ...next })} /><AutomationEditor name={selected.name} bus={!!bus} curves={selected.automation} effects={selected.effects} beats={programDurationBeats(program)} onChange={automation => track ? onTrackChange(trackIndex, { ...track, automation }) : updateBus({ ...bus!, automation })} /></>}
+          {bus && <Button className="studio-mixer-remove" variant="danger" onClick={removeBus}>Remove {bus.name}</Button>}
+          {masterSelected && <><h4>Stereo output</h4><p>All buses and tracks routed to Master feed this output.</p><p>The master fader controls playback and export volume.</p></>}
+        </fieldset>
+      </aside>
+    </div>
+    <p className="studio-mixer-footnote">Mute and solo apply to playback and exports. Sends follow channel level, pan, effects, and mute or solo.</p>
   </section>;
 }
