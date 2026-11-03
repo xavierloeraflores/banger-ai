@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm, symlink, rename } from 'node:fs/promises';
