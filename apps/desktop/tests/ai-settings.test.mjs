@@ -17,7 +17,7 @@ function browser(storage = new Map(), native) {
     getItem: key => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value),
   } } });
-  return { bridge: exports.aiSettingsBridge(), providers: exports.AI_PROVIDERS };
+  return { bridge: exports.aiSettingsBridge(), providers: exports.AI_PROVIDERS, hasLanguageModel: exports.hasLanguageModel };
 }
 
 async function lifecycle(bridge) {
@@ -127,4 +127,50 @@ test("desktop refuses unavailable encryption and preserves unreadable settings",
     assert.equal(await readFile(path, "utf8"), "corrupted");
     await assert.rejects(createAISettingsStore(join(directory, "missing", "keys.enc"), encryption).save("openai", "model", "test-key"), /Could not save/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("ElevenLabs keys are independent of language models in browser and encrypted desktop storage", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "banger-vocal-keys-"));
+  try {
+    const path = join(directory, "keys.enc");
+    const encryption = cipher();
+    const native = createAISettingsStore(path, encryption);
+    const storage = new Map();
+    for (const bridge of [browser(storage).bridge, native]) {
+      assert.equal((await bridge.load()).elevenLabsConfigured, false);
+      await bridge.save("openai", "test-model", "language-key");
+      const summary = await bridge.saveElevenLabs("  vocal-secret  ");
+      assert.equal(summary.elevenLabsConfigured, true);
+      assert.equal(summary.activeProvider, "openai");
+      assert.equal(JSON.stringify(summary).includes("vocal-secret"), false);
+      await bridge.remove("openai");
+      assert.equal((await bridge.load()).elevenLabsConfigured, true);
+      await assert.rejects(bridge.saveElevenLabs("bad key"), /valid/);
+      await assert.rejects(bridge.saveElevenLabs(""), /valid/);
+      await bridge.saveElevenLabs("replacement-secret");
+    }
+    assert.equal(await native.elevenLabsKey(), "replacement-secret");
+    assert.equal((await readFile(path)).includes(Buffer.from("replacement-secret")), false);
+    assert.equal((await createAISettingsStore(path, encryption).load()).elevenLabsConfigured, true);
+    assert.equal((await browser(storage).bridge.load()).elevenLabsConfigured, true);
+    for (const bridge of [browser(storage).bridge, native]) {
+      await bridge.save("grok", "test-model", "language-key");
+      await bridge.removeElevenLabs();
+      assert.equal((await bridge.load()).elevenLabsConfigured, false);
+      assert.equal((await bridge.load()).activeProvider, "grok");
+    }
+    assert.equal(await native.elevenLabsKey(), null);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test("generation availability accepts a configured LLM, connected ChatGPT account or installed local model", () => {
+  const {hasLanguageModel}=browser();
+  const settings={activeProvider:null,providers:{},elevenLabsConfigured:true};
+  assert.equal(hasLanguageModel(settings),false);
+  assert.equal(hasLanguageModel({...settings,activeProvider:'openai',providers:{openai:{configured:true,model:'test'}}}),true);
+  assert.equal(hasLanguageModel({...settings,localSelected:true,localModels:[]}),false);
+  assert.equal(hasLanguageModel({...settings,localSelected:true,localModels:[{id:'local:small',label:'local'}]}),true);
+  assert.equal(hasLanguageModel({...settings,chatgpt:{selected:true,activeAccountId:'one',accounts:[{id:'one',connected:false}]}}),false);
+  assert.equal(hasLanguageModel({...settings,chatgpt:{selected:true,activeAccountId:'one',accounts:[{id:'one',connected:true}]}}),true);
 });

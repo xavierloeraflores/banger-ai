@@ -1,12 +1,14 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import type {CloudMusicContext} from '@/lib/elevenlabs';
+import {KeyHint,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
+import {cloudVocalRequest,type CloudMusicContext} from '@/lib/elevenlabs';
 import {compileMusic} from '@banger/compiler';
 import {Button} from '@banger/shadcn';
 import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnection,type CloudJob,type CloudSnapshot} from '@/lib/cloud-projects';
 type Artifact={id:string;kind:string;revision:number;status:string};
 const message=(error:unknown)=>error instanceof Error ? error.message : 'The cloud operation failed.';
 export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicContextChange,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding,projectName:string):void;onDisconnect():void;onMusicContextChange?(context:CloudMusicContext|undefined):void;onOpenMusic?():void}) {
+  const {vocals}=useGenerationAccess();
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
   const [password,setPassword]=useState('');
@@ -153,12 +155,12 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
             const blob=new Blob([JSON.stringify(candidate,null,2)],{type:'application/json'});const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='agent-candidate.json';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),60000);
             setNotice('Downloaded the agent candidate files for comparison. The saved revision is unchanged.');
           });}}>Download conflicting agent files</Button>}
-          {job.status==='awaiting_provider' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/jobs/${job.id}/resume`,'POST',{});setNotice('Checking provider availability.');})}>Retry after configuring ElevenLabs</Button>}
+          {job.status==='awaiting_provider' && <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={busy||!vocals} onClick={()=>void action(async()=>{await cloudVocalRequest(connection,`/jobs/${job.id}/resume`,{});setNotice('Checking provider availability.');})}>Retry after configuring ElevenLabs</Button></KeyHint>}
         </li>)}</ul>
         <ul aria-label="Cloud audio">{artifacts.map(artifact=><li key={artifact.id}>{artifact.kind} · revision {artifact.revision} · {artifact.status}
           {artifact.status==='ready' && <><Button disabled={busy} onClick={()=>void action(async()=>setPlaying(await audioUrl(connection,artifact.id)))}>Listen</Button>
             <Button disabled={busy} onClick={()=>void action(async()=>{const link=document.createElement('a');link.href=await audioUrl(connection,artifact.id);link.download=`${artifact.id}.${artifact.kind==='wav'?'wav':'audio'}`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),60000);})}>Download audio</Button>
-            {artifact.kind==='wav' && <Button disabled={busy} onClick={()=>void action(async()=>{await cloudRequest(connection,`/projects/${snapshot.projectId}/jobs`,'POST',{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('WAV submitted for composition analysis. Open Vocal Studio to edit its lyrics.');})}>Submit to ElevenLabs</Button>}
+            {artifact.kind==='wav' && <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={busy||!vocals} onClick={()=>void action(async()=>{await cloudVocalRequest(connection,`/projects/${snapshot.projectId}/jobs`,{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('WAV submitted for composition analysis. Open Vocal Studio to edit its lyrics.');})}>Submit to ElevenLabs</Button></KeyHint>}
           </>}
         </li>)}</ul>
         {playing && <audio controls src={playing} aria-label="Cloud audio preview" />}

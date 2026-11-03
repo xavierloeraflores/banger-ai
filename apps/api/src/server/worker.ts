@@ -1,16 +1,17 @@
 import { Sandbox } from '@vercel/sandbox';
 import { claim, checkpoint } from './jobs';
 import { runAgentStep } from './sandbox';
+import { ElevenMusic } from '@banger/elevenlabs';
 import { runElevenStep } from './elevenlabs';
 import { authorize } from './projects';
 import { ApiError } from './domain';
 import { db } from './db';
-export async function workOne(jobId?: string) {
+export async function workOne(jobId?: string, elevenLabsKey?: string) {
   const job = await claim(jobId);
   if (!job) return false;
   try {
     await authorize(job.user_id, job.project_id, true);
-    if (job.kind === 'agent') await runAgentStep(job); else await runElevenStep(job);
+    if (job.kind === 'agent') await runAgentStep(job); else await runElevenStep(job, elevenLabsKey ? new ElevenMusic(elevenLabsKey) : undefined);
   } catch (error) {
     const permanent = error instanceof ApiError && [400,403,404,409,413,422,504].includes(error.status);
     const status = permanent || job.attempts >= 12 ? 'failed' : 'queued';

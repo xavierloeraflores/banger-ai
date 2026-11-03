@@ -42,6 +42,10 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   assert.equal((await request(`/projects/${randomUUID()}`)).status,404);
   assert.equal((await request('/projects','GET',undefined,{Origin:'https://attacker.example.test'})).status,403);
   const cors=await request('/projects','OPTIONS',undefined,{Origin:'https://studio.example.test'});assert.equal(cors.status,204);assert.equal(cors.headers.get('access-control-allow-origin'),'https://studio.example.test');
+  assert.match(cors.headers.get('access-control-allow-headers')!,/X-Banger-ElevenLabs-Key/);
+  const invalidKey=await request('/projects','GET',undefined,{'X-Banger-ElevenLabs-Key':'invalid key'});
+  assert.equal(invalidKey.status,400);
+  assert.equal((await invalidKey.text()).includes('invalid key'),false);
   assert.equal((await request('/worker')).status,401);
   const artifact=randomUUID();await db().query("INSERT INTO artifacts(id,project_id,revision,user_id,kind,pathname,content_type,size,status) VALUES($1,$2,0,$3,'wav',$4,'audio/wav',44,'ready')",[artifact,project.projectId,user,`fixture/${artifact}`]);
   const submission={kind:'elevenlabs',idempotencyKey:randomUUID(),input:{artifactId:artifact}};

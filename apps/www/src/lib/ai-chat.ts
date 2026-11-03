@@ -1,12 +1,12 @@
 "use client";
 
 import { compileMusic } from "@banger/compiler";
-import type { ChatOutcome, ChatReply, ChatRequest } from "@banger/agent/protocol";
+import type { ChatOutcome, ChatReply, ChatRequest, LyricRequest, LyricOutcome, LyricEdit } from "@banger/agent/protocol";
 import { browserCredentials } from "./ai-providers";
 
 declare global {
   interface Window {
-    bangerChat?: { send(request: ChatRequest): Promise<ChatOutcome>; cancel(): Promise<void> };
+    bangerChat?: { lyrics(request: LyricRequest): Promise<LyricOutcome>; send(request: ChatRequest): Promise<ChatOutcome>; cancel(): Promise<void> };
   }
 }
 
@@ -49,4 +49,25 @@ export async function sendChat(request: ChatRequest, signal: AbortSignal): Promi
   if (!result || typeof result.ok !== "boolean") throw new Error("The AI service returned an invalid reply.");
   if (!result.ok) throw new Error(typeof result.error === "string" ? result.error.slice(0, 500) : "Could not generate a reply.");
   return checkedReply(result.reply);
+}
+
+export async function sendLyrics(request: LyricRequest, signal: AbortSignal): Promise<LyricEdit[]> {
+  signal.throwIfAborted();
+  if (window.bangerChat) {
+    const bridge = window.bangerChat;
+    const cancel = () => { void bridge.cancel().catch(() => {}); };
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const result = await bridge.lyrics(request);
+      signal.throwIfAborted();
+      if (!result.ok) throw new Error(result.error);
+      return result.edits;
+    } finally { signal.removeEventListener("abort", cancel); }
+  }
+  if (window.location.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) throw new Error("Open Banger over HTTPS to generate lyrics.");
+  const credentials = browserCredentials();
+  if (!credentials) throw new Error("Add an AI model API key in Settings to generate lyrics.");
+  const { generateLyrics, selectModel, publicAIError } = await import("@banger/agent");
+  try { return await generateLyrics(request, selectModel(credentials), signal); }
+  catch (error) { if (signal.aborted) throw error; throw new Error(publicAIError(error)); }
 }

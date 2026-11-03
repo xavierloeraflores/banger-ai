@@ -21,7 +21,7 @@ await import("../dist/main.js");
 
 async function exercise(window, desktop) {
   await enterStudio(window);
-  const evaluate = script => window.webContents.executeJavaScript(script, true);
+  const evaluate = script => window.webContents.executeJavaScript(script, true).catch(error => { throw new Error(`${error.message} Script: ${script}`); });
   async function waitFor(script) {
     for (let attempt = 0; attempt < 200; attempt++) {
       if (await evaluate(`Boolean(${script})`)) return;
@@ -40,8 +40,21 @@ async function exercise(window, desktop) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await waitFor("document.querySelector('#producer-source')?.value");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').disabled"), true);
+  await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await evaluate("document.querySelector('.ai-chat-launcher-hint').focus()");
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.ai-chat-launcher-hint [role=tooltip]')).display"), "block");
+  assert.ok(await evaluate("document.querySelector('.ai-chat-launcher-hint').textContent.includes('Settings')"));
+  const hover = await evaluate("(() => { const r=document.querySelector('.ai-chat-launcher-hint').getBoundingClientRect(); document.activeElement.blur(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()");
+  window.webContents.sendInputEvent({type:'mouseMove',...hover});
+  await waitFor("getComputedStyle(document.querySelector('.ai-chat-launcher-hint [role=tooltip]')).display === 'block'");
+  assert.equal(await evaluate("(() => { const r=document.querySelector('.ai-chat-launcher-hint [role=tooltip]').getBoundingClientRect(); return r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=innerHeight; })()"),true);
+  await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await writeFile(join(tmpdir(),desktop?'banger-key-hint-desktop.png':'banger-key-hint-web.png'),(await window.webContents.capturePage()).toPNG());
+  window.webContents.sendInputEvent({type:'mouseMove',x:0,y:0});
+  assert.equal(await evaluate("document.querySelector('.music-wav-actions button').disabled"),true);
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
-  await waitFor("document.querySelector('#producer-settings-dialog')?.matches(':modal') && !document.querySelector('.byok-form fieldset').disabled");
+  await waitFor("document.querySelector('#producer-settings-dialog')?.matches(':modal') && !document.querySelector('.byok-layout > .byok-form fieldset').disabled");
   assert.equal(await evaluate("document.querySelectorAll('.byok-providers button').length"), desktop ? 7 : 5);
   assert.equal(await evaluate("document.querySelector('#studio-tab-byok')"), null);
   assert.equal(await evaluate("document.querySelector('#studio-tab-sequencer').getAttribute('aria-selected')"), "true");
@@ -52,7 +65,14 @@ async function exercise(window, desktop) {
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
   await waitFor("!document.querySelector('#producer-settings-dialog').open && !document.querySelector('#byok-key')");
   await evaluate("document.querySelector('[aria-label=Settings]').focus(); document.querySelector('[aria-label=Settings]').click()");
-  await waitFor("!document.querySelector('.byok-form fieldset').disabled");
+  await waitFor("!document.querySelector('.byok-layout > .byok-form fieldset').disabled");
+  await input("elevenlabs-key", "fake-vocal-key");
+  assert.equal(await evaluate("document.querySelector('#elevenlabs-key').type"), "password");
+  await click("Save ElevenLabs key");
+  await waitFor("document.querySelector('.elevenlabs-settings [role=status]')?.textContent.includes('key saved')");
+  await waitFor("!document.querySelector('.music-wav-actions button').disabled");
+  assert.equal(await evaluate("document.querySelector('#active-ai-model').value"), "");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').disabled"), true);
   const providers = ["Vercel AI Gateway", "Anthropic", "OpenAI", "Meta Muse", "Grok"];
   for (const name of providers) {
     await evaluate(`([...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === ${JSON.stringify(name)})).click()`);
@@ -67,6 +87,11 @@ async function exercise(window, desktop) {
     assert.equal(await evaluate("document.querySelector('#byok-key').value"), "");
   }
   assert.equal(await evaluate("document.querySelectorAll('#active-ai-model option:not([disabled])').length"), 5);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').disabled"), false);
+  await click("Remove ElevenLabs key");
+  await waitFor("document.querySelector('.elevenlabs-settings [role=status]')?.textContent.includes('key removed')");
+  await waitFor("document.querySelector('.music-wav-actions button').disabled");
+  assert.equal(await evaluate("document.querySelector('#active-ai-model').value"), "grok");
   for (const id of ["openai", "anthropic", "grok"]) {
     await evaluate(`(() => {
       const select = document.getElementById('active-ai-model');
@@ -80,13 +105,17 @@ async function exercise(window, desktop) {
   if (desktop) {
     await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Local model').click()");
     await waitFor("document.querySelector('.byok-layout > .local-model-settings')");
-    assert.equal(await evaluate("document.querySelector('.byok-form')"), null);
+    assert.equal(await evaluate("document.querySelector('.byok-layout > .byok-form')"), null);
     assert.equal(await evaluate("document.querySelectorAll('#local-model-size option').length"), 2);
     await assert.rejects(evaluate("window.bangerAI.select('local:small')"), /Download/);
     assert.equal((await evaluate("window.bangerAI.load()")).activeProvider, "grok");
     await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Grok').click()");
     await waitFor("document.querySelector('#byok-model')");
   }
+  await evaluate("document.querySelector('.elevenlabs-settings').scrollIntoView({behavior:'instant',block:'end'})");
+  await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await delay(200);
+  await writeFile(join(tmpdir(), desktop ? "banger-elevenlabs-desktop.png" : "banger-elevenlabs-web.png"), (await window.webContents.capturePage()).toPNG());
   assert.equal(await evaluate("document.querySelector('#producer-source').value.includes('fake-smoke-key')"), false);
   if (desktop) {
     const bytes = await readFile(join(directory, "ai-settings.enc"));
@@ -102,7 +131,7 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-source')?.value");
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("document.querySelector('#byok-model')?.value === 'test-model'");
-  assert.equal(await evaluate("document.querySelector('.byok-form h3').textContent"), "Grok");
+  assert.equal(await evaluate("document.querySelector('.byok-layout > .byok-form h3').textContent"), "Grok");
   await input("byok-model", "second-model");
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=\"status\"]')?.textContent.includes('settings saved')");

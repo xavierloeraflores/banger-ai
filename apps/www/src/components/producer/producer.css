@@ -633,3 +633,17 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
 .ai-chat-scope-note { margin: 0; padding: 8px 24px; font-size: 12px; color: var(--producer-dim); overflow-wrap: anywhere; }
 .ai-chat-activity { font-size: 12px; color: var(--producer-dim); overflow-wrap: anywhere; }
 .ai-chat-activity summary { cursor: pointer; }
+
+.producer-settings-dialog .elevenlabs-settings { border-top: 1px solid var(--producer-border); padding-top: 24px; margin-top: 24px; }
+.generation-key-hint { display: inline-flex; position: relative; max-width: 100%; }
+.generation-key-hint:has(> [disabled]) { cursor: not-allowed; }
+.generation-key-hint:has(> .generation-key-tooltip) > button:disabled { pointer-events: none; }
+.generation-key-tooltip { display: none; position: fixed; white-space: normal; bottom: calc(100% + 8px); right: 0; z-index: 60; width: max-content; max-width: min(280px, 80vw); padding: 8px 12px; border: 1px solid #666; border-radius: 8px; background: #18181b; color: #fafafa; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 16px #0006; }
+.generation-key-hint:hover > .generation-key-tooltip, .generation-key-hint:focus > .generation-key-tooltip { display: block; }
+.generation-key-hint:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 8px; }
+.producer .ai-chat-launcher-hint { position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 10; }
+.producer .ai-chat-launcher-hint .ai-chat-launcher { position: static; }
+@media (max-width: 700px) {
+  .producer .ai-chat-launcher-hint { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  .producer[data-view="library"] .ai-chat-launcher-hint { bottom: 126px; }
+}

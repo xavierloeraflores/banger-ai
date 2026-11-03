@@ -94,11 +94,11 @@ export class ElevenMusic implements MusicProvider {
   }
 }
 
-export async function performMusicAction(provider: MusicProvider | (()=>MusicProvider), base: MusicVersion, input: import('./protocol.js').MusicAction, operationId: string): Promise<{ version: MusicVersion; audio?: Uint8Array }> {
+export async function performMusicAction(provider: MusicProvider | (()=>MusicProvider|Promise<MusicProvider>), base: MusicVersion, input: import('./protocol.js').MusicAction, operationId: string): Promise<{ version: MusicVersion; audio?: Uint8Array }> {
   if (input.baseVersion !== base.version) throw new Error('This song changed. Reload before editing it.');
   const next: MusicVersion = { ...structuredClone(base), version: base.version+1, parentVersion:input.sourceVersion??base.version, createdAt:new Date().toISOString(), operation:input.operation };
   if (input.operation === 'edit') { next.plan=applyLyrics(base.plan,input.edits); return {version:next}; }
-  const client=typeof provider==='function'?provider():provider;
+  const client=typeof provider==='function'?await provider():provider;
   if (input.operation === 'lyrics') { next.plan=await client.lyrics(base.plan,input.prompt,input.indices); return {version:next}; }
   const generated=await client.generate(base,input.indices);
   next.plan=generated.plan;next.providerPlan=generated.providerPlan;next.songId=generated.songId;

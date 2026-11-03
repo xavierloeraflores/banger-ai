@@ -13,3 +13,7 @@ export type ChatRequest = {
 export type ChatReply = { text: string; files: BangerFile[]; model: string };
 export type ChatOutcome = { ok: true; reply: ChatReply } | { ok: false; error: string };
 export const MAX_CHAT_BODY_BYTES = 256 * 1024;
+
+export type LyricRequest = { prompt: string; chunks: { index: number; text: string; durationMs: number }[] };
+export type LyricEdit = { index: number; lyrics: string };
+export type LyricOutcome = { ok: true; edits: LyricEdit[] } | { ok: false; error: string };

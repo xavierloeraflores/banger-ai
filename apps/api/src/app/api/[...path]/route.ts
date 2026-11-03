@@ -8,7 +8,7 @@ import {assertWebOrigin,hasWebSession,sessionCookie,sessionUser,signIn,webOrigin
 import { ApiError, changeSchema, id, saveSchema } from '../../../server/domain';
 import { db } from '../../../server/db';
 import { authorize, createProject, projectFiles, saveChanges, setMember } from '../../../server/projects';
-import { enqueue, getJob, publicJob } from '../../../server/jobs';
+import { elevenInput, enqueue, getJob, publicJob } from '../../../server/jobs';
 import { workOne } from '../../../server/worker';
 import { finalizeWav, getArtifact, reserveWav, uploadCallback } from '../../../server/artifacts';
 import { blobs } from '../../../server/blob';
@@ -50,6 +50,8 @@ async function dispatch(request: Request, path: string[]) {
   }
   if (path.join('/') === 'uploads' && method === 'POST') return json(await uploadCallback(request, await body(request) as HandleUploadBody));
   const user = await authenticate(request);
+  const elevenLabsKey = request.headers.get('x-banger-elevenlabs-key');
+  if (elevenLabsKey !== null && (!elevenLabsKey || elevenLabsKey.length > 8192 || /[^\x21-\x7e]/.test(elevenLabsKey))) throw new ApiError(400,'Invalid ElevenLabs API key.');
   if (path[0] === 'projects') {
     if (path.length === 1) {
       if (method === 'GET') return json({projects:(await db().query('SELECT p.id,p.name,p.revision FROM projects p WHERE p.owner_id=$1 OR EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=$1) ORDER BY p.created_at DESC LIMIT 100',[user])).rows});
@@ -65,8 +67,8 @@ async function dispatch(request: Request, path: string[]) {
     if (path[2] === 'jobs' && path.length === 3) {
       if (method === 'POST') {
         const input=z.object({kind:z.enum(['agent','elevenlabs']),idempotencyKey:id,input:z.unknown()}).strict().parse(await body(request));
-        const job=await enqueue(user,project,input.kind,input.idempotencyKey,input.input);
-        after(() => workOne(job.id).then(() => undefined)); return json(publicJob(job),202);
+        const job=await enqueue(user,project,input.kind,input.idempotencyKey,input.kind==='elevenlabs' && elevenLabsKey ? {...elevenInput.parse(input.input),clientKeyRequired:true} : input.input);
+        after(() => workOne(job.id, request.headers.get('x-banger-elevenlabs-key') ?? undefined).then(() => undefined)); return json(publicJob(job),202);
       }
       if (method === 'GET') { await authorize(user,project); return json({jobs:(await db().query('SELECT * FROM jobs WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50',[project])).rows.map(publicJob)}); }
     }
@@ -89,14 +91,14 @@ async function dispatch(request: Request, path: string[]) {
     }
     if (path[2]==='actions' && method==='POST') {
       const input=z.object({action:musicActionSchema,idempotencyKey:id}).strict().parse(await body(request));
-      const job=await enqueue(user,music.project_id,'elevenlabs',input.idempotencyKey,{musicId:music.id,action:input.action});
-      after(()=>workOne(job.id).then(()=>undefined));return json(publicJob(job),202);
+      const job=await enqueue(user,music.project_id,'elevenlabs',input.idempotencyKey,{musicId:music.id,action:input.action,...(elevenLabsKey?{clientKeyRequired:true}:{})});
+      after(()=>workOne(job.id, request.headers.get('x-banger-elevenlabs-key') ?? undefined).then(()=>undefined));return json(publicJob(job),202);
     }
   }
   if (path[0] === 'jobs') {
     const job=await getJob(user,id.parse(path[1]));
     if (path.length === 2 && method === 'GET') return json(publicJob(job));
-    if (path[2] === 'resume' && method === 'POST') { await authorize(user,job.project_id,true); if (job.status === 'awaiting_provider') await db().query("UPDATE jobs SET status='queued',available_at=now() WHERE id=$1 AND status='awaiting_provider'", [job.id]); after(() => workOne(job.id).then(() => undefined)); return json(publicJob(job),202); }
+    if (path[2] === 'resume' && method === 'POST') { if(elevenLabsKey && job.user_id!==user)throw new ApiError(403,'Only the requester can supply a key for this job.'); await authorize(user,job.project_id,true); if (job.status === 'awaiting_provider') await db().query("UPDATE jobs SET status='queued',available_at=now() WHERE id=$1 AND status='awaiting_provider'", [job.id]); after(() => workOne(job.id, request.headers.get('x-banger-elevenlabs-key') ?? undefined).then(() => undefined)); return json(publicJob(job),202); }
     if (path[2] === 'candidate' && method === 'GET' && typeof job.checkpoint.candidate === 'string') return json(JSON.parse(await blobs.text(job.checkpoint.candidate)));
   }
   if (path[0] === 'artifacts') {
@@ -126,7 +128,7 @@ async function route(request:Request,context:{params:Promise<{path:string[]}>}) 
     else { console.error('API request failed', error instanceof Error ? error.name : 'UnknownError'); response=json({error:'The service could not complete the request.'},500); }
   }
   response.headers.set('Cache-Control','private, no-store'); response.headers.set('Vary','Origin');
-  if (origin && (same || allowed.includes(origin))) { response.headers.set('Access-Control-Allow-Origin',origin); response.headers.set('Access-Control-Allow-Headers','Authorization, Content-Type'); response.headers.set('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, DELETE, OPTIONS'); }
+  if (origin && (same || allowed.includes(origin))) { response.headers.set('Access-Control-Allow-Origin',origin); response.headers.set('Access-Control-Allow-Headers','Authorization, Content-Type, X-Banger-ElevenLabs-Key'); response.headers.set('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, DELETE, OPTIONS'); }
   return response;
 }
 export {route as GET,route as POST,route as PATCH,route as PUT,route as DELETE,route as OPTIONS};

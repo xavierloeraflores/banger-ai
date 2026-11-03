@@ -73,7 +73,18 @@ async function exercise(window, desktop) {
     await waitFor("!document.querySelector('#ai-chat-dialog').open");
   };
   assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').open"), false);
-  assert.equal(await evaluate("getComputedStyle(document.querySelector('.ai-chat-launcher')).position"), "fixed");
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.ai-chat-launcher-hint')).position"), "fixed");
+  assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').disabled"),true);
+  await evaluate("document.querySelector('.ai-chat-launcher').click()");
+  assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').open"),false);
+  await evaluate("document.querySelector('[aria-label=Settings]').click()");
+  await waitFor("!document.querySelector('.byok-form fieldset').disabled");
+  await input("byok-model", "anthropic/test-model");
+  await input("byok-key", "fake-chat-key");
+  await click("Save and select");
+  await waitFor("document.querySelector('.byok-feedback [role=status]')");
+  await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
+  await waitFor("!document.querySelector('.ai-chat-launcher').disabled");
   await openChat();
   await waitFor("document.activeElement.id === 'ai-chat-prompt'");
   await input("ai-chat-prompt", "Keep this draft");
@@ -115,19 +126,7 @@ async function exercise(window, desktop) {
     })()`);
   }
   if (desktop) await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
-  // Missing keys produce a useful UI error without a network call.
   await input("ai-chat-prompt", "Create two loops");
-  await click("Send");
-  await waitFor("document.querySelector('.ai-chat-footer [role=alert]')?.textContent.includes('BYOK')");
-  await closeChat();
-  await evaluate("document.querySelector('[aria-label=Settings]').click()");
-  await waitFor("!document.querySelector('.byok-form fieldset').disabled");
-  await input("byok-model", "anthropic/test-model");
-  await input("byok-key", "fake-chat-key");
-  await click("Save and select");
-  await waitFor("document.querySelector('.byok-feedback [role=status]')");
-  await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
-  await openChat();
   await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/test-model'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");

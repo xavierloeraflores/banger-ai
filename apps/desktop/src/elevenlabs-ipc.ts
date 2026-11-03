@@ -5,7 +5,7 @@ import { toWav } from './audio-conversion.js';
 import type { SongLocation } from './song-storage.js';
 import type { MusicVersion } from '@banger/elevenlabs';
 import type { SongStorageBridge } from './song-storage-ipc.js';
-import { MAX_WAV_BYTES, lyricsOf } from '@banger/elevenlabs';
+import { ElevenMusic, MusicProviderError, MAX_WAV_BYTES, lyricsOf } from '@banger/elevenlabs';
 import { createMusicStore } from './elevenlabs-music.js';
 export function musicStorageHooks(storage: SongStorageBridge['storage']) {
   return {
@@ -16,9 +16,13 @@ export function musicStorageHooks(storage: SongStorageBridge['storage']) {
     },
   };
 }
-export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>BrowserWindow, suppliedStore?:ReturnType<typeof createMusicStore>, storage?:SongStorageBridge) {
-  if(!app.isPackaged&&!process.env.ELEVENLABS_API_KEY){try{process.loadEnvFile(join(app.getAppPath(),'.env.local'));}catch{/* Credentials may instead be supplied by the launch environment. */}}
-  const store=suppliedStore??createMusicStore(join(app.getPath('userData'),'elevenlabs-music'), undefined, storage ? musicStorageHooks(storage.storage) : undefined);
+export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>BrowserWindow, suppliedStore?:ReturnType<typeof createMusicStore>, storage?:SongStorageBridge, apiKey?:()=>Promise<string|null>) {
+  if(!apiKey&&!app.isPackaged&&!process.env.ELEVENLABS_API_KEY){try{process.loadEnvFile(join(app.getAppPath(),'.env.local'));}catch{/* Credentials may instead be supplied by the launch environment. */}}
+  const store=suppliedStore??createMusicStore(join(app.getPath('userData'),'elevenlabs-music'), apiKey ? async () => {
+    const key=await apiKey();
+    if(!key)throw new MusicProviderError('Add an ElevenLabs API key in Settings to generate vocals.');
+    return new ElevenMusic(key);
+  } : undefined, storage ? musicStorageHooks(storage.storage) : undefined);
   const dialogs=new Set<number>();
   ipcMain.handle('banger:music-list',event=>{senderWindow(event);return store.list();});
   ipcMain.handle('banger:music-operations',event=>{senderWindow(event);return store.operations();});

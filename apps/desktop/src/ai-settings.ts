@@ -2,7 +2,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 
 const PROVIDERS = ["vercel", "anthropic", "openai", "meta", "grok"] as const;
 type Provider = typeof PROVIDERS[number];
-type Settings = { activeProvider: Provider | null; providers: Partial<Record<Provider, { model: string; key: string }>> };
+type Settings = { elevenLabsKey?: string; activeProvider: Provider | null; providers: Partial<Record<Provider, { model: string; key: string }>> };
 type Encryption = { isAvailable(): boolean | Promise<boolean>; encrypt(value: string): Buffer | Promise<Buffer>; decrypt(value: Buffer): string | Promise<string> };
 
 function providerId(value: unknown): Provider {
@@ -12,6 +12,7 @@ function providerId(value: unknown): Provider {
 
 function summary(settings: Settings) {
   return {
+    elevenLabsConfigured: Boolean(settings.elevenLabsKey),
     activeProvider: settings.activeProvider,
     providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, configured: true }])),
   };
@@ -44,7 +45,7 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
         const value = parsed.providers[id];
         if (value && typeof value.model === "string" && typeof value.key === "string" && value.key) providers[id] = value;
       }
-      return { providers, activeProvider: PROVIDERS.includes(parsed.activeProvider as Provider) && providers[parsed.activeProvider!]
+      return { elevenLabsKey: typeof parsed.elevenLabsKey === "string" ? parsed.elevenLabsKey : undefined, providers, activeProvider: PROVIDERS.includes(parsed.activeProvider as Provider) && providers[parsed.activeProvider!]
         ? parsed.activeProvider : null };
     } catch { throw new Error("Could not unlock AI settings. Check your system keychain and try again."); }
   }
@@ -63,6 +64,18 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       const settings = await read();
       if (!settings.providers[id]) throw new Error("Configure this provider before selecting it.");
       settings.activeProvider = id;
+      return persist(settings);
+    }),
+    elevenLabsKey: () => serialize(async () => (await read()).elevenLabsKey ?? null),
+    saveElevenLabs: (key: unknown) => serialize(async () => {
+      if (typeof key !== "string" || !key.trim() || key.trim().length > 8192 || /[^\x21-\x7e]/.test(key.trim())) throw new Error("Enter a valid ElevenLabs API key without spaces.");
+      const settings = await read();
+      settings.elevenLabsKey = key.trim();
+      return persist(settings);
+    }),
+    removeElevenLabs: () => serialize(async () => {
+      const settings = await read();
+      delete settings.elevenLabsKey;
       return persist(settings);
     }),
     credentials: () => serialize(async () => {

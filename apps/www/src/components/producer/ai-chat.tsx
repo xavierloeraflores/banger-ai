@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, IconButton, Panel } from "@banger/shadcn";
 import type { BangerFile, ChatMessage, ChatReply } from "@banger/agent/protocol";
+import { KeyHint, LLM_KEY_HINT, useGenerationAccess } from "./generation-access";
 import { sendChat } from "@/lib/ai-chat";
 import { saveProject } from "@/lib/project-files";
 import { AI_PROVIDERS, aiSettingsBridge } from "@/lib/ai-providers";
@@ -24,6 +25,7 @@ const suggestions = [
 ];
 
 export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onProjectBusy, onProjectFile }: Props) {
+  const { languageModel } = useGenerationAccess();
   const [scope, setScope] = useState<"studio" | "project">("studio");
   const [desktop, setDesktop] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
@@ -107,7 +109,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
 
   async function send() {
     const text = prompt.trim();
-    if (!text || request.current || fileBusy || (projectMode && projectDirty)) return;
+    if (!languageModel || !text || request.current || fileBusy || (projectMode && projectDirty)) return;
     const controller = new AbortController();
     request.current = controller;
     setPendingPrompt(text);
@@ -185,14 +187,14 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
   }
 
   return <>
-    <IconButton ref={launcher} className="ai-chat-launcher" variant="primary" aria-label="Open AI chat"
+    <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined} className="ai-chat-launcher-hint"><IconButton disabled={!languageModel} ref={launcher} className="ai-chat-launcher" variant="primary" aria-label="Open AI chat"
       aria-haspopup="dialog" aria-expanded={open} aria-controls="ai-chat-dialog"
       onClick={() => { dialog.current?.showModal(); setOpen(true); if (!busy) input.current?.focus(); }}>
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5A8.5 8.5 0 0 1 9.5 3h3a8.5 8.5 0 0 1 8.5 8.5Z" transform="translate(1 -1) scale(.95)" />
         <path d="M7 10h8M7 14h5" />
       </svg>
-    </IconButton>
+    </IconButton></KeyHint>
     <dialog ref={dialog} id="ai-chat-dialog" className="ai-chat-dialog" aria-labelledby="ai-chat-title"
       onClose={() => { setOpen(false); launcher.current?.focus(); }}
       onClick={event => {
@@ -248,7 +250,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
         placeholder={projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
-        : <Button variant="primary" type="submit" disabled={!prompt.trim() || fileBusy || (projectMode && projectDirty)}>Send</Button>}
+        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy || (projectMode && projectDirty)}>Send</Button></KeyHint>}
     </form>
     <div className="ai-chat-footer">
       {projectMode && projectDirty && <p role="status">Save your studio changes before running a project task.</p>}

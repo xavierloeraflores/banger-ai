@@ -31,9 +31,9 @@ const musicObjects:MusicObjects={
 };
 export async function runElevenStep(job: Job, injected?: MusicProvider, objects:MusicObjects=musicObjects) {
   const input=elevenInput.parse(job.input);
-  const key=process.env.ELEVENLABS_API_KEY;
+  const key=input.clientKeyRequired ? undefined : process.env.ELEVENLABS_API_KEY;
   const analyze='artifactId' in input;
-  if(!injected && !key && (analyze || input.action.operation!=='edit')) {await checkpoint(job,'awaiting-provider',0,{},'awaiting_provider',null,'Set ELEVENLABS_API_KEY on the backend to process this song.');return;}
+  if(!injected && !key && (analyze || input.action.operation!=='edit')) {await checkpoint(job,'awaiting-provider',0,{},'awaiting_provider',null,input.clientKeyRequired ? 'Add your ElevenLabs API key in Settings to resume this song.' : 'Set ELEVENLABS_API_KEY on the backend to process this song.');return;}
   const provider=()=>injected ?? new ElevenMusic(key!);
   const session=analyze ? undefined : await getMusic(job.user_id,input.musicId);
   const source=await getArtifact(job.user_id,analyze?input.artifactId:session!.source_artifact_id,true);

@@ -11,9 +11,11 @@ export const AI_PROVIDERS = [
 export type ProviderId = typeof AI_PROVIDERS[number]["id"];
 export type ProviderSettings = { model: string; configured: boolean };
 export type AIOptionId = ProviderId | "local:small" | "local:dynamic" | "chatgpt";
-export type AISettings = { chatgpt?: ChatGPTStatus; localSelected?: boolean; localVariant?: "small" | "dynamic"; localModels?: { id: "local:small" | "local:dynamic"; label: string }[]; settingsError?: string; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
+export type AISettings = { elevenLabsConfigured?: boolean; chatgpt?: ChatGPTStatus; localSelected?: boolean; localVariant?: "small" | "dynamic"; localModels?: { id: "local:small" | "local:dynamic"; label: string }[]; settingsError?: string; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
 export type AISettingsBridge = {
   load(): Promise<AISettings>;
+  saveElevenLabs(key: string): Promise<AISettings>;
+  removeElevenLabs(): Promise<AISettings>;
   select(option: AIOptionId): Promise<AISettings>;
   save(provider: ProviderId, model: string, key: string): Promise<AISettings>;
   remove(provider: ProviderId): Promise<AISettings>;
@@ -22,6 +24,7 @@ export type AISettingsBridge = {
 declare global { interface Window { bangerAI?: AISettingsBridge } }
 
 type StoredSettings = {
+  elevenLabsKey?: string;
   activeProvider: ProviderId | null;
   providers: Partial<Record<ProviderId, { model: string; key: string }>>;
 };
@@ -37,12 +40,13 @@ function read(): StoredSettings {
     const value = parsed.providers[id];
     if (value && typeof value.model === "string" && typeof value.key === "string" && value.key) providers[id] = value;
   }
-  return { providers, activeProvider: AI_PROVIDERS.some(({ id }) => id === parsed.activeProvider) && providers[parsed.activeProvider!]
+  return { elevenLabsKey: typeof parsed.elevenLabsKey === "string" ? parsed.elevenLabsKey : undefined, providers, activeProvider: AI_PROVIDERS.some(({ id }) => id === parsed.activeProvider) && providers[parsed.activeProvider!]
     ? parsed.activeProvider : null };
 }
 
 function summary(settings: StoredSettings): AISettings {
   return {
+    elevenLabsConfigured: Boolean(settings.elevenLabsKey),
     activeProvider: settings.activeProvider,
     providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, configured: true }])),
   };
@@ -54,6 +58,24 @@ export function aiSettingsBridge(): AISettingsBridge {
     async load() {
       try { return summary(read()); }
       catch { throw new Error("Could not read AI settings. Allow session storage for this site and try again."); }
+    },
+    async saveElevenLabs(key) {
+      key = key.trim();
+      if (!key || key.length > 8192 || /[^\x21-\x7e]/.test(key)) throw new Error("Enter a valid ElevenLabs API key without spaces.");
+      try {
+        const settings = read();
+        settings.elevenLabsKey = key;
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        return summary(settings);
+      } catch { throw new Error("Could not save the ElevenLabs key. Allow session storage for this site and try again."); }
+    },
+    async removeElevenLabs() {
+      try {
+        const settings = read();
+        delete settings.elevenLabsKey;
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        return summary(settings);
+      } catch { throw new Error("Could not remove the ElevenLabs key. Allow session storage for this site and try again."); }
     },
     async select(option) {
       if (!AI_PROVIDERS.some(({ id }) => id === option)) throw new Error("Choose a supported provider.");
@@ -104,4 +126,14 @@ export function browserCredentials() {
   const provider = settings.activeProvider;
   const value = provider ? settings.providers[provider] : undefined;
   return provider && value ? { provider, ...value } : null;
+}
+
+export function browserElevenLabsKey(): string | null {
+  return read().elevenLabsKey || null;
+}
+
+export function hasLanguageModel(settings: AISettings): boolean {
+  if (settings.localSelected) return Boolean(settings.localModels?.length);
+  if (settings.chatgpt?.selected) return settings.chatgpt.accounts.some(account => account.id === settings.chatgpt?.activeAccountId && account.connected);
+  return Boolean(settings.activeProvider && settings.providers[settings.activeProvider]?.configured);
 }

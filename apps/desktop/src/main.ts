@@ -4,7 +4,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_URL, getDevelopmentUrl, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
-import { parseChatRequest, selectModel, selectLocalModel, runBangerAgent, publicAIError } from "@banger/agent";
+import { generateLyrics, lyricRequestSchema, parseChatRequest, selectModel, selectLocalModel, runBangerAgent, publicAIError } from "@banger/agent";
 import { createAISettingsStore } from "./ai-settings.js";
 import { createChatGPTAuth, ChatGPTError, publicChatGPTError } from "./chatgpt-auth.js";
 import { createLocalModel } from "./local-model.js";
@@ -168,7 +168,6 @@ void app.whenReady().then(() => {
     window?.focus();
   });
   songStorage = installSongStorage(senderWindow);
-  installMusicHandlers(senderWindow, undefined, songStorage);
   const localModel = createLocalModel(join(app.getPath("userData"), "local-model"));
   app.on("before-quit", () => localModel.dispose());
   protocol.handle("banger", (request) => serveApp(request, fileURLToPath(new URL("./web/", import.meta.url))));
@@ -182,6 +181,7 @@ void app.whenReady().then(() => {
     decrypt: async (value: Buffer) => (await safeStorage.decryptStringAsync(value)).result,
   };
   const aiSettings = createAISettingsStore(join(app.getPath("userData"), "ai-settings.enc"), encryption);
+  installMusicHandlers(senderWindow, undefined, songStorage, () => aiSettings.elevenLabsKey());
   const chatgpt = createChatGPTAuth(join(app.getPath("userData"), "chatgpt-accounts.enc"), encryption, { openExternal: url => shell.openExternal(url) });
   app.on("before-quit", () => chatgpt.dispose());
   function cancelAI() {
@@ -245,6 +245,14 @@ void app.whenReady().then(() => {
     return result;
   }
   ipcMain.handle("banger:ai-load", async event => { senderWindow(event); await settingsQueue; return loadAISettings(); });
+  ipcMain.handle("banger:elevenlabs-save", (event, key: unknown) => {
+    senderWindow(event);
+    return changeAISettings(async () => { await aiSettings.saveElevenLabs(key); return loadAISettings(); });
+  });
+  ipcMain.handle("banger:elevenlabs-remove", event => {
+    senderWindow(event);
+    return changeAISettings(async () => { await aiSettings.removeElevenLabs(); return loadAISettings(); });
+  });
   ipcMain.handle("banger:ai-select", (event, option: unknown) => {
     senderWindow(event);
     return changeAISettings(async () => {
@@ -318,10 +326,7 @@ void app.whenReady().then(() => {
       return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };
     } finally { pendingChats.delete(window.id); }
   });
-  const projectWorkspace = installWorkspaceHandlers({ senderWindow, onOpen: (window, root) => songStorage.setRoot(window, root),
-    modelError: error => error instanceof ChatGPTError || (error instanceof Error && error.cause instanceof ChatGPTError)
-      ? publicChatGPTError(error) : publicAIError(error),
-    selectModel: async () => {
+  async function selectedLanguageModel() {
     await settingsQueue;
     if ((await localModel.status()).selected) {
       const { port, token } = localModel.connection();
@@ -331,7 +336,23 @@ void app.whenReady().then(() => {
     const credentials = await aiSettings.credentials();
     if (!credentials) throw new Error("Choose a model in AI settings before running a project task.");
     return selectModel(credentials);
-  } });
+  }
+  ipcMain.handle("banger:lyrics", async (event, request: unknown) => {
+    const window = senderWindow(event);
+    if (pendingChats.has(window.id)) return { ok: false, error: "A reply is already being generated." };
+    const controller = new AbortController();
+    pendingChats.set(window.id, controller);
+    try {
+      const input = lyricRequestSchema.parse(request);
+      return { ok: true, edits: await generateLyrics(input, await selectedLanguageModel(), controller.signal) };
+    } catch (error) { return { ok: false, error: publicAIError(error) }; }
+    finally { pendingChats.delete(window.id); }
+  });
+  const projectWorkspace = installWorkspaceHandlers({ senderWindow, onOpen: (window, root) => songStorage.setRoot(window, root),
+    modelError: error => error instanceof ChatGPTError || (error instanceof Error && error.cause instanceof ChatGPTError)
+      ? publicChatGPTError(error) : publicAIError(error),
+    selectModel: selectedLanguageModel,
+  });
   installProjectHandlers();
   createWindow();
   app.on("activate", () => { if (windows.size === 0) createWindow(); });

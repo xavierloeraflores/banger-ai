@@ -50,9 +50,9 @@ async function run(){
     return json({clientToken:'vercel_blob_client_fixture_'+Buffer.from('signature.'+payload).toString('base64')});
    }
    if(url.pathname.endsWith('/complete')){assert.deepEqual(uploaded,wav());return json({id:artifactId,status:'ready'});}
-   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});return json(job(await store.importWav(uploaded,'Uploaded song',body().idempotencyKey)),202);}
+   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');return json(job(await store.importWav(uploaded,'Uploaded song',body().idempotencyKey)),202);}
    if(url.pathname.endsWith('/resume'))return json({});
-   if(url.pathname.endsWith('/actions')){const input=body();return json(job(await store.act(url.pathname.split('/')[3],input.action,input.idempotencyKey)),202);}
+   if(url.pathname.endsWith('/actions')){const input=body();if(input.action.operation==='generate')assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');else assert.equal(request.headers['x-banger-elevenlabs-key'],undefined);return json(job(await store.act(url.pathname.split('/')[3],input.action,input.idempotencyKey)),202);}
    if(url.pathname.endsWith('/versions')){const history=await store.versions(url.pathname.split('/')[3],url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined);return json({...history,versions:history.versions.map(document=>({revision:document.version,document}))});}
    if(url.pathname.startsWith('/api/music/'))return json(await store.get(url.pathname.split('/')[3]));
    if(url.pathname.startsWith('/api/artifacts/')){const selected=(await store.list())[0];const history=await store.versions(selected.id);const version=[history.original,...history.versions].find(item=>item.audioId===url.pathname.split('/')[3]);assert.ok(version);const audio=await store.audio(selected.id,version.version);response.setHeader('Content-Type',audio.contentType);response.end(audio.bytes);return;}
@@ -82,7 +82,11 @@ async function run(){
   const storage=installSongStorage(senderWindow);
   installWorkspaceHandlers({senderWindow,onOpen:(window,root)=>storage.setRoot(window,root),selectModel:async()=>{throw new Error('Music smoke must not request a project model');}});
   installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store);
-  ipcMain.handle('banger:ai-load',()=>({activeProvider:null,providers:{}}));
+  let vocalsConfigured=true;
+  ipcMain.handle('banger:ai-load',()=>({activeProvider:'openai',providers:{openai:{model:'fixture',configured:true}},elevenLabsConfigured:vocalsConfigured}));
+  ipcMain.handle('banger:elevenlabs-save',()=>{vocalsConfigured=true;});
+  ipcMain.handle('banger:elevenlabs-remove',()=>{vocalsConfigured=false;});
+  ipcMain.handle('banger:lyrics',(_event,request)=>({ok:true,edits:request.chunks.map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'}))}));
   ipcMain.handle('banger:local-status',()=>({phase:'idle',selected:false}));
   ipcMain.handle('banger:chatgpt-status',()=>({accounts:[],models:[],connected:false}));
   await writeFile(join(root,'input.wav'),wav());dialog.showOpenDialog=async()=>({canceled:false,filePaths:[join(root,'input.wav')]});dialog.showSaveDialog=async()=>({canceled:false,filePath:join(root,'final.mp3')});
@@ -92,13 +96,22 @@ async function run(){
   window.webContents.session.webRequest.onErrorOccurred(details=>console.log('Network error',details.url,details.error));
   window.webContents.session.webRequest.onCompleted(details=>{if(details.url.includes('/blob'))console.log('Blob response',details.statusCode);});
  }
- const evaluate=code=>window.webContents.executeJavaScript(code,true);
+ const evaluate=code=>window.webContents.executeJavaScript(code,true).catch(error=>{throw new Error(`${error.message} Script: ${code}`);});
  const wait=async expression=>{for(let i=0;i<400;i++){if(await evaluate(`Boolean(${expression})`))return;await delay(40);}throw new Error(`UI timeout: ${expression}; ${await evaluate("document.querySelector('.music-workshop')?.textContent")}`);};
  const click=async text=>{await wait(`[...document.querySelectorAll('button')].some(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled).click()`);};
  const fill=(selector,value)=>evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:input instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event(input instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
  try{
   await window.loadURL(`http://127.0.0.1:${web.address().port}`);await enterStudio(window);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(cloud){
+   await evaluate(`sessionStorage.setItem('banger.ai-settings.v1', JSON.stringify({activeProvider:'vercel',providers:{vercel:{model:'fixture',key:'fake-llm-key'}},elevenLabsKey:'fake-vocal-key'})); window.dispatchEvent(new Event('banger:ai-settings-changed'));
+     const originalFetch=window.fetch;window.fetch=async(url,options)=>{
+       if(String(url).startsWith('https://ai-gateway.vercel.sh/')){
+         if(new Headers(options.headers).get('authorization')!=='Bearer fake-llm-key')throw new Error('Wrong LLM key');
+         const input=JSON.parse(JSON.parse(options.body).prompt.at(-1).content.find(part=>part.type==='text').text);
+         return Response.json({content:[{type:'text',text:JSON.stringify(input.chunks.map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'})))}],finishReason:{unified:'stop',raw:'stop'},usage:{inputTokens:{total:10},outputTokens:{total:10}},warnings:[]});
+       }
+       return originalFetch(url,options);
+     }; undefined;`);
    await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
    await wait("document.querySelector('details.project-workspace select')");
   }
@@ -137,14 +150,19 @@ async function run(){
   await fill('[aria-label="Lyrics for chunk 1"]','We write our own tomorrow');await click('Save lyrics');
   await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 2')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'We write our own tomorrow');
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
+  await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
+  await wait("document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
   await fill('#music-lyric-prompt','A hopeful morning');await click('Generate lyrics for selected chunks');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+  assert.equal(provider.calls.lyrics,0,'LLM lyrics must not call ElevenLabs');
+  await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.saveElevenLabs('fake-vocal-key');else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));settings.elevenLabsKey='fake-vocal-key';sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
+  await wait("!document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
   await click('Generate new variation');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 4')");
   await click('Retry chunk 1');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 5')");
   await click('Play song');await wait("document.querySelector('.music-workshop audio')?.duration>7");
   await evaluate("(()=>{const audio=document.querySelector('.music-workshop audio');audio.muted=true;return audio.play();})()");await wait("document.querySelector('.music-workshop audio').currentTime>0");
   const download=cloud?new Promise((resolve,reject)=>window.webContents.session.once('will-download',(_event,item)=>{item.setSavePath(join(root,'final.mp3'));item.once('done',(_event,state)=>state==='completed'?resolve():reject(new Error(state)));})):null;
   await click('↓ Download');if(download)await download;else for(let i=0;i<100;i++){try{await readFile(join(root,'final.mp3'));break;}catch{await delay(20);}}
-  assert.deepEqual(await readFile(join(root,'final.mp3')),finalAudio);assert.deepEqual(provider.calls,{analyze:1,lyrics:1,generate:2});
+  assert.deepEqual(await readFile(join(root,'final.mp3')),finalAudio);assert.deepEqual(provider.calls,{analyze:1,lyrics:0,generate:2});
   assert.equal(await evaluate("document.querySelectorAll('.music-chunk .producer-tag,.music-chunk details').length"),0);
   assert.equal(await evaluate("document.querySelectorAll('.music-timeline-chunks button').length"),2);
   await fill('[aria-label="Seek song"]','4.5');assert.ok(await evaluate("document.querySelector('.music-workshop audio').currentTime>=4"));

@@ -7,8 +7,8 @@ export type CloudJob = { id: string; kind: string; status: string; stage: string
 export class CloudError extends Error { constructor(public status: number, message: string) { super(message); } }
 export function cloudUrl(connection: CloudConnection, path: string) { return `${connection.url.replace(/\/$/,'')}/api${path}`; }
 export function cloudHeaders(connection:CloudConnection):Record<string,string>{return connection.token?{Authorization:`Bearer ${connection.token}`}:{}}
-export async function cloudRequest<T>(connection: CloudConnection, path: string, method = 'GET', data?: unknown): Promise<T> {
-  const response = await fetch(cloudUrl(connection,path), { method, credentials:'same-origin', headers: {...cloudHeaders(connection), ...(data === undefined ? {} : {'Content-Type':'application/json'})}, ...(data === undefined ? {} : {body:JSON.stringify(data)}), cache:'no-store' });
+export async function cloudRequest<T>(connection: CloudConnection, path: string, method = 'GET', data?: unknown, headers?: Record<string,string>): Promise<T> {
+  const response = await fetch(cloudUrl(connection,path), { method, credentials:'same-origin', ...(headers ? {redirect:'error' as const} : {}), headers: {...cloudHeaders(connection), ...headers, ...(data === undefined ? {} : {'Content-Type':'application/json'})}, ...(data === undefined ? {} : {body:JSON.stringify(data)}), cache:'no-store' });
   const body = await response.json();
   if (!response.ok) throw new CloudError(response.status,body.error ?? 'The cloud request failed.');
   return body as T;

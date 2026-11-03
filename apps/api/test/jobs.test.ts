@@ -37,6 +37,17 @@ test('durable job idempotency, exclusive claims and fenced checkpoints', {skip:!
   const waiting=(await db().query('SELECT status,progress FROM jobs WHERE id=$1',[audioJob!.id])).rows[0];
   assert.equal(waiting.status,'awaiting_provider');assert.equal(waiting.progress,0);
   assert.equal(await claim(audioJob!.id),undefined);
+  // A request using a personal key must never fall back to the server account.
+  const byok=await db().query("INSERT INTO jobs(id,project_id,user_id,kind,idempotency_key,input) VALUES($1,$2,$3,'elevenlabs',$4,$5) RETURNING id",[randomUUID(),project.projectId,user,randomUUID(),{artifactId:randomUUID(),clientKeyRequired:true}]);
+  const byokJob=(await claim(byok.rows[0].id))!;
+  const previous=process.env.ELEVENLABS_API_KEY;
+  process.env.ELEVENLABS_API_KEY='server-key-must-not-be-used';
+  try { await runElevenStep(byokJob); }
+  finally { if(previous===undefined)delete process.env.ELEVENLABS_API_KEY;else process.env.ELEVENLABS_API_KEY=previous; }
+  const byokWaiting=(await db().query('SELECT status,error,input FROM jobs WHERE id=$1',[byokJob.id])).rows[0];
+  assert.equal(byokWaiting.status,'awaiting_provider');
+  assert.match(byokWaiting.error,/Settings/);
+  assert.equal(JSON.stringify(byokWaiting).includes('server-key-must-not-be-used'),false);
 
 });
 after(async()=>{await db().end();});

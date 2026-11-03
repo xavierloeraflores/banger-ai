@@ -5,7 +5,7 @@ import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction,
 import type { SongLocation } from './song-storage.js';
 type StorageHooks = { imported(song: SongLocation, bytes: Uint8Array): Promise<unknown>; saved(song: SongLocation, version: MusicVersion, audio?: Uint8Array): Promise<unknown> };
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
-export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? ''), storage?: StorageHooks) {
+export function createMusicStore(root:string, provider:()=>MusicProvider|Promise<MusicProvider>=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? ''), storage?: StorageHooks) {
   let queue:Promise<unknown>=Promise.resolve();
   let imports:Promise<unknown>=Promise.resolve();
   const active=new Map<string,string>();
@@ -101,7 +101,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider=()=>new
       validateWav(bytes);
       await writeFile(audioPath(audioId),bytes,{flag:'wx',mode:0o600});
       return launch(id,key,async()=>{
-        const result=await provider().analyze(bytes,name);
+        const result=await (await provider()).analyze(bytes,name);
         return {version:{id,version:1,name,songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
       },0,hash);
       });

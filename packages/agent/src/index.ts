@@ -161,3 +161,5 @@ export function publicAIError(error: unknown): string {
   // SDK errors can contain request headers, bodies, and provider diagnostics.
   return "Could not generate a reply. Check your connection, key, and model, then try again.";
 }
+
+export { generateLyrics, lyricRequestSchema } from "./lyrics.js";
