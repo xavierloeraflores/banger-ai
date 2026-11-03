@@ -1,7 +1,7 @@
 import type { MusicTrack } from "@banger/compiler";
 import { Button, Input, Range, Select } from "@banger/shadcn";
 
-export function PatternControls({ track, selected, onSelect, onRename, onRemove, onChange }: { track: MusicTrack; selected: string; onSelect: (name: string) => void; onRename: (oldName: string, name: string) => unknown; onRemove: (name: string) => unknown; onChange: (track: MusicTrack) => unknown }) {
+export function PatternControls({ hidePicker = false, track, selected, onSelect, onRename, onRemove, onChange }: { hidePicker?: boolean; track: MusicTrack; selected: string; onSelect: (name: string) => void; onRename: (oldName: string, name: string) => unknown; onRemove: (name: string) => unknown; onChange: (track: MusicTrack) => unknown }) {
   const pattern = track.patterns?.find(item => item.name === selected);
   const phrase = pattern ?? track;
   const changeBars = (bars: number) => {
@@ -10,7 +10,7 @@ export function PatternControls({ track, selected, onSelect, onRename, onRemove,
     onChange(pattern ? { ...track, patterns: track.patterns!.map(item => item === pattern ? { ...item, bars } : item) } : { ...track, bars });
   };
   return <div className="studio-pattern-controls">
-    <label>Pattern <Select aria-label={`${track.name} pattern`} value={pattern?.name ?? ""} onChange={e => onSelect(e.target.value)}><option value="">Base pattern</option>{track.patterns?.map(item => <option key={item.name}>{item.name}</option>)}</Select></label>
+    {!hidePicker && <label>Pattern <Select aria-label={`${track.name} pattern`} value={pattern?.name ?? ""} onChange={e => onSelect(e.target.value)}><option value="">Base pattern</option>{track.patterns?.map(item => <option key={item.name}>{item.name}</option>)}</Select></label>}
     {pattern && <><label>Name <Input key={pattern.name} aria-label={`${track.name} pattern name`} defaultValue={pattern.name} onBlur={event => {
       if (event.target.value === pattern.name) return;
       if (onRename(pattern.name, event.target.value)) onSelect(event.target.value); else event.target.value = pattern.name;

@@ -501,3 +501,49 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
 }
 .producer-performance-control:hover > span,
 .producer-performance-control:focus-within > span { opacity: 1; pointer-events: auto; }
+
+/* Focused track editing keeps the rack beside independently scrolling tabs. */
+.producer-editors[hidden] { display: none; }
+.producer-sequence-scroll[data-focused="true"] { overflow: visible; }
+.producer-sequence-scroll[data-focused="true"] > .producer-step-ruler { display: none; }
+.producer-sequence-scroll[data-focused="true"] .producer-tracks { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 16px; min-width: 0; }
+.producer-sequence-scroll[data-focused="true"] .producer-track-list { max-height: 720px; overflow: auto; align-self: start; overscroll-behavior: contain; }
+.producer-sequence-scroll[data-focused="true"] .producer-track { min-width: 0; grid-template-columns: minmax(0, 1fr) 64px; gap: 4px; padding: 6px; border: 1px solid var(--producer-border); border-radius: 5px; margin-bottom: 6px; }
+.producer-sequence-scroll[data-focused="true"] .producer-track-toggle { grid-column: 1; }
+.producer-sequence-scroll[data-focused="true"] .producer-track-mix { grid-column: 2; grid-row: 1; }
+.producer-sequence-scroll[data-focused="true"] .producer-phrase-preview,
+.producer-sequence-scroll[data-focused="true"] .producer-step-grid { grid-column: 1 / -1; min-width: 0; }
+.producer-editors { min-width: 0; }
+.producer-editors .producer-track-editor { margin: 0; padding: 12px; border: 1px solid var(--producer-border); border-radius: 6px; }
+.producer-focused-heading { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.producer-focused-heading h2 { margin: 0; font-size: 19px; }
+.producer-focused-heading h2 span { font-weight: 400; color: var(--producer-dim); }
+.producer-focused-pattern { display: flex; align-items: center; gap: 10px; font-size: 12px; margin: 10px 0; }
+.producer-focused-pattern select { max-width: 220px; }
+.producer-editor-tabs { display: flex; overflow-x: auto; border: 1px solid var(--producer-border); border-radius: 5px; margin-bottom: 12px; }
+.producer-editor-tabs [role="tab"] { flex: 1; padding: 10px 12px; border: 0; background: transparent; color: var(--producer-dim); }
+.producer-editor-tabs [aria-selected="true"] { background: var(--producer-lime); color: #14180b; }
+.producer-editor-panel { height: 540px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.producer-editor-panel .piano-roll { margin-top: 0; }
+.producer-editor-panel .sound-design { margin-top: 0; }
+.producer-editor-panel .producer-track-effects { margin-top: 0; border-top: 0; }
+.producer-pattern-settings { margin-top: 12px; }
+.producer-pattern-settings summary { padding: 10px 0; cursor: pointer; font-size: 12px; }
+@media (max-width: 900px) {
+  .producer-sequence-scroll[data-focused="true"] .producer-tracks { grid-template-columns: 180px minmax(0, 1fr); gap: 8px; }
+  .producer-editor-tabs [role="tab"] { padding: 10px 8px; font-size: 12px; }
+}
+@media (max-width: 600px) {
+  .producer-sequence-scroll[data-focused="true"] .producer-tracks { display: block; }
+  .producer-sequence-scroll[data-focused="true"] .producer-track-list { display: flex; gap: 6px; max-height: 140px; margin-bottom: 8px; position: sticky; top: 0; z-index: 4; background: var(--producer-panel); }
+  .producer-sequence-scroll[data-focused="true"] .producer-track { flex: 0 0 180px; }
+  .producer-focused-heading h2 { font-size: 16px; }
+  .producer-editor-panel { height: 520px; }
+}
+.producer-sequence-scroll[data-focused="true"] .producer-step-grid { grid-template-columns: repeat(var(--track-steps, 16), minmax(6px, 1fr)); gap: 3px; }
+.producer-sequence-scroll[data-focused="true"] .producer-step-cell { padding-top: 0; }
+.producer-sequence-scroll[data-focused="true"] .producer-step { min-width: 0; height: 18px; min-height: 18px; }
+.producer-sequence-scroll[data-focused="true"] .producer-step-badges,
+.producer-sequence-scroll[data-focused="true"] .producer-step-index,
+.producer-sequence-scroll[data-focused="true"] .producer-step-tone,
+.producer-sequence-scroll[data-focused="true"] .producer-step-velocity { display: none; }

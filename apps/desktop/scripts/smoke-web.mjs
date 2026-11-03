@@ -7,6 +7,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serveApp } from "../dist/static-app.js";
+import { smokeFocusedEditor } from "./smoke-focused-editor.mjs";
+import { compileMusic, pianoNotes } from "../../../packages/compiler/dist/index.js";
 import { smokePiano } from "./smoke-piano.mjs";
 
 const timeout = setTimeout(() => { console.error('Web smoke timed out'); app.exit(1); }, 45000);
@@ -27,7 +29,8 @@ try {
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8'));
   assert.equal(await evaluate("document.querySelector('#source-title').textContent"), 'night-drive.banger');
   assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), '112');
-  const source = await smokePiano(window);
+  await smokePiano(window);
+  const source = await smokeFocusedEditor(window);
   const downloaded = new Promise((resolve, reject) => {
     window.webContents.session.once('will-download', (_event, item) => {
       const path = join(directory, item.getFilename()); item.setSavePath(path);
@@ -52,7 +55,12 @@ try {
     else if (Date.now() > end) reject(new Error('Browser reopen timed out')); else setTimeout(poll, 25);
   }; poll(); })`);
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
-  assert.equal(await evaluate("document.querySelectorAll('.piano-note').length"), 4);
+  assert.deepEqual(compileMusic(await evaluate("document.querySelector('#producer-source').value")), compileMusic(source));
+  for (const [index, track] of compileMusic(source).tracks.entries()) {
+    if (track.source.kind !== 'instrument') continue;
+    const rendered = await evaluate(`[...document.querySelectorAll('#track-editor-${index} .piano-note')].map(note => ({ midi: Number(note.dataset.midi), start: Number(note.dataset.start), duration: Number(note.dataset.duration), velocity: Number(note.dataset.velocity) }))`);
+    assert.deepEqual(rendered, pianoNotes(track), 'Reopened notes render with the saved pitch, timing and velocity.');
+  }
   window.webContents.debugger.detach();
   console.log('Web smoke passed: HTTP app without desktop bridge, real browser download and file-input reopen.');
 } catch (error) {

@@ -110,7 +110,7 @@ export async function smokePiano(window) {
   // Solo the instrument so the audibility check cannot pass from drums alone.
   await evaluate("document.querySelector('[aria-label=\"Solo keys\"]').click()");
   await evaluate("document.querySelector('.producer-play').click()");
-  await waitFor("document.querySelector('.producer-transport-state').textContent === 'Playing' && !!document.querySelector('.piano-playhead')", 'piano playback');
+  await waitFor("document.querySelector('.producer-position').getAttribute('aria-label').startsWith('Bar ') && !!document.querySelector('.piano-playhead')", 'piano playback');
   const position = await evaluate("document.querySelector('.piano-playhead').style.left");
   await waitFor(`document.querySelector('.piano-playhead').style.left !== ${JSON.stringify(position)}`, 'piano playhead advances');
   const deadline = Date.now() + 3000;
@@ -120,7 +120,7 @@ export async function smokePiano(window) {
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Up' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Up' });
   await waitFor("document.querySelector('.piano-note').dataset.midi === '61'", 'piano edit during playback');
-  await waitFor("document.querySelector('.producer-transport-state').textContent === 'Playing'", 'edit reaches next bar');
+  await waitFor("document.querySelector('.producer-position').getAttribute('aria-label').startsWith('Bar ') && !document.querySelector('.producer-transport-state')", 'edit reaches next bar');
   assert.equal(await evaluate("!!document.querySelector('.producer-alert')"), false);
   chordSource = await source();
   await editSource('track broken { piano {');

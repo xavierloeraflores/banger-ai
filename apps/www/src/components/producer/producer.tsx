@@ -30,6 +30,7 @@ import type { CloudBinding } from "@/lib/cloud-projects";
 import { SoundDesign } from "./sound-design";
 import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
+import { TrackEditorTabs, type TrackEditorTab } from "./track-editor-tabs";
 import { usePlayer } from "./use-player";
 import { SettingsMenu } from "./settings-menu";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
@@ -107,6 +108,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const [tempoDraft, setTempoDraft] = useState(String(program.tempo));
   const [previewSection, setPreviewSection] = useState<string | undefined>();
   const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
+  const [editorTab, setEditorTab] = useState<TrackEditorTab>("notes");
   const [patterns, setPatterns] = useState<Record<number, string>>({});
   const [pitch, setPitch] = useState<Record<number, number>>({});
   const [notice, setNotice] = useState<string | null>(null);
@@ -318,6 +320,116 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     editTrack(index, next);
   }
 
+  function openNotes(index: number) {
+    setEditorTab("notes");
+    setExpandedTrack(index);
+    requestAnimationFrame(() => {
+      const panel = document.getElementById(`track-${index}-panel-notes`);
+      if (panel) panel.scrollTop = 0;
+      document.getElementById(`track-editor-${index}`)?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  const trackViews = program.tracks.map((track, index) => {
+    const requestedPattern = patterns[index] ?? program.activePattern;
+    const selectedPattern = track.patterns?.some(pattern => pattern.name === requestedPattern) ? requestedPattern : undefined;
+    const phrase = resolvePattern(track, selectedPattern);
+    const previewNotes = phrase.pianoRoll ?? [];
+    const lowestPitch = Math.min(60, ...previewNotes.map(note => note.midi));
+    const highestPitch = Math.max(lowestPitch + 12, ...previewNotes.map(note => note.midi));
+    const phraseTrack = { ...track, steps: phrase.steps, bars: phrase.bars, pianoRoll: phrase.pianoRoll };
+    const editPhrase = (next: MusicTrack) => {
+      if (!selectedPattern) return editTrack(index, next);
+      return editTrack(index, { ...track, patterns: track.patterns!.map(pattern => pattern.name === selectedPattern ? { ...pattern, steps: next.steps, pianoRoll: next.pianoRoll, bars: next.bars } : pattern) });
+    };
+    const songBeat = (Math.max(1, playback.state.songBar ?? playback.state.bar) - 1 + playback.state.phase) * 4;
+    const clip = arrangement.find(item => item.track === track.name && item.startBeat <= songBeat && item.startBeat + item.durationBeats > songBeat);
+    const phrasePlaying = playback.state.playing && !!clip && clip.pattern === selectedPattern;
+    const phase = clip ? (songBeat - clip.startBeat) / ((phrase.bars ?? 1) * 4) : 0;
+    const row = <div className={`producer-track${track.muted || (hasSolo && !track.solo) ? " is-muted" : ""}`} key={index}>
+      <button type="button" className="producer-track-toggle" aria-label={`Edit ${track.name}`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`}
+        title={`Edit ${track.name} sound, pattern and mix`} onClick={() => setExpandedTrack(index)}>
+        <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
+        <span className="producer-track-label"><strong>{track.name}</strong><small>{sounds.find(([value]) => value === track.source.name)?.[1] ?? track.source.name}{selectedPattern ? ` · ${selectedPattern}` : ""}</small></span>
+        <span className="producer-track-chevron" aria-hidden="true">{expandedTrack === index ? "▾" : "▸"}</span>
+      </button>
+      {phraseTrack.pianoRoll !== undefined ? <button type="button" className="producer-phrase-preview" aria-label={`Edit ${track.name} piano roll`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`} onClick={() => openNotes(index)}>
+        <svg viewBox="0 0 1000 32" preserveAspectRatio="none" aria-hidden="true">
+          {phraseTrack.pianoRoll.map((note, noteIndex) => <rect key={noteIndex} x={note.start / ((phrase.bars ?? 1) * 4) * 1000} y={3 + (highestPitch - note.midi) / (highestPitch - lowestPitch) * 23} width={Math.max(3, note.duration / ((phrase.bars ?? 1) * 4) * 1000)} height={3} rx={1} />)}
+          {phrasePlaying && <line x1={(phase % 1) * 1000} x2={(phase % 1) * 1000} y1={0} y2={32} />}
+        </svg>
+        <span>{phraseTrack.pianoRoll.length} notes · {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</span>
+      </button> : <div className="producer-step-grid" style={{ "--track-steps": phraseTrack.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
+        {phraseTrack.steps.map((step, stepIndex) => <SequencerStep key={stepIndex} step={step} index={stepIndex} name={track.name}
+          current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex}
+          newStep={track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }}
+          onChange={next => editPhrase({ ...phraseTrack, steps: phraseTrack.steps.map((item, i) => i === stepIndex ? next : item) })} />)}
+      </div>}
+      <div className="producer-track-mix">
+        <Button className="producer-track-mute" variant={!!track.muted ? "primary" : "ghost"} aria-pressed={!!track.muted} aria-label={`Mute ${track.name}`} title={!!track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => editTrack(index, { ...track, muted: !track.muted })}>M</Button>
+        <Button variant={!!track.solo ? "primary" : "ghost"} aria-pressed={!!track.solo} aria-label={`Solo ${track.name}`} title={`Solo ${track.name}`} onClick={() => editTrack(index, { ...track, solo: !track.solo })}>S</Button>
+      </div>
+    </div>;
+    const editor = <div key={index} className="producer-track-editor" id={`track-editor-${index}`} hidden={expandedTrack !== index}>
+        <div className="producer-focused-heading">
+          <h2>{track.name} <span>/ {selectedPattern ?? "Base pattern"} / {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</span></h2>
+          <IconButton variant="ghost" aria-label={`Close ${track.name} editor`} onClick={() => { setExpandedTrack(null); document.querySelector<HTMLButtonElement>(`[aria-controls="track-editor-${index}"]`)?.focus({ preventScroll: true }); }}>×</IconButton>
+        </div>
+        <label className="producer-focused-pattern">Pattern <Select aria-label={`${track.name} pattern`} value={selectedPattern ?? ""} onChange={event => setPatterns({ ...patterns, [index]: event.target.value })}><option value="">Base pattern</option>{track.patterns?.map(pattern => <option key={pattern.name}>{pattern.name}</option>)}</Select></label>
+        <TrackEditorTabs id={`track-${index}`} name={track.name} active={editorTab} onSelect={setEditorTab} panels={{
+          notes: <>
+            {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={draft || fileBusy} visible={view === "sequencer" && expandedTrack === index && editorTab === "notes"} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
+            {track.source.kind === "sound" && <p className="producer-empty">Edit this pattern with the steps in the track list.</p>}
+            <details className="producer-pattern-settings"><summary>Pattern settings</summary>
+              <PatternControls hidePicker track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })}
+                onRename={(oldName, name) => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.map(pattern => pattern.name === oldName ? { ...pattern, name } : pattern) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === oldName ? { ...binding, pattern: name } : binding) })) })}
+                onRemove={name => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.filter(pattern => pattern.name !== name) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === name ? { track: track.name } : binding) })) })}
+                onChange={next => editTrack(index, next)} />
+            </details>
+          </>,
+          sound: <>
+            <div className="producer-track-editor-heading">
+              <div className="producer-track-identity">
+                <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
+                <div className="producer-track-fields">
+                  <Input className="producer-track-name" key={track.name} defaultValue={track.name} aria-label={`Track ${index + 1} name`} title="Use letters, numbers, and underscores. Start with a letter or underscore."
+                    onBlur={event => {
+                      if (event.target.value === track.name) return;
+                      if (!editTrack(index, { ...track, name: event.target.value })) event.target.value = track.name;
+                    }}
+                    onKeyDown={event => {
+                      if (event.key === "Escape") event.currentTarget.value = track.name;
+                      if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
+                    }} />
+                  <Select value={track.source.name} aria-label={`${track.name} sound`} onChange={event => changeSound(index, event.target.value)}>{sounds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+                </div>
+              </div>
+              <label className="producer-track-gain">Level
+                <Range min={0} max={1} step={0.01} value={track.gain} aria-label={`${track.name} gain`} aria-valuetext={`${Math.round(track.gain * 100)} percent`} onChange={event => editTrack(index, { ...track, gain: Number(event.target.value) })} />
+                <output aria-label={`${track.name} level`}>{Math.round(track.gain * 100)}%</output>
+              </label>
+              {track.source.kind === "instrument" && phraseTrack.pianoRoll === undefined && <Select aria-label={`${track.name} pitch for new steps`} value={pitch[index] ?? 36} onChange={event => setPitch({ ...pitch, [index]: Number(event.target.value) })}>
+                {Array.from({ length: 49 }, (_, i) => i + 24).map(midi => <option key={midi} value={midi}>{noteName(midi)}</option>)}
+              </Select>}
+              <Button variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>Remove track</Button>
+            </div>
+            <SoundDesign track={track} phrase={phraseTrack} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
+          </>,
+          effects: <>
+            <TrackEffects open track={track} tracks={program.tracks.map(item => item.name)} disabled={draft || fileBusy} onChange={next => editTrack(index, { ...track, ...next })} />
+          </>,
+          routing: <>
+            <LevelMeter name={track.name} level={playback.meters.tracks[track.name]?.peak} />
+            <TrackRouting program={program} index={index} onChange={edit} />
+          </>,
+          automation: <>
+            <AutomationEditor name={track.name} curves={track.automation} effects={track.effects} beats={(phrase.bars ?? 1) * 4} onChange={automation => editTrack(index, { ...track, automation })} />
+          </>,
+        }} />
+      </div>;
+    return { row, editor };
+  });
+
   return (
     <main className="producer" data-view={view}>
       <header className="producer-header">
@@ -413,88 +525,11 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
             </div>
             {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
 
-            <div className="producer-sequence-scroll">
+            <div className="producer-sequence-scroll" data-focused={expandedTrack !== null}>
               <div className="producer-step-ruler" aria-hidden="true"><span>TRACK / SOUND</span><span>STEPS / SELECTED PHRASE</span><span>M / S</span></div>
               <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
-                {program.tracks.map((track, index) => {
-                  const requestedPattern = patterns[index] ?? program.activePattern;
-                  const selectedPattern = track.patterns?.some(pattern => pattern.name === requestedPattern) ? requestedPattern : undefined;
-                  const phrase = resolvePattern(track, selectedPattern);
-                  const previewNotes = phrase.pianoRoll ?? [];
-                  const lowestPitch = Math.min(60, ...previewNotes.map(note => note.midi));
-                  const highestPitch = Math.max(lowestPitch + 12, ...previewNotes.map(note => note.midi));
-                  const phraseTrack = { ...track, steps: phrase.steps, bars: phrase.bars, pianoRoll: phrase.pianoRoll };
-                  const editPhrase = (next: MusicTrack) => {
-                    if (!selectedPattern) return editTrack(index, next);
-                    return editTrack(index, { ...track, patterns: track.patterns!.map(pattern => pattern.name === selectedPattern ? { ...pattern, steps: next.steps, pianoRoll: next.pianoRoll, bars: next.bars } : pattern) });
-                  };
-                  const songBeat = (Math.max(1, playback.state.songBar ?? playback.state.bar) - 1 + playback.state.phase) * 4;
-                  const clip = arrangement.find(item => item.track === track.name && item.startBeat <= songBeat && item.startBeat + item.durationBeats > songBeat);
-                  const phrasePlaying = playback.state.playing && !!clip && clip.pattern === selectedPattern;
-                  const phase = clip ? (songBeat - clip.startBeat) / ((phrase.bars ?? 1) * 4) : 0;
-                  return <div className={`producer-track${track.muted || (hasSolo && !track.solo) ? " is-muted" : ""}`} key={index}>
-                    <button type="button" className="producer-track-toggle" aria-label={`Edit ${track.name}`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`}
-                      title={`Edit ${track.name} sound, pattern and mix`} onClick={() => setExpandedTrack(expandedTrack === index ? null : index)}>
-                      <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
-                      <span className="producer-track-label"><strong>{track.name}</strong><small>{sounds.find(([value]) => value === track.source.name)?.[1] ?? track.source.name}{selectedPattern ? ` · ${selectedPattern}` : ""}</small></span>
-                      <span className="producer-track-chevron" aria-hidden="true">{expandedTrack === index ? "▾" : "▸"}</span>
-                    </button>
-                    {phraseTrack.pianoRoll !== undefined ? <button type="button" className="producer-phrase-preview" aria-label={`Edit ${track.name} piano roll`} aria-expanded={expandedTrack === index} aria-controls={`track-editor-${index}`} onClick={() => setExpandedTrack(expandedTrack === index ? null : index)}>
-                      <svg viewBox="0 0 1000 32" preserveAspectRatio="none" aria-hidden="true">
-                        {phraseTrack.pianoRoll.map((note, noteIndex) => <rect key={noteIndex} x={note.start / ((phrase.bars ?? 1) * 4) * 1000} y={3 + (highestPitch - note.midi) / (highestPitch - lowestPitch) * 23} width={Math.max(3, note.duration / ((phrase.bars ?? 1) * 4) * 1000)} height={3} rx={1} />)}
-                        {phrasePlaying && <line x1={(phase % 1) * 1000} x2={(phase % 1) * 1000} y1={0} y2={32} />}
-                      </svg>
-                      <span>{phraseTrack.pianoRoll.length} notes · {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</span>
-                    </button> : <div className="producer-step-grid" style={{ "--track-steps": phraseTrack.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
-                      {phraseTrack.steps.map((step, stepIndex) => <SequencerStep key={stepIndex} step={step} index={stepIndex} name={track.name}
-                        current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex}
-                        newStep={track.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[index] ?? 36 }}
-                        onChange={next => editPhrase({ ...phraseTrack, steps: phraseTrack.steps.map((item, i) => i === stepIndex ? next : item) })} />)}
-                    </div>}
-                    <div className="producer-track-mix">
-                      <Button className="producer-track-mute" variant={!!track.muted ? "primary" : "ghost"} aria-pressed={!!track.muted} aria-label={`Mute ${track.name}`} title={!!track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => editTrack(index, { ...track, muted: !track.muted })}>M</Button>
-                      <Button variant={!!track.solo ? "primary" : "ghost"} aria-pressed={!!track.solo} aria-label={`Solo ${track.name}`} title={`Solo ${track.name}`} onClick={() => editTrack(index, { ...track, solo: !track.solo })}>S</Button>
-                    </div>
-                    <div className="producer-track-editor" id={`track-editor-${index}`} hidden={expandedTrack !== index}>
-                      <div className="producer-track-editor-heading">
-                        <div className="producer-track-identity">
-                          <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
-                          <div className="producer-track-fields">
-                            <Input className="producer-track-name" key={track.name} defaultValue={track.name} aria-label={`Track ${index + 1} name`} title="Use letters, numbers, and underscores. Start with a letter or underscore."
-                              onBlur={event => {
-                                if (event.target.value === track.name) return;
-                                if (!editTrack(index, { ...track, name: event.target.value })) event.target.value = track.name;
-                              }}
-                              onKeyDown={event => {
-                                if (event.key === "Escape") event.currentTarget.value = track.name;
-                                if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
-                              }} />
-                            <Select value={track.source.name} aria-label={`${track.name} sound`} onChange={event => changeSound(index, event.target.value)}>{sounds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
-                          </div>
-                        </div>
-                        <label className="producer-track-gain">Level
-                          <Range min={0} max={1} step={0.01} value={track.gain} aria-label={`${track.name} gain`} aria-valuetext={`${Math.round(track.gain * 100)} percent`} onChange={event => editTrack(index, { ...track, gain: Number(event.target.value) })} />
-                          <output aria-label={`${track.name} level`}>{Math.round(track.gain * 100)}%</output>
-                        </label>
-                        {track.source.kind === "instrument" && phraseTrack.pianoRoll === undefined && <Select aria-label={`${track.name} pitch for new steps`} value={pitch[index] ?? 36} onChange={event => setPitch({ ...pitch, [index]: Number(event.target.value) })}>
-                          {Array.from({ length: 49 }, (_, i) => i + 24).map(midi => <option key={midi} value={midi}>{noteName(midi)}</option>)}
-                        </Select>}
-                        <Button variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>Remove track</Button>
-                        <IconButton variant="ghost" aria-label={`Close ${track.name} editor`} onClick={() => { setExpandedTrack(null); document.querySelector<HTMLButtonElement>(`[aria-controls="track-editor-${index}"]`)?.focus(); }}>×</IconButton>
-                      </div>
-                      <PatternControls track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })}
-                        onRename={(oldName, name) => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.map(pattern => pattern.name === oldName ? { ...pattern, name } : pattern) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === oldName ? { ...binding, pattern: name } : binding) })) })}
-                        onRemove={name => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.filter(pattern => pattern.name !== name) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === name ? { track: track.name } : binding) })) })}
-                        onChange={next => editTrack(index, next)} />
-                      <LevelMeter name={track.name} level={playback.meters.tracks[track.name]?.peak} />
-                      <TrackRouting program={program} index={index} onChange={edit} />
-                      <SoundDesign track={track} phrase={phraseTrack} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
-                      <TrackEffects track={track} tracks={program.tracks.map(item => item.name)} disabled={draft || fileBusy} onChange={next => editTrack(index, { ...track, ...next })} />
-                      <AutomationEditor name={track.name} curves={track.automation} effects={track.effects} beats={(phrase.bars ?? 1) * 4} onChange={automation => editTrack(index, { ...track, automation })} />
-                      {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={draft || fileBusy} visible={view === "sequencer" && expandedTrack === index} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
-                    </div>
-                  </div>;
-                })}
+                <div className="producer-track-list">{trackViews.map(item => item.row)}</div>
+                <div className="producer-editors" hidden={expandedTrack === null}>{trackViews.map(item => item.editor)}</div>
               </fieldset>
             </div>
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}

@@ -18,7 +18,7 @@ track replacement { sound "drums/hat"; rhythm "x . . ."; gain 0.2; }
 `;
 const applyButton = `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Apply source')`;
 const gridSnapshot = `[...document.querySelectorAll('.producer-track')].map(track => ({
-  name: track.querySelector('.producer-track-name').value,
+  name: track.querySelector('.producer-track-label strong').textContent,
   steps: [...track.querySelectorAll('.producer-step')].map(step => step.getAttribute('aria-pressed')),
 }))`;
 
@@ -88,8 +88,8 @@ export async function smokeProducer(window, directory) {
 
   await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-  assert.equal(await evaluate("document.querySelectorAll('[role=tab]').length"), 5);
-  assert.equal(await evaluate("document.querySelectorAll('[role=tabpanel]:not([hidden])').length"), 1);
+  assert.equal(await evaluate("document.querySelectorAll('.producer-tabs [role=tab]').length"), 5);
+  assert.equal(await evaluate("[...document.querySelectorAll('[role=tabpanel]')].filter(panel => panel.checkVisibility()).length"), 1);
   await evaluate("document.querySelector('#studio-tab-sequencer').focus()");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Right" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Right" });
@@ -107,6 +107,7 @@ export async function smokeProducer(window, directory) {
   assert.equal(await evaluate("document.querySelectorAll('.producer-song-tools details[open]').length"), 0, 'Song tools start collapsed.');
   assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 64)"), 'Collapsed tracks, including step performance badges, form a compact rack.');
   await click('[aria-label="Edit kick"]');
+  await click('#track-0-tab-sound');
   await waitFor("document.querySelector('[aria-label=\"kick gain\"]').checkVisibility()", 'track controls expand');
   await click('[aria-label="Edit bass"]');
   assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 1, 'Only one track editor opens at a time.');
