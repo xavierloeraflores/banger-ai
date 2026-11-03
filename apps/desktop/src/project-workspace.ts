@@ -1,5 +1,7 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename } from "node:path";
+import { mkdir, rmdir } from "node:fs/promises";
+import { projectName } from "./project-files.js";
 import { openProject, ProjectSession, type ProjectWorkspace, type SelectedModel, type HarnessEvent } from "@banger/harness";
 
 // Model errors can contain provider headers, and filesystem errors contain absolute paths.
@@ -29,6 +31,41 @@ export function installWorkspaceHandlers(options: {
     if (visible.type === "tool-result" && visible.error) visible.error = safeError(new Error(visible.error), "Project operation failed. Inspect the music file and retry.");
     window.webContents.send("banger:workspace-event", visible);
   };
+  function adopt(window: BrowserWindow, workspace: ProjectWorkspace) {
+    if (!states.has(window.id)) {
+      window.once("closed", () => { states.get(window.id)?.controller?.abort(); states.delete(window.id); });
+      window.webContents.on("did-start-navigation", (_event, _url, _inPlace, main) => { if (main) states.get(window.id)?.controller?.abort(); });
+    }
+    states.set(window.id, { workspace });
+    options.onOpen?.(window, workspace.root);
+  }
+  ipcMain.handle("banger:workspace-create", async (event, name: unknown, source: unknown) => {
+    const window = options.senderWindow(event);
+    if (opening.has(window.id) || states.get(window.id)?.controller) throw new Error("Stop the current task before creating another project.");
+    if (typeof name !== "string" || typeof source !== "string") throw new Error("Invalid project song.");
+    opening.add(window.id);
+    try {
+      const picked = await dialog.showSaveDialog(window, { title: "Create project folder", buttonLabel: "Create project", defaultPath: name === "Untitled.banger" ? "Untitled Project" : projectName(name).replace(/\.banger$/, ""), properties: ["createDirectory"] });
+      if (picked.canceled || !picked.filePath) return null;
+      try { await mkdir(picked.filePath); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("That folder already exists. Choose a new project folder name.");
+        throw error;
+      }
+      try {
+        const workspace = await openProject(picked.filePath);
+        const file = await workspace.write(projectName(name), source, null);
+        if (window.isDestroyed()) return null;
+        adopt(window, workspace);
+        return { name: basename(workspace.root), paths: [file.path], file };
+      } catch (error) {
+        // Only remove a failed, empty creation. Never remove user files.
+        await rmdir(picked.filePath).catch(() => {});
+        throw error;
+      }
+    } catch (error) { throw new Error(safeError(error, "Could not create the project folder.")); }
+    finally { opening.delete(window.id); }
+  });
   ipcMain.handle("banger:workspace-open", async event => {
     const window = options.senderWindow(event);
     if (opening.has(window.id) || states.get(window.id)?.controller) throw new Error("Stop the current task before opening another project.");
@@ -39,13 +76,9 @@ export function installWorkspaceHandlers(options: {
       const workspace = await openProject(picked.filePaths[0]);
       const paths = await workspace.list();
       if (window.isDestroyed()) return null;
-      if (!states.has(window.id)) {
-        window.once("closed", () => { states.get(window.id)?.controller?.abort(); states.delete(window.id); });
-        window.webContents.on("did-start-navigation", (_event, _url, _inPlace, main) => { if (main) states.get(window.id)?.controller?.abort(); });
-      }
-      states.set(window.id, { workspace });
-      options.onOpen?.(window, workspace.root);
-      return { name: basename(workspace.root), paths };
+      const file = paths[0] ? await workspace.read(paths[0]) : null;
+      adopt(window, workspace);
+      return { name: basename(workspace.root), paths, file };
     } catch (error) { throw new Error(safeError(error, "Could not open the music folder.")); }
     finally { opening.delete(window.id); }
   });

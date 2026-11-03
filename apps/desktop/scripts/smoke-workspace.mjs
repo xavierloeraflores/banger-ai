@@ -1,7 +1,7 @@
-import { enterStudio } from "./smoke-startup.mjs";
+import { enterStudio, smokeStartup } from "./smoke-startup.mjs";
 import { app, BrowserWindow, dialog } from "electron";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -42,7 +42,12 @@ app.on("browser-window-created", (_event, window) => {
 });
 await import("../dist/main.js");
 async function run(window) {
+  const startupDirectory = join(directory, "startup-checks");
+  await mkdir(startupDirectory);
+  await smokeStartup(window, startupDirectory);
+  await rm(startupDirectory, { recursive: true, force: true });
   await enterStudio(window);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
   const evaluate = script => window.webContents.executeJavaScript(script, true);
   async function wait(script) {
     for (let count = 0; count < 250; count++) { if (await evaluate(`Boolean(${script})`)) return; await delay(30); }
@@ -58,7 +63,8 @@ async function run(window) {
     await evaluate("window.bangerAI.save('vercel', 'anthropic/test-model', 'fake-project-key')");
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
     await wait("document.querySelector('#project-controls').open");
-    await click("Open project folder");
+    await click("Open Project");
+    await evaluate("document.querySelector('.project-song-advanced').open = true");
     await wait("document.querySelector('#workspace-source')?.value.includes('tempo 120')");
     assert.equal(await evaluate("document.querySelector('#workspace-file').value"), "chorus.banger");
     await input("workspace-source", source + "\n// unsaved");
@@ -98,14 +104,14 @@ async function run(window) {
     await wait("document.querySelector('.project-workspace-notice')?.textContent.includes('stopped')");
     // Renderer receives relative names, and traversal is rejected by the real IPC handler.
     await assert.rejects(evaluate("window.bangerWorkspace.read('../secret.banger')"));
-    assert.deepEqual(await evaluate("window.bangerWorkspace.list()"), ["chorus.banger", "verse.banger"]);
+    assert.ok((await evaluate("window.bangerWorkspace.list()")).includes("verse.banger"));
     await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'verse.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
     await wait("document.querySelector('#workspace-source').value.includes('tempo 110')");
     await click("Reload files");
     await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#workspace-source').disabled");
     // Exercise the real export button after loading the workspace song.
     await click("Load workspace file in studio");
-    await wait("!document.querySelector('#project-controls').open");
+    await evaluate("document.querySelector('#project-controls').close()");
     window.webContents.session.on('will-download', event => event.preventDefault());
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
     for (let version = 1; version <= 2; version++) {

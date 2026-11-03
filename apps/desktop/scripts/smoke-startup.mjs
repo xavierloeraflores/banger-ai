@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { dialog } from 'electron';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { app, dialog } from 'electron';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 
 async function wait(window, expression) {
@@ -14,109 +15,125 @@ async function wait(window, expression) {
 const click = (window, label) => window.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)}).click()`, true);
 
 export async function enterStudio(window) {
+  let projectFolder;
   await wait(window, "document.querySelector('.producer-start') || document.querySelector('#producer-source')");
   if (await window.webContents.executeJavaScript("Boolean(document.querySelector('.producer-start'))")) {
-    await click(window, 'Load sample banger');
+    const native = await window.webContents.executeJavaScript("Boolean(window.bangerWorkspace)");
+    const original = dialog.showSaveDialog;
+    let directory;
+    if (native) {
+      directory = await mkdtemp(join(tmpdir(), 'banger-sample-smoke-'));
+      projectFolder = join(directory, 'Sample Project');
+      app.once('will-quit', () => { void rm(directory, { recursive: true, force: true }); });
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: join(directory, 'Sample Project') });
+    } else {
+      // The browser fixture supplies folder handles; the real browser workspace code performs all reads and writes.
+      await window.webContents.executeJavaScript(`(() => {
+        const directory = name => {
+          const entries = new Map();
+          return { kind: 'directory', name, async *values() { yield* entries.values(); },
+            async getDirectoryHandle(name, options) { if (!entries.has(name)) { if (!options?.create) throw new DOMException('Missing', 'NotFoundError'); entries.set(name, directory(name)); } return entries.get(name); },
+            async getFileHandle(name, options) { if (!entries.has(name)) { if (!options?.create) throw new DOMException('Missing', 'NotFoundError'); let text = ''; entries.set(name, { kind: 'file', name, getFile: async () => new File([text], name), createWritable: async () => ({ write: async value => { text = value; }, close: async () => {} }) }); } return entries.get(name); }
+          };
+        };
+        const parent = directory('Smoke projects'); window.smokeProjectParent = parent; window.showDirectoryPicker = async () => parent; window.prompt = () => 'Sample Project';
+      })()`);
+    }
+    try { await click(window, 'Load Sample Project'); await wait(window, "document.querySelector('#producer-source')"); }
+    finally { dialog.showSaveDialog = original; }
   }
   await wait(window, "document.querySelector('#producer-source')");
+  await window.webContents.executeJavaScript("document.querySelector('#project-controls')?.close()");
+  return projectFolder;
 }
 
 export async function smokeStartup(window, directory) {
   const evaluate = code => window.webContents.executeJavaScript(code, true);
   const reload = async () => { await window.loadURL('banger://app/'); await wait(window, "document.querySelector('.producer-start')"); };
+  const idle = () => wait(window, "document.querySelector('.producer-start-card')?.getAttribute('aria-busy') === 'false'");
+  const input = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(field.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await wait(window, "document.querySelector('.producer-start')");
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start button')].map(button => button.textContent)"), ['Create new banger', 'Open existing banger', 'Open project folder', 'Load sample banger']);
-  assert.equal(await evaluate("document.querySelector('.producer-transport')"), null);
-  if (process.env.BANGER_STARTUP_SCREENSHOT) await writeFile(process.env.BANGER_STARTUP_SCREENSHOT, (await window.webContents.capturePage()).toPNG());
-  const minimumSize = window.getMinimumSize();
-  window.setMinimumSize(0, 0);
-  window.setContentSize(390, 844);
-  await wait(window, "innerWidth === 390");
-  assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth + 1'));
-  if (process.env.BANGER_STARTUP_SCREENSHOT) await writeFile(process.env.BANGER_STARTUP_SCREENSHOT.replace('.png', '-mobile.png'), (await window.webContents.capturePage()).toPNG());
-  window.setContentSize(1440, 1000);
-  window.setMinimumSize(...minimumSize);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project']);
   dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
-  await click(window, 'Open existing banger');
-  await wait(window, "document.querySelector('.producer-start-card').getAttribute('aria-busy') === 'false'");
   dialog.showSaveDialog = async () => ({ canceled: true });
-  await click(window, 'Create new banger');
-  await wait(window, "document.querySelector('.producer-start-card').getAttribute('aria-busy') === 'false'");
+  for (const label of ['Open Project', 'Create New Project', 'Load Sample Project']) { await click(window, label); await idle(); }
   dialog.showOpenDialog = async () => { throw new Error('Startup open failed'); };
-  await click(window, 'Open existing banger');
-  await wait(window, "document.querySelector('.producer-start [role=alert]')?.textContent.includes('Startup open failed')");
-  await enterStudio(window);
-  const sample = await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8');
-  assert.equal(await evaluate("document.querySelector('#producer-source').value"), sample);
-  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), 'No project');
-  await reload();
-  const createdPath = join(directory, 'new-project.banger');
-  dialog.showSaveDialog = async () => ({ canceled: false, filePath: createdPath });
-  await click(window, 'Create new banger');
+  await click(window, 'Open Project'); await idle();
+  assert.match(await evaluate("document.querySelector('[role=alert]').textContent"), /Startup open failed/);
+  const sampleFolder = join(directory, 'sample-project');
+  dialog.showSaveDialog = async (_window, options) => { assert.equal(options.title, 'Create project folder'); return { canceled: false, filePath: sampleFolder }; };
+  await click(window, 'Load Sample Project');
   await wait(window, "document.querySelector('#producer-source')");
-  assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(createdPath, 'utf8'));
-  assert.equal(await evaluate("document.querySelector('#source-title').textContent"), 'new-project.banger');
-  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim')?.textContent"), undefined);
-  await reload();
-  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [createdPath] });
-  await click(window, 'Open existing banger');
-  await wait(window, "document.querySelector('#source-title')?.textContent === 'new-project.banger'");
-  assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(createdPath, 'utf8'));
-  await reload();
-  await writeFile(createdPath, 'invalid music source');
-  await click(window, 'Open existing banger');
-  await wait(window, "document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'true'");
-  assert.equal(await evaluate("document.querySelector('#studio-tab-source').getAttribute('aria-selected')"), 'true');
-  assert.equal(await evaluate("document.querySelector('#producer-source').value"), 'invalid music source');
-  await reload();
-  await click(window, 'Open project folder');
-  await wait(window, "document.querySelector('.producer-start [role=alert]')");
-  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
-  await click(window, 'Open project folder');
-  await wait(window, "document.querySelector('.producer-start-card').getAttribute('aria-busy') === 'false'");
-  const folder = join(directory, 'folder-project');
-  await mkdir(join(folder, 'songs'), { recursive: true });
-  const folderSource = 'tempo 123; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain 0.5; }';
-  const folderPath = join(folder, 'songs', 'verse.banger');
-  await writeFile(folderPath, folderSource);
-  dialog.showOpenDialog = async (_window, options) => {
-    assert.deepEqual(options.properties, ['openDirectory']);
-    return { canceled: false, filePaths: [folder] };
-  };
-  await click(window, 'Open project folder');
-  await wait(window, "document.querySelector('#project-controls')?.open && document.querySelector('#workspace-file')?.value === 'songs/verse.banger'");
-  assert.equal(await evaluate("document.querySelector('#producer-source').value"), folderSource);
-  assert.equal(await evaluate("document.querySelectorAll('.project-workspace:not(#project-controls .project-workspace)').length"), 0);
-  assert.equal(await evaluate("document.activeElement.closest('dialog')?.id"), 'project-controls');
-  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
-  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-  await wait(window, "!document.querySelector('#project-controls').open");
-  await click(window, 'Project');
-  await wait(window, "document.querySelector('#project-controls').open");
-  await click(window, 'Close');
-  await wait(window, "document.activeElement.textContent === 'Project'");
-  await click(window, 'Raw .banger');
-  const editedSource = folderSource.replace('123', '125');
-  await evaluate(`(() => { const input = document.querySelector('#producer-source'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, ${JSON.stringify(editedSource)}); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await click(window, 'Project');
+  const sample = await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8');
+  assert.equal(await readFile(join(sampleFolder, 'night-drive.banger'), 'utf8'), sample);
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), sample);
+  assert.match(await evaluate("document.querySelector('.producer-project').textContent"), /sample-project.*night-drive/);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('#project-controls > section')].map(s => s.querySelector('h2')?.textContent)"), ['Project Workspace', 'night-drive.banger', 'Export Controls']);
+  await input('[aria-label="New song name"]', 'verse');
+  await click(window, 'Create New Song');
+  await wait(window, "document.querySelector('#workspace-file').value === 'verse.banger'");
+  const blank = await readFile(join(sampleFolder, 'verse.banger'), 'utf8');
+  assert.notEqual(blank, sample);
+  await input('[aria-label="New song name"]', 'verse'); await click(window, 'Create New Song');
+  await wait(window, "document.querySelector('.project-workspace-notice')?.textContent.includes('changed')");
+  assert.equal(await readFile(join(sampleFolder, 'verse.banger'), 'utf8'), blank);
+  await evaluate("(() => { const s = document.querySelector('#workspace-file'); s.value = 'night-drive.banger'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await wait(window, "document.querySelector('#producer-source').value === " + JSON.stringify(sample));
+  await input('#producer-source', sample + '\n// unsaved');
+  await evaluate('void (window.confirm = () => false)');
+  let opened = false;
+  dialog.showOpenDialog = async () => { opened = true; return { canceled: false, filePaths: [sampleFolder] }; };
+  await click(window, 'Open Project');
+  assert.equal(opened, false);
+  await evaluate("(() => { const s = document.querySelector('#workspace-file'); s.value = 'verse.banger'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  assert.match(await evaluate("document.querySelector('#producer-source').value"), /unsaved/);
+  await evaluate('void (window.confirm = () => true)');
   await click(window, 'Save .banger');
-  await wait(window, "document.querySelector('.producer-footer [role=status]').textContent === 'Saved verse.banger.'");
-  assert.equal(await readFile(folderPath, 'utf8'), editedSource);
-  await wait(window, "document.querySelector('#workspace-source').value.includes('tempo 125')");
-  await evaluate(`(() => { const input = document.querySelector('#workspace-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Keep this task draft'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await wait(window, "document.querySelector('.project-file-card [role=status]')?.textContent.includes('Saved night-drive')");
+  assert.match(await readFile(join(sampleFolder, 'night-drive.banger'), 'utf8'), /unsaved/);
+  await evaluate("document.querySelector('.project-song-advanced').open = true");
+  await input('#workspace-prompt', 'Keep this task draft');
   await click(window, 'Close'); await click(window, 'Project');
   assert.equal(await evaluate("document.querySelector('#workspace-prompt').value"), 'Keep this task draft');
-  window.setMinimumSize(0, 0); window.setContentSize(390, 844);
-  await wait(window, "innerWidth === 390");
+  await evaluate("document.querySelector('.project-song-advanced').open = false");
+  const minimum = window.getMinimumSize(); window.setMinimumSize(0, 0); window.setContentSize(390, 844);
+  await wait(window, 'innerWidth === 390');
   assert.ok(await evaluate("document.querySelector('#project-controls').scrollWidth <= document.querySelector('#project-controls').clientWidth + 1"));
   await writeFile('/tmp/banger-project-controls-mobile.png', (await window.webContents.capturePage()).toPNG());
-  window.setContentSize(1440, 1000); window.setMinimumSize(...minimumSize);
+  window.setContentSize(1440, 1000); window.setMinimumSize(...minimum);
+  await wait(window, 'innerWidth === 1440');
   await writeFile('/tmp/banger-project-controls.png', (await window.webContents.capturePage()).toPNG());
+  const newFolder = join(directory, 'new-project');
+  dialog.showSaveDialog = async () => ({ canceled: false, filePath: newFolder });
+  await click(window, 'Create New Project');
+  await wait(window, "document.querySelector('.producer-project').textContent.includes('new-project')");
+  assert.equal(await readFile(join(newFolder, 'Untitled.banger'), 'utf8'), blank);
   await reload();
-  const emptyFolder = join(directory, 'empty-project'); await mkdir(emptyFolder);
-  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [emptyFolder] });
-  await click(window, 'Open project folder');
-  await wait(window, "document.querySelector('#project-controls')?.open && document.querySelector('[aria-label=\"Project workspace\"]')?.textContent.includes('No .banger files yet')");
+  // Existing folders are never overwritten by project creation.
+  await click(window, 'Create New Project'); await idle();
+  assert.match(await evaluate("document.querySelector('[role=alert]').textContent"), /already exists/);
+  const startFolder = join(directory, 'startup-created');
+  dialog.showSaveDialog = async () => ({ canceled: false, filePath: startFolder });
+  await click(window, 'Create New Project'); await wait(window, "document.querySelector('#producer-source')");
+  assert.equal(await readFile(join(startFolder, 'Untitled.banger'), 'utf8'), blank);
   await reload();
-  console.log('Startup smoke passed: file and folder choices, nested-file saves, empty folders, cancellation, errors, Night Drive, invalid source recovery, modal dismissal and focus, draft persistence, and narrow layout.');
+  const folder = join(directory, 'folder-project'); await mkdir(join(folder, 'songs'), { recursive: true });
+  await writeFile(join(folder, 'songs/verse.banger'), blank);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+  await click(window, 'Open Project'); await wait(window, "document.querySelector('#workspace-file')?.value === 'songs/verse.banger'");
+  await reload();
+  await writeFile(join(folder, 'songs/verse.banger'), 'invalid music source');
+  await click(window, 'Open Project'); await wait(window, "document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'true'");
+  await reload();
+  const empty = join(directory, 'empty-project'); await mkdir(empty);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [empty] });
+  await click(window, 'Open Project'); await wait(window, "document.querySelector('#workspace-file')?.value === ''");
+  await click(window, 'Save .banger');
+  await wait(window, "document.querySelector('#workspace-file').value === 'Untitled.banger'");
+  assert.equal(await readFile(join(empty, 'Untitled.banger'), 'utf8'), blank);
+  await input('[aria-label="New song name"]', 'first'); await click(window, 'Create New Song');
+  await wait(window, "document.querySelector('#workspace-file').value === 'first.banger'");
+  assert.equal(await readFile(join(empty, 'first.banger'), 'utf8'), blank);
+  await reload();
+  console.log('Startup smoke passed: stored sample and new projects, cancellation, modal order, project/song switching, new songs, duplicate protection, unsaved edits, nested songs, invalid source, empty folders, draft persistence, and narrow layout.');
 }

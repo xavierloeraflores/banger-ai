@@ -22,8 +22,8 @@ const gridSnapshot = `[...document.querySelectorAll('.producer-track')].map(trac
   steps: [...track.querySelectorAll('.producer-step')].map(step => step.getAttribute('aria-pressed')),
 }))`;
 
-export async function smokeProducer(window, directory) {
-  await enterStudio(window);
+export async function smokeProducer(window) {
+  const projectFolder = await enterStudio(window);
   const evaluate = (script) => window.webContents.executeJavaScript(script, true);
   async function waitFor(script, label, timeout = 5_000) {
     const deadline = Date.now() + timeout;
@@ -47,14 +47,14 @@ export async function smokeProducer(window, directory) {
     })()`);
   }
   async function clickText(text) {
-    if (text === "Open" || text === "Save .banger") await clickText("Project");
+    if (text === "Open Project" || text === "Save .banger") await clickText("Project");
     await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === ${JSON.stringify(text)});
       if (!button || button.matches(':disabled')) throw new Error('Button is unavailable: ' + ${JSON.stringify(text)});
       button.click();
     })()`);
-    if (text === "Open" || text === "Save .banger") {
-      await waitFor("![...document.querySelectorAll('#project-controls button')].find(b => b.textContent === 'Open').disabled", "file operation");
+    if (text === "Open Project" || text === "Save .banger") {
+      await waitFor("![...document.querySelectorAll('#project-controls button')].find(b => b.textContent === 'Open Project').disabled", "file operation");
       await clickText("Close");
     }
   }
@@ -78,17 +78,29 @@ export async function smokeProducer(window, directory) {
     assert.deepEqual(grid.map(track => track.steps.length), lengths);
   }
   async function saveAs(path, filename) {
-    let dialogCalls = 0;
-    dialog.showSaveDialog = async () => { dialogCalls += 1; return { canceled: false, filePath: path }; };
+    const snapshot = await evaluate("document.querySelector('#producer-source').value");
+    await clickText("Project");
+    await evaluate("void (window.confirm = () => true)");
+    await evaluate(`(() => { const field = document.querySelector('[aria-label="New song name"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, ${JSON.stringify(filename)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await clickText("Create New Song");
+    await waitFor(`document.querySelector('#workspace-file').value === ${JSON.stringify(filename)}`, "new song");
+    await clickText("Close");
+    await editSource(snapshot);
+    await clickText("Apply source");
     await clickText("Save .banger");
-    await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Saved ${filename}.`)}`, "native save");
-    assert.equal(dialogCalls, 1, "Save must use the native dialog once.");
-    assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim')?.textContent"), undefined);
+    await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Saved ${filename}.`)}`, "workspace save");
+    assert.equal(await readFile(path, "utf8"), snapshot);
+  }
+  async function switchSong(filename) {
+    await clickText("Project");
+    await evaluate(`(() => { const field = document.querySelector('#workspace-file'); field.value = ${JSON.stringify(filename)}; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await waitFor(`document.querySelector('#source-title').textContent === ${JSON.stringify(filename)}`, "song switch");
+    await clickText("Close");
   }
 
   await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-  assert.equal(await evaluate("document.querySelectorAll('.producer-tabs [role=tab]').length"), 5);
+  assert.equal(await evaluate("document.querySelectorAll('.producer-tabs [role=tab]').length"), 4);
   assert.equal(await evaluate("[...document.querySelectorAll('[role=tabpanel]')].filter(panel => panel.checkVisibility()).length"), 1);
   await evaluate("document.querySelector('#studio-tab-sequencer').focus()");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Right" });
@@ -102,7 +114,7 @@ export async function smokeProducer(window, directory) {
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   assert.equal(originalSource, await readFile(new URL("../../../examples/night-drive.banger", import.meta.url), "utf8"));
   assert.equal(await evaluate("document.querySelector('#source-title').textContent"), "night-drive.banger");
-  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "No project");
+  assert.match(await evaluate("document.querySelector('.producer-project').textContent"), /Sample Project.*night-drive/);
   assert.equal(await evaluate("document.querySelectorAll('.producer-track-editor:not([hidden])').length"), 0, 'Track editors start collapsed.');
   assert.equal(await evaluate("document.querySelectorAll('.producer-song-tools details[open]').length"), 0, 'Song tools start collapsed.');
   assert.ok(await evaluate("[...document.querySelectorAll('.producer-track')].every(row => row.getBoundingClientRect().height <= 64)"), 'Collapsed tracks, including step performance badges, form a compact rack.');
@@ -136,14 +148,14 @@ export async function smokeProducer(window, directory) {
   assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
 
   await click(".producer-play");
-  await waitFor("document.querySelector('.producer-transport-state')?.textContent === 'Playing' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length > 0", "audio playback");
+  await waitFor("document.querySelector('.producer-position')?.getAttribute('aria-label')?.startsWith('Bar ') && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length > 0", "audio playback");
   const firstPosition = await evaluate("document.querySelector('.producer-position').getAttribute('aria-label')");
   await waitFor(`document.querySelector('.producer-position')?.getAttribute('aria-label') !== ${JSON.stringify(firstPosition)}`, "advancing audio playhead");
   const audioDeadline = Date.now() + 3_000;
   while (!window.webContents.isCurrentlyAudible() && Date.now() < audioDeadline) await setTimeout(25);
   assert.equal(window.webContents.isCurrentlyAudible(), true, "Real Web Audio output must become audible.");
   await clickText("Raw .banger");
-  assert.equal(await evaluate("document.querySelector('.producer-transport-state').textContent"), "Playing");
+  assert.ok(await evaluate("document.querySelector('.producer-position').getAttribute('aria-label').startsWith('Bar ')"));
   await clickText("Sequencer");
   await click('[aria-label="Stop playback"]');
   await waitFor("document.querySelector('.producer-position')?.getAttribute('aria-label') === 'Stopped' && document.querySelectorAll('.producer-step[data-current=" + '"true"' + "]').length === 0", "stopped playhead");
@@ -157,36 +169,33 @@ export async function smokeProducer(window, directory) {
   assert.deepEqual(await evaluate(gridSnapshot), beforeInvalid, "Invalid source must preserve the applied sequence.");
   assert.equal(await evaluate("document.querySelector('.producer-tracks').disabled"), true);
   const pianoSource = await smokePiano(window);
-  const pianoPath = join(directory, "piano.banger");
+  const pianoPath = join(projectFolder, "piano.banger");
   await saveAs(pianoPath, "piano.banger");
   assert.equal(await readFile(pianoPath, "utf8"), pianoSource);
   await applySource(replacementSource, 91, ["replacement"], [4]);
-  await saveAs(join(directory, "before-piano.banger"), "before-piano.banger");
-  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [pianoPath] });
-  await clickText("Open");
+  await saveAs(join(projectFolder, "before-piano.banger"), "before-piano.banger");
+  await switchSong("piano.banger");
   await waitFor("document.querySelectorAll('.piano-note').length === 4", "native piano reopen");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), pianoSource);
   await applySource(mixedLengthSource, 137, ["smoke_kick", "smoke_bass"], [8, 3]);
 
   const filename = "対話 🎵.banger";
-  const path = join(directory, filename);
+  const path = join(projectFolder, filename);
   await saveAs(path, filename);
   assert.equal(await readFile(path, "utf8"), mixedLengthSource, "The UI must save its real source through IPC.");
   const savedGrid = await evaluate(gridSnapshot);
   // Save a different current project so reopening exercises replacement without a confirmation stub.
   await applySource(replacementSource, 91, ["replacement"], [4]);
-  await saveAs(join(directory, "replacement.banger"), "replacement.banger");
-  let openCalls = 0;
-  dialog.showOpenDialog = async () => { openCalls += 1; return { canceled: false, filePaths: [path] }; };
-  await clickText("Open");
+  await saveAs(join(projectFolder, "replacement.banger"), "replacement.banger");
+  await switchSong(filename);
   await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Opened ${filename}.`)}`, "native reopen");
-  assert.equal(openCalls, 1, "Open must use the native dialog once.");
+
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), mixedLengthSource);
   assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), "137");
   assert.deepEqual(await evaluate(gridSnapshot), savedGrid, "Reopening must compile the saved track names, lengths, and steps.");
   assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
   await click('.producer-track:first-child .producer-step:first-child');
-  await waitFor("document.querySelector('.producer-project .producer-dim')?.textContent === 'Unsaved'", "dirty close setup");
+  await waitFor("document.querySelector('.project-file-identity p')?.textContent.startsWith('Unsaved changes')", "dirty close setup");
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   const unsavedSource = await evaluate("document.querySelector('#producer-source').value");
   let closeChoice = 0;

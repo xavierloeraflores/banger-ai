@@ -1,7 +1,8 @@
 export type WorkspaceFile = { path: string; source: string };
 type Event = { type: string; name?: string; path?: string; text?: string; ok?: boolean; error?: string; file?: WorkspaceFile };
-type Bridge = {
-  open(): Promise<{ name: string; paths: string[] } | null>;
+export type WorkspaceBridge = {
+  open(): Promise<ProjectFolder | null>;
+  create(name: string, source: string): Promise<ProjectFolder | null>;
   activate(): Promise<void>;
   list(): Promise<string[]>;
   read(path: string): Promise<WorkspaceFile>;
@@ -10,6 +11,6 @@ type Bridge = {
   cancel(): Promise<void>;
   onEvent(callback: (event: Event) => void): () => void;
 };
-declare global { interface Window { bangerWorkspace?: Bridge } }
+declare global { interface Window { bangerWorkspace?: WorkspaceBridge } }
 
 export type ProjectFolder = { name: string; paths: string[]; file: WorkspaceFile | null };
