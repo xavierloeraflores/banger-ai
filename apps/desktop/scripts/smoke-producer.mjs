@@ -78,7 +78,7 @@ export async function smokeProducer(window, directory) {
     await clickText("Save .banger");
     await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Saved ${filename}.`)}`, "native save");
     assert.equal(dialogCalls, 1, "Save must use the native dialog once.");
-    assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), "Local project");
+    assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim')?.textContent"), undefined);
   }
 
   await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);

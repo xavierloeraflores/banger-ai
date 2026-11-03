@@ -56,7 +56,7 @@ export async function smokeStartup(window, directory) {
   await wait(window, "document.querySelector('#producer-source')");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(createdPath, 'utf8'));
   assert.equal(await evaluate("document.querySelector('#source-title').textContent"), 'new-project.banger');
-  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim').textContent"), 'Local project');
+  assert.equal(await evaluate("document.querySelector('.producer-project .producer-dim')?.textContent"), undefined);
   await reload();
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [createdPath] });
   await click(window, 'Open project');

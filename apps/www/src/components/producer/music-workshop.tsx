@@ -89,7 +89,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
   return <section className="music-workshop" aria-label="ElevenLabs song workshop">
     {backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
     <header className="music-heading">
-      <div><span className="music-eyebrow">ELEVENLABS / MUSIC</span><h1>{song?.name??'Make the next version.'}</h1></div>
+      <div><h1>{song?.name??'Make the next version.'}</h1></div>
       <div className="music-file-tools">
         {songs.length>0&&<select aria-label="Music project" value={song?.id??''} disabled={blocked} onChange={event=>{const id=event.target.value;if(discard())void action(()=>load(id));}}>{songs.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>}
       </div>
@@ -116,7 +116,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
           <textarea id="music-lyric-prompt" value={prompt} maxLength={2000} rows={2} disabled={!song||blocked} placeholder="Write a hopeful chorus about finding your way home…" onChange={event=>setPrompt(event.target.value)}/>
           <div><span>Lyrics only. Your music settings stay the same.</span><button type="submit" className="music-primary" aria-label="Generate lyrics for selected chunks" disabled={!song||blocked||dirty||!prompt.trim()||!indices.length}>Generate lyrics ↑</button></div>
         </form>
-        <div className="music-status" role="status">{notice||audio.error||(dirty?'Save your lyrics before generating audio.':'Uploads and generation use ElevenLabs credits.')}{recent&&<span className="music-job-progress">{recent.stage}<progress max={100} value={recent.progress} aria-label="ElevenLabs progress"/>{recent.error&&<span>{recent.error}</span>}</span>}</div>
+        <div className="music-status" role="status">{notice||audio.error||(dirty?'Save your lyrics before generating audio.':null)}{recent&&<span className="music-job-progress">{recent.stage}<progress max={100} value={recent.progress} aria-label="ElevenLabs progress"/>{recent.error&&<span>{recent.error}</span>}</span>}</div>
       </div>
       <aside className="music-history" aria-label="Audio version history">
         <header><h2>History</h2><span>{history.filter(item=>item.operation==='generate').length} variations</span></header>

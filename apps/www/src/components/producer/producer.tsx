@@ -303,7 +303,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
     <main className="producer" data-view={view}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
-        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}<span className="producer-dim">{dirty ? "Unsaved" : hasProject ? "Local project" : "No project"}</span></div>
+        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}{(dirty || !hasProject) && <span className="producer-dim">{dirty ? "Unsaved" : "No project"}</span>}</div>
         {view!=="elevenlabs"&&<AIModelSelect />}
         <div className="producer-file-actions" hidden={view==="elevenlabs"}>
           <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
@@ -324,7 +324,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
           <span className={playback.state.playing ? "producer-live-dot is-playing" : "producer-live-dot"} />
           <span>{playback.state.playing ? `${String(Math.max(1, playback.state.bar)).padStart(2, "0")}.${String(playback.state.step + 1).padStart(2, "0")}` : "01.01"}</span>
         </div>
-        <span className="producer-transport-state">{playback.state.hasPendingUpdate ? "Changes next bar" : playback.state.playing ? "Playing" : "Ready to play"}</span>
+        <span className="producer-transport-state">{playback.state.hasPendingUpdate ? "Changes next bar" : playback.state.playing ? "Playing" : null}</span>
         <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
           onLaunch={(name, next = program) => { const launch = { ...next, chainEnabled: false }; if (name) launch.activePattern = name; else delete launch.activePattern; if (edit(launch)) { setPreviewSection(undefined); setPatterns(Object.fromEntries(next.tracks.map((track, index) => [index, track.patterns?.some(pattern => pattern.name === name) ? name : ""]))); } }} />
@@ -453,7 +453,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
               </fieldset>
             </div>
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
-            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button><span>Click to toggle · Drag for velocity · % for probability · C for conditions</span></div>
+            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button></div>
             <div className="producer-song-tools">
               <AudioExport program={program} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
             </div>
@@ -489,7 +489,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
         </div>
         <div hidden={view==="elevenlabs"}><AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} /></div>
       </div>
-      <footer className="producer-footer"><span>banger / music in plain text</span><span role="status">{notice ?? "Choose a pattern. Build a song."}</span></footer>
+      <footer className="producer-footer"><span role="status">{notice}</span></footer>
     </main>
   );
 }
