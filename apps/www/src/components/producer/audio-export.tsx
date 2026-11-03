@@ -1,4 +1,5 @@
 import "./audio-worklet";
+import { ProjectIcon } from "./project-icon";
 import { useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
 import { renderWav } from "@banger/engine";
@@ -37,12 +38,22 @@ export function AudioExport({ program, fileName, disabled, cloud }: { program: M
     } catch (cause) { setStatus(cause instanceof Error ? cause.message : "Audio export failed."); }
     finally { setBusy(false); }
   }
-  return <details className="studio-export"><summary>Export audio</summary><fieldset disabled={disabled || busy}>
-    <div className="studio-inline"><label>Sample rate <Select aria-label="Export sample rate" value={sampleRate} onChange={e => setSampleRate(Number(e.target.value))}><option value={44100}>44.1 kHz</option><option value={48000}>48 kHz</option></Select></label>
-      <Button variant="secondary" onClick={() => void render(false)}>Export WAV</Button>
-      {cloud && <Button variant="secondary" onClick={() => void render(false, true)}>Upload WAV to cloud</Button>}
-      <Select aria-label="Stem track" value={program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name ?? ""} onChange={e => setStem(e.target.value)}>{program.tracks.map(track => <option key={track.name}>{track.name}</option>)}</Select>
-      <Button variant="secondary" disabled={!program.tracks.length} onClick={() => void render(true)}>Export stem</Button>
-    </div><p>Exports the active song chain or selected pattern with saved mixer and sound settings. The metronome is excluded.</p>
-  </fieldset><p role="status" className="studio-export-status">{status}</p></details>;
+  return <section className="studio-export" aria-labelledby="project-export-title">
+    <h2 id="project-export-title"><ProjectIcon name="audio" />Export audio</h2>
+    <fieldset disabled={disabled || busy}>
+      <div className="project-export-controls">
+        <div className="project-export-group">
+          <label>Sample rate<Select aria-label="Export sample rate" value={sampleRate} onChange={e => setSampleRate(Number(e.target.value))}><option value={44100}>44.1 kHz</option><option value={48000}>48 kHz</option></Select></label>
+          <Button variant="primary" onClick={() => void render(false)}><ProjectIcon name="audio" />Export WAV</Button>
+        </div>
+        <div className="project-export-group">
+          <label>Stem<Select aria-label="Stem track" value={program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name ?? ""} onChange={e => setStem(e.target.value)}>{program.tracks.map(track => <option key={track.name}>{track.name}</option>)}</Select></label>
+          <Button variant="secondary" disabled={!program.tracks.length} onClick={() => void render(true)}><ProjectIcon name="layers" />Export stem</Button>
+        </div>
+      </div>
+      {cloud && <Button className="project-cloud-export" variant="secondary" onClick={() => void render(false, true)}>Upload WAV to cloud</Button>}
+      <p className="project-export-help"><ProjectIcon name="info" />Exports the active song chain or selected pattern with saved mixer and sound settings. The metronome is excluded.</p>
+    </fieldset>
+    <p role="status" className="studio-export-status">{status}</p>
+  </section>;
 }

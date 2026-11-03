@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ProjectIcon } from "./project-icon";
 import { Button } from "@banger/shadcn";
 
 import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspace";
@@ -65,14 +66,14 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     catch (error) { setNotice(message(error)); }
     finally { pending.current = false; setBusy(false); onBusyChange(false); }
   }
-  return <section className="project-workspace producer-panel" aria-label="Project workspace">
-    <div className="project-workspace-heading"><div><h2>Project workspace</h2><p>{name || "Open a folder to edit music across files with the project agent."}</p></div>
-      <Button disabled={busy || running} onClick={() => { if (discard()) void action(async bridge => {
+  return <section className="project-workspace project-folder-workspace" aria-label="Project workspace">
+    <div className="project-workspace-heading"><div className="project-folder-identity"><ProjectIcon name="folder" /><div><h2>Project workspace</h2><p>{name || "Open a folder to edit music across files with the project agent."}</p></div></div>
+      <Button variant="secondary" disabled={busy || running} onClick={() => { if (discard()) void action(async bridge => {
         const next = await bridge.open();
         if (!next) return;
         onFolderChange(); setName(next.name); setPaths(next.paths); setFile(null); setSource(""); setEvents([]);
         if (next.paths[0]) adopt(await bridge.read(next.paths[0]));
-      }); }}>Open project folder</Button></div>
+      }); }}><ProjectIcon name="external" />Open project folder</Button></div>
     {name && <>
       <div className="project-workspace-files">
         <label>Music file<select id="workspace-file" value={file?.path ?? ""} disabled={busy || running} onChange={event => { const path = event.target.value; if (path && discard()) void action(async bridge => adopt(await bridge.read(path))); }}>

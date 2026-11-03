@@ -21,6 +21,7 @@ import { PatternControls } from "./pattern-controls";
 import { AutomationEditor } from "./automation-editor";
 import { TrackRouting, LevelMeter } from "./mixer-routing";
 import { MixerView } from "./mixer-view";
+import { ProjectIcon } from "./project-icon";
 import { AudioExport } from "./audio-export";
 import { MusicWorkshop } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
@@ -330,14 +331,14 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
 
       <dialog ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
         <div className="producer-project-dialog-heading">
-          <div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div>
-          <Button variant="ghost" onClick={() => projectDialog.current?.close()} aria-label="Close project controls">Close</Button>
+          <div className="project-dialog-title"><span className="project-dialog-emblem"><ProjectIcon name="folder" /></span><div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div></div>
+          <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
         </div>
-        <section className="project-workspace producer-panel" aria-label="Studio file">
-          <h2>{fileName}</h2><p>{dirty ? "Unsaved changes" : hasProject ? "Saved" : "No saved project"}{workspaceFile ? ` · ${workspaceFile.path}` : ""}</p>
-          <div className="project-workspace-actions">
-            <Button variant="ghost" onClick={open} disabled={fileBusy || workspaceBusy}>Open</Button>
-            <Button variant="secondary" onClick={save} disabled={fileBusy || workspaceBusy}>Save .banger</Button>
+        <section className="project-file-card" aria-label="Studio file">
+          <div className="project-file-identity"><ProjectIcon name="file" /><div><h2>{fileName}</h2><p>{dirty ? "Unsaved changes" : hasProject ? "Saved" : "No saved project"}{workspaceFile ? ` · ${workspaceFile.path}` : ""}</p></div></div>
+          <div className="project-file-actions">
+            <Button variant="secondary" onClick={open} disabled={fileBusy || workspaceBusy}><ProjectIcon name="folder" />Open</Button>
+            <Button variant="primary" onClick={save} disabled={fileBusy || workspaceBusy}><ProjectIcon name="save" />Save .banger</Button>
           </div>
           {notice && <p role="status">{notice}</p>}
         </section>
