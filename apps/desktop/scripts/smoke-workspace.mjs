@@ -56,6 +56,8 @@ async function run(window) {
   try {
     await wait("window.bangerWorkspace && document.querySelector('.project-workspace')");
     await evaluate("window.bangerAI.save('vercel', 'anthropic/test-model', 'fake-project-key')");
+    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
+    await wait("document.querySelector('#project-controls').open");
     await click("Open project folder");
     await wait("document.querySelector('#workspace-source')?.value.includes('tempo 120')");
     assert.equal(await evaluate("document.querySelector('#workspace-file').value"), "chorus.banger");

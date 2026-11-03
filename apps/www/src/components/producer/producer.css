@@ -421,3 +421,16 @@ body:has(.producer-settings-dialog[open]) { overflow: hidden; }
   .producer-settings { position: absolute; top: 16px; right: 0; }
   .producer-settings-heading { padding-inline: 20px; }
 }
+
+.producer-project-dialog { width: min(800px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 24px; border: 1px solid var(--producer-border); border-radius: 14px; background: var(--producer-bg); color: var(--producer-text); overflow: auto; }
+.producer-project-dialog::backdrop { background: #000a; }
+body:has(.producer-project-dialog[open]) { overflow: hidden; }
+.producer-project-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.producer .producer-project-dialog-heading h2 { font-size: 22px; }
+.producer-project-dialog-heading p { margin: 4px 0 0; color: var(--producer-dim); }
+.producer-project-dialog .project-workspace { margin-top: 20px; }
+.producer-project-dialog textarea { min-height: 100px; }
+@media (max-width: 600px) {
+  .producer-project-dialog { padding: 16px; max-height: calc(100dvh - 24px); }
+  .producer-start-actions > button { flex-basis: 100%; }
+}

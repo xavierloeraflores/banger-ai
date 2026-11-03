@@ -47,11 +47,16 @@ export async function smokeProducer(window, directory) {
     })()`);
   }
   async function clickText(text) {
+    if (text === "Open" || text === "Save .banger") await clickText("Project");
     await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === ${JSON.stringify(text)});
       if (!button || button.matches(':disabled')) throw new Error('Button is unavailable: ' + ${JSON.stringify(text)});
       button.click();
     })()`);
+    if (text === "Open" || text === "Save .banger") {
+      await waitFor("![...document.querySelectorAll('#project-controls button')].find(b => b.textContent === 'Open').disabled", "file operation");
+      await clickText("Close");
+    }
   }
   async function editSource(source) {
     await clickText("Raw .banger");

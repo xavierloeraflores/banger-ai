@@ -35,6 +35,7 @@ import { AIModelSelect } from "./ai-model-select";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import { ProjectStart } from "./project-start";
+import type { ProjectFolder, WorkspaceFile } from "@/lib/project-workspace";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
 import "./mixer-song.css";
@@ -77,12 +78,18 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
-  const [session, setSession] = useState<{ file: BangerFile; saved: boolean } | null>(null);
-  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved) => setSession({ file, saved })} />;
-  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} />;
+  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder } | null>(null);
+  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved, folder) => setSession({ file, saved, folder })} />;
+  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} initialFolder={session.folder} />;
 }
 
-function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean }) {
+function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder }) {
+  const projectDialog = useRef<HTMLDialogElement>(null);
+  const projectTrigger = useRef<HTMLButtonElement>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
+  useEffect(() => { if (initialFolder) projectDialog.current?.showModal(); }, [initialFolder]);
+  function showProjects() { projectDialog.current?.showModal(); }
   const [cloudMusicContext,setCloudMusicContext]=useState<CloudMusicContext>();
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
@@ -204,8 +211,29 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
     }] });
   }
 
+  function loadOpenedFile(file: BangerFile) {
+    stopPlayback();
+    // Keep invalid files editable; the last valid sequence remains available.
+    writeSource(file.source);
+    setSavedSource(file.source);
+    setFileName(file.name);
+    setHasProject(true);
+    try {
+      const next = compileMusic(file.source);
+      setProgram(next);
+      setAppliedSource(file.source);
+      setTempoDraft(String(next.tempo));
+      setPreviewSection(undefined);
+      setPitch({});
+      setPatterns({});
+      setExpandedTrack(null);
+      setEditorEpoch(value => value + 1);
+      setNotice(`Opened ${file.name}.`);
+    } catch { setNotice("File opened as a draft. Fix the errors, then apply it."); }
+  }
+
   async function open() {
-    if (filePending.current) return;
+    if (filePending.current || workspaceBusy) return;
     if (dirty && !window.confirm("Open another project? Unsaved changes in this tab will be replaced.")) return;
     filePending.current = true;
     setFileBusy(true);
@@ -213,36 +241,26 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
     try {
       const file = await openProject();
       if (!file) return;
-      // Keep invalid files editable; the last valid sequence remains available.
-      writeSource(file.source);
-      setSavedSource(file.source);
-      setFileName(file.name);
-      setHasProject(true);
-      try {
-        const next = compileMusic(file.source);
-        setProgram(next);
-        setAppliedSource(file.source);
-        setTempoDraft(String(next.tempo));
-        setPreviewSection(undefined);
-        setPitch({});
-        setPatterns({});
-        setExpandedTrack(null);
-        setEditorEpoch(value => value + 1);
-        setNotice(`Opened ${file.name}.`);
-      } catch { setNotice("File opened as a draft. Fix the errors, then apply it."); }
+      loadOpenedFile(file);
+      setWorkspaceFile(null);
+      setCloudBinding(null);
     } catch (cause) { setNotice(message(cause)); }
     finally { filePending.current = false; setFileBusy(false); }
   }
 
   async function save() {
-    if (filePending.current) return;
+    if (filePending.current || workspaceBusy) return;
     filePending.current = true;
     setFileBusy(true);
     const snapshot = sourceRef.current;
     const savedRevision = revision.current;
     setNotice(null);
     try {
-      const file = await saveProject(snapshot, fileName);
+      const folderFile = workspaceFile && window.bangerWorkspace
+        ? await window.bangerWorkspace.save(workspaceFile.path, snapshot, workspaceFile.source)
+        : null;
+      const file = folderFile ? { name: folderFile.path.split("/").pop()! } : await saveProject(snapshot, fileName);
+      if (folderFile) setWorkspaceFile(folderFile);
       if (file) {
         setFileName(file.name);
         setHasProject(true);
@@ -254,7 +272,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
   }
 
   function loadGeneratedFile(file: BangerFile, generatedRevision: number) {
-    if (filePending.current) return;
+    if (filePending.current || workspaceBusy) return;
     if (revision.current !== generatedRevision && !window.confirm("Your project changed after this request. Load the generated file and replace the current editor?")) return;
     try {
       const next = compileMusic(file.source);
@@ -262,6 +280,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
       setAppliedSource(file.source);
       writeSource(file.source);
       setSavedSource("");
+      setWorkspaceFile(null);
       setFileName(file.name);
       setTempoDraft(String(next.tempo));
       setPreviewSection(undefined);
@@ -305,12 +324,36 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" />{fileName}{(dirty || !hasProject) && <span className="producer-dim">{dirty ? "Unsaved" : "No project"}</span>}</div>
         {view!=="elevenlabs"&&<AIModelSelect />}
-        <div className="producer-file-actions" hidden={view==="elevenlabs"}>
-          <Button variant="ghost" onClick={open} disabled={fileBusy}>Open</Button>
-          <Button variant="secondary" onClick={save} disabled={fileBusy}>Save .banger</Button>
+        <div className="producer-file-actions">
+          <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
         </div>
         <SettingsMenu />
       </header>
+
+      <dialog ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
+        <div className="producer-project-dialog-heading">
+          <div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, and manage your music files.</p></div>
+          <Button variant="ghost" onClick={() => projectDialog.current?.close()} aria-label="Close project controls">Close</Button>
+        </div>
+        <section className="project-workspace producer-panel" aria-label="Studio file">
+          <h2>{fileName}</h2><p>{dirty ? "Unsaved changes" : hasProject ? "Saved" : "No saved project"}{workspaceFile ? ` · ${workspaceFile.path}` : ""}</p>
+          <div className="project-workspace-actions">
+            <Button variant="ghost" onClick={open} disabled={fileBusy || workspaceBusy}>Open</Button>
+            <Button variant="secondary" onClick={save} disabled={fileBusy || workspaceBusy}>Save .banger</Button>
+          </div>
+          {notice && <p role="status">{notice}</p>}
+        </section>
+        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => setWorkspaceFile(null)} onLoad={(file, saved) => {
+          if (filePending.current || (dirty && !window.confirm("Load this workspace file and replace unsaved studio edits?"))) return;
+          loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
+          setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
+          projectDialog.current?.close();
+        }} />
+        <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setView("elevenlabs");}} studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
+          if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
+          loadGeneratedFile(file, sourceRevision); setCloudBinding(binding); projectDialog.current?.close();
+        }} />
+      </dialog>
 
       <section className="producer-transport" aria-label="Transport">
         <div className="producer-play-controls">
@@ -478,14 +521,7 @@ function Studio({ initialFile, sample, initiallySaved }: { initialFile: BangerFi
           </Panel>
         </div>
         <div id="studio-panel-elevenlabs" role="tabpanel" aria-labelledby="studio-tab-elevenlabs" hidden={view!=="elevenlabs"}>
-          <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={view==="elevenlabs"} onConnect={()=>{setView('sequencer');queueMicrotask(()=>{const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'center'});panel.querySelector<HTMLInputElement>('input')?.focus();}});}}/>
-        </div>
-        <div hidden={view==="elevenlabs"}>
-        <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{stopPlayback();setView("elevenlabs");}} studioFile={{ name: fileName, source }} onDisconnect={() => setCloudBinding(null)} onLoad={(file, binding) => {
-          if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
-          loadGeneratedFile(file, sourceRevision); setCloudBinding(binding);
-        }} />
-        <DesktopProjectWorkspace onLoad={file => { if (!window.confirm("Load this workspace file in the studio and replace the current studio editor?")) return; loadGeneratedFile(file, sourceRevision); }} />
+          <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={view==="elevenlabs"} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
         <div hidden={view==="elevenlabs"}><AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy} onLoad={loadGeneratedFile} /></div>
       </div>

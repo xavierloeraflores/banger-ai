@@ -3,34 +3,33 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@banger/shadcn";
 
-type File = { path: string; source: string };
-type Event = { type: string; name?: string; path?: string; text?: string; ok?: boolean; error?: string; file?: File };
-type Bridge = {
-  open(): Promise<{ name: string; paths: string[] } | null>;
-  list(): Promise<string[]>;
-  read(path: string): Promise<File>;
-  save(path: string, source: string, expected: string | null): Promise<File>;
-  run(prompt: string, activeFile?: string): Promise<{ ok: true; reply: { text: string; status: string } } | { ok: false; error: string }>;
-  cancel(): Promise<void>;
-  onEvent(callback: (event: Event) => void): () => void;
-};
-declare global { interface Window { bangerWorkspace?: Bridge } }
+import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspace";
+type Bridge = NonNullable<Window["bangerWorkspace"]>;
 const message = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function DesktopProjectWorkspace({ onLoad }: { onLoad(file: { name: string; source: string }): void }) {
+export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(): void; onLoad(file: File, savedSource: string): void }) {
   const [available, setAvailable] = useState(false);
-  const [name, setName] = useState("");
-  const [paths, setPaths] = useState<string[]>([]);
-  const [file, setFile] = useState<File | null>(null);
-  const [source, setSource] = useState("");
+  const [name, setName] = useState(initialFolder?.name ?? "");
+  const [paths, setPaths] = useState<string[]>(initialFolder?.paths ?? []);
+  const [file, setFile] = useState<File | null>(initialFolder?.file ?? null);
+  const [source, setSource] = useState(initialFolder?.file?.source ?? "");
   const [prompt, setPrompt] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const busy = working || studioBusy;
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState("");
   const [events, setEvents] = useState<string[]>([]);
   const editor = useRef({ file, source });
   const pending = useRef(false);
   useEffect(() => { editor.current = { file, source }; }, [file, source]);
+  useEffect(() => {
+    if (!savedFile) return;
+    const current = editor.current;
+    if (current.file?.path === savedFile.path && current.source === current.file.source) {
+      editor.current = { file: savedFile, source: savedFile.source };
+      queueMicrotask(() => { setFile(savedFile); setSource(savedFile.source); });
+    }
+  }, [savedFile]);
   const dirty = Boolean(file && source !== file.source);
   useEffect(() => {
     const bridge = window.bangerWorkspace;
@@ -60,18 +59,18 @@ export function DesktopProjectWorkspace({ onLoad }: { onLoad(file: { name: strin
   function discard() { return !dirty || window.confirm("Discard unsaved edits in the project workspace?"); }
   function adopt(next: File) { editor.current = { file: next, source: next.source }; setFile(next); setSource(next.source); }
   async function action(work: (bridge: Bridge) => Promise<void>) {
-    if (pending.current || !window.bangerWorkspace) return;
-    pending.current = true; setBusy(true); setNotice("");
+    if (pending.current || studioBusy || !window.bangerWorkspace) return;
+    pending.current = true; setBusy(true); onBusyChange(true); setNotice("");
     try { await work(window.bangerWorkspace); }
     catch (error) { setNotice(message(error)); }
-    finally { pending.current = false; setBusy(false); }
+    finally { pending.current = false; setBusy(false); onBusyChange(false); }
   }
   return <section className="project-workspace producer-panel" aria-label="Project workspace">
     <div className="project-workspace-heading"><div><h2>Project workspace</h2><p>{name || "Open a folder to edit music across files with the project agent."}</p></div>
       <Button disabled={busy || running} onClick={() => { if (discard()) void action(async bridge => {
         const next = await bridge.open();
         if (!next) return;
-        setName(next.name); setPaths(next.paths); setFile(null); setSource(""); setEvents([]);
+        onFolderChange(); setName(next.name); setPaths(next.paths); setFile(null); setSource(""); setEvents([]);
         if (next.paths[0]) adopt(await bridge.read(next.paths[0]));
       }); }}>Open project folder</Button></div>
     {name && <>
@@ -85,7 +84,7 @@ export function DesktopProjectWorkspace({ onLoad }: { onLoad(file: { name: strin
         <label htmlFor="workspace-source">{file.path}{dirty ? " · Unsaved draft" : " · Saved"}</label>
         <textarea id="workspace-source" spellCheck={false} value={source} disabled={busy || running} onChange={event => setSource(event.target.value)} />
         <div className="project-workspace-actions"><Button disabled={!dirty || busy || running} onClick={() => void action(async bridge => { adopt(await bridge.save(file.path, source, file.source)); setNotice(`Saved ${file.path}.`); })}>Save project file</Button>
-          <Button disabled={busy || running} onClick={() => onLoad({ name: file.path.split("/").pop() ?? file.path, source })}>Load workspace file in studio</Button></div>
+          <Button disabled={busy || running} onClick={() => onLoad({ path: file.path, source }, file.source)}>Load workspace file in studio</Button></div>
       </> : <p>No .banger files yet. Ask the agent to create the first music file.</p>}
       <form onSubmit={event => { event.preventDefault(); if (dirty || running) return; void action(async bridge => {
         setRunning(true); setEvents([]);

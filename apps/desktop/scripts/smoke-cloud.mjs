@@ -55,6 +55,8 @@ try {
   await window.loadURL(`http://127.0.0.1:${web.address().port}`);await enterStudio(window);
   console.log('Loaded cloud fixture');
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  await click('Project');
+  await wait("document.querySelector('#project-controls').open");
   await wait("document.querySelector('details.project-workspace')");
   await evaluate("window.confirm=()=>true;document.querySelector('details.project-workspace').open=true");
   assert.equal(await evaluate("document.querySelector('details.project-workspace input[type=url]')"),null);

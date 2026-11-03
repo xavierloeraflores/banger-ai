@@ -1,23 +1,33 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createDefaultProgram, serializeMusic } from "@banger/compiler";
 import { Button } from "@banger/shadcn";
 import type { BangerFile } from "@banger/agent/protocol";
 import { openProject, saveProject } from "@/lib/project-files";
+import type { ProjectFolder } from "@/lib/project-workspace";
 
-export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(file: BangerFile, saved: boolean): void }) {
+export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(file: BangerFile, saved: boolean, folder?: ProjectFolder): void }) {
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => { queueMicrotask(() => setDesktop(Boolean(window.bangerWorkspace))); }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
 
-  async function choose(create: boolean) {
+  async function choose(action: "create" | "file" | "folder") {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setError("");
     try {
-      if (create) {
+      if (action === "folder") {
+        const bridge = window.bangerWorkspace;
+        if (!bridge) return;
+        const folder = await bridge.open();
+        if (!folder) return;
+        const file = folder.paths[0] ? await bridge.read(folder.paths[0]) : null;
+        onStart(file ? { name: file.path.split("/").pop()!, source: file.source } : sample, Boolean(file), { ...folder, file });
+      } else if (action === "create") {
         const source = serializeMusic(createDefaultProgram());
         const saved = await saveProject(source, "Untitled.banger");
         if (saved) onStart({ ...saved, source }, true);
@@ -37,10 +47,11 @@ export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(
     <section className="producer-start-card" aria-labelledby="project-start-title" aria-busy={busy}>
       <div className="producer-wordmark">banger<span>_</span></div>
       <h1 id="project-start-title">Start making music</h1>
-      <p>Create a .banger project or open one you already have.</p>
+      <p>Create a .banger project or open {desktop ? "a file or project folder" : "one you already have"}.</p>
       <div className="producer-start-actions">
-        <Button variant="primary" disabled={busy} onClick={() => void choose(true)}>Create project</Button>
-        <Button variant="secondary" disabled={busy} onClick={() => void choose(false)}>Open project</Button>
+        <Button variant="primary" disabled={busy} onClick={() => void choose("create")}>Create project</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => void choose("file")}>Open project</Button>
+        {desktop && <Button variant="secondary" disabled={busy} onClick={() => void choose("folder")}>Open project folder</Button>}
       </div>
       <div className="producer-start-sample">
         <Button variant="ghost" disabled={busy} onClick={() => onStart(sample, false)}>Work without a project</Button>
