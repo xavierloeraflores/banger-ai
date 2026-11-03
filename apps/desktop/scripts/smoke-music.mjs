@@ -11,6 +11,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {serveApp} from '../dist/static-app.js';
 import {createMusicStore} from '../dist/elevenlabs-music.js';
 import {installSongStorage} from '../dist/song-storage-ipc.js';
+import {installWorkspaceHandlers} from '../dist/project-workspace.js';
 import {installMusicHandlers} from '../dist/elevenlabs-ipc.js';
 import {fixtureProvider,wav,fixturePlan} from '../../../packages/elevenlabs/test/fixtures.mjs';
 const cloud=process.argv.includes('--web');
@@ -74,7 +75,9 @@ async function run(){
  await Promise.all([new Promise(resolve=>api.listen(0,'127.0.0.1',resolve)),new Promise(resolve=>web.listen(0,'127.0.0.1',resolve))]);
  window=new BrowserWindow({show:false,width:1440,height:1080,webPreferences:{backgroundThrottling:false,sandbox:true,contextIsolation:true,nodeIntegration:false,...(!cloud?{preload:resolve('dist/preload.cjs')}:{})}});
  if(!cloud){
-  installSongStorage(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;});
+  const senderWindow=event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;};
+  const storage=installSongStorage(senderWindow);
+  installWorkspaceHandlers({senderWindow,onOpen:(window,root)=>storage.setRoot(window,root),selectModel:async()=>{throw new Error('Music smoke must not request a project model');}});
   installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store);
   ipcMain.handle('banger:ai-load',()=>({activeProvider:null,providers:{}}));
   ipcMain.handle('banger:local-status',()=>({phase:'idle',selected:false}));
@@ -116,6 +119,18 @@ async function run(){
   assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),2);
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   const id=(await store.list())[0].id;assert.deepEqual((await store.get(id)).plan,fixturePlan);
+  // Invalid drafts stay editable and never enable a save in either backend.
+  const lyricSelector='[aria-label="Lyrics for chunk 1"]';
+  for(const invalid of ['a'.repeat(201),Array(30).fill('words').join('\n'),'[Verse]\nwords']){
+   await fill(lyricSelector,invalid);
+   await wait("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').getAttribute('aria-invalid')==='true'");
+   assert.ok(await evaluate("document.querySelector('#music-lyric-help-0[role=alert]').textContent.length>0"));
+   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics').disabled"),true);
+   assert.equal((await store.get(id)).version,1);
+  }
+  await fill(lyricSelector,Array(29).fill('a'.repeat(200)).join('\n'));
+  await wait("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').getAttribute('aria-invalid')==='false'");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics').disabled"),false);
   await fill('[aria-label="Lyrics for chunk 1"]','We write our own tomorrow');await click('Save lyrics');
   await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 2')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'We write our own tomorrow');
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);

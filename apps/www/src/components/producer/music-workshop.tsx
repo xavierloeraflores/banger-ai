@@ -5,7 +5,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {prepareSong} from '@/lib/song-storage';
 import {renderWav} from '@banger/engine';
 import {compileMusic} from '@banger/compiler';
-import {chunkName,lyricsOf,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
+import {chunkName,lyricsOf,lyricEditError,MAX_CHUNK_TEXT_CHARACTERS,MAX_CHUNK_TEXT_LINES,MAX_CHUNK_LINE_CHARACTERS,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
 import {cloudMusic,desktopMusic,type MusicBackend,type CloudMusicContext} from '@/lib/elevenlabs';
 import {clockTime,Waveform,useMusicAudio} from './music-audio';
 const message=(error:unknown)=>error instanceof Error?error.message:'The music operation failed.';
@@ -77,6 +77,8 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
   function select(version:MusicVersion){if(blocked||!head||!discard())return false;audio.pause();adopt(version,head);setNotice('');return true;}
   const actionBase={baseVersion:baseRevision,sourceVersion:song?.version};
   const chunks=song?.plan.chunks??[];
+  const lyricErrors=chunks.map((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)?undefined:lyricEditError(chunk.text,lyrics[index]??''));
+  const invalidLyrics=lyricErrors.some(Boolean);
   const ranges=chunks.map((chunk,index)=>{const start=chunks.slice(0,index).reduce((sum,item)=>sum+item.durationMs/1000,0);return {index,start,end:start+chunk.durationMs/1000};});
   const start=ranges.at(-1)?.end??0;
   const currentChunk=ranges.find(range=>audio.position>=range.start&&audio.position<range.end)?.index??0;
@@ -106,9 +108,10 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect}:{cloud?:C
                 <button aria-label={`Preview chunk ${index+1}`} title="Preview this chunk" disabled={!audio.url||audio.loading} onClick={()=>{void audio.preview(ranges[index]!.start,ranges[index]!.end);}}>▷</button>
                 <button disabled={blocked||dirty} aria-label={`Retry chunk ${index+1}`} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices:[index]}))}>↻ Retry</button>
               </div>
-              <textarea aria-label={`Lyrics for chunk ${index+1}`} placeholder="Write lyrics for this chunk…" value={lyrics[index]??''} rows={Math.min(5,Math.max(2,(lyrics[index]??'').split('\n').length))} maxLength={6200} disabled={blocked} onChange={event=>{epoch.current++;const value=event.target.value;setLyrics(previous=>previous.map((text,i)=>i===index?value:text));}}/>
+              <textarea aria-label={`Lyrics for chunk ${index+1}`} placeholder="Write lyrics for this chunk…" value={lyrics[index]??''} rows={Math.min(5,Math.max(2,(lyrics[index]??'').split('\n').length))} aria-invalid={Boolean(lyricErrors[index])} aria-describedby={`music-lyric-help-${index}`} disabled={blocked} onChange={event=>{epoch.current++;const value=event.target.value;setLyrics(previous=>previous.map((text,i)=>i===index?value:text));}}/>
+              <p id={`music-lyric-help-${index}`} className="music-lyric-help" role={lyricErrors[index]?'alert':undefined}>{lyricErrors[index]??`Up to ${MAX_CHUNK_TEXT_LINES} lines, ${MAX_CHUNK_LINE_CHARACTERS} characters per line and ${MAX_CHUNK_TEXT_CHARACTERS.toLocaleString('en-US')} total, including the section label and retained directions.`}</p>
             </article>)}</div>
-            <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><button disabled={blocked||!dirty} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)?[]:[{index,lyrics:lyrics[index]??''}])}))}>Save lyrics</button><button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></button></div>
+            <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><button disabled={blocked||!dirty||invalidLyrics} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)?[]:[{index,lyrics:lyrics[index]??''}])}))}>Save lyrics</button><button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></button></div>
             <div className="music-replace-wav"><p>Start from another WAV</p>{wavActions}</div>
           </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>Your song, a new direction.</h2><p>Start with a WAV. Keep the original, write lyrics by chunk, and try new variations.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
         </div>

@@ -36,6 +36,8 @@
 .music-chunk-heading > span { color: var(--producer-dim); font: 10px monospace; white-space: nowrap; }
 .music-chunk-heading button { padding: 4px 7px; font-size: 11px; background: transparent; border-color: #41483a; }
 .music-workshop .music-chunk textarea { display: block; width: 100%; min-height: 54px; padding: 10px 0 3px; resize: vertical; color: #e5e7dd; background: transparent; border: 0; border-radius: 2px; font: 13px/1.7 Arial, Helvetica, sans-serif; }
+.music-lyric-help { margin: 4px 0 0; color: var(--producer-dim); font-size: 11px; line-height: 1.5; }
+.music-lyric-help[role="alert"] { color: #ffb4a8; }
 .music-chunk textarea::placeholder { color: #858a7a; }
 .music-refine-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 .music-refine-actions > span { margin-right: auto; color: var(--producer-dim); font-size: 11px; }

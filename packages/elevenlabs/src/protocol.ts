@@ -1,11 +1,27 @@
 import { z } from 'zod';
 export const MUSIC_MODEL = 'music_v2_5' as const;
 export const MAX_WAV_BYTES = 100 * 1024 * 1024;
+// GenerationChunk.text: https://api.elevenlabs.io/openapi.json
+// These limits cover the complete text, including section labels and directions.
+export const MAX_CHUNK_TEXT_CHARACTERS = 6132;
+export const MAX_CHUNK_TEXT_LINES = 30;
+export const MAX_CHUNK_LINE_CHARACTERS = 200;
+const characterCount = (text: string) => Array.from(text).length;
+export const chunkTextSchema = z.string().superRefine((text, ctx) => {
+  if (characterCount(text) > MAX_CHUNK_TEXT_CHARACTERS) ctx.addIssue({ code: 'custom', message: `Chunk text must have at most ${MAX_CHUNK_TEXT_CHARACTERS.toLocaleString('en-US')} characters, including section labels and directions.` });
+  const lines = text.split(/\r\n|\r|\n/);
+  if (lines.length > MAX_CHUNK_TEXT_LINES) ctx.addIssue({ code: 'custom', message: `Chunk text must have at most ${MAX_CHUNK_TEXT_LINES} lines, including section labels and directions.` });
+  const longLine = lines.findIndex(line => characterCount(line) > MAX_CHUNK_LINE_CHARACTERS);
+  if (longLine !== -1) ctx.addIssue({ code: 'custom', message: `Chunk text line ${longLine + 1} exceeds ${MAX_CHUNK_LINE_CHARACTERS} characters, including any directions on that line.` });
+  const section = text.match(/^\s*\[([^\]]*)\]/)?.[1];
+  if (section !== undefined && (characterCount(section) < 1 || characterCount(section) > 100)) ctx.addIssue({ code: 'custom', message: 'Section names must have between 1 and 100 characters.' });
+});
+const lyricTextSchema = chunkTextSchema.refine(text => !/[[\]{}]/.test(text), 'Enter lyrics without section labels or production directions. Those remain part of the composition.');
 const styles = z.array(z.string().max(1000)).max(50);
 const range = z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() }).passthrough().refine(value => value.endMs - value.startMs >= 50, 'Audio ranges must be at least 50 milliseconds.');
 export const audioReferenceSchema = z.object({ songId: z.string().min(1).max(200), range }).passthrough();
 export const generationChunkSchema = z.object({
-  text: z.string().max(6400), durationMs: z.number().int().min(3000).max(120000), positiveStyles: styles,
+  text: chunkTextSchema, durationMs: z.number().int().min(3000).max(120000), positiveStyles: styles,
   negativeStyles: styles.optional(), contextAdherence: z.enum(['low','medium','high']).optional(),
   conditioningRef: audioReferenceSchema.nullish(), conditionStrength: z.enum(['low','medium','high','xhigh']).nullish(),
 }).passthrough();
@@ -18,7 +34,7 @@ export type MusicVersion = {
   audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number;
   createdAt: string; parentVersion?: number; operation: 'analyze' | 'edit' | 'lyrics' | 'generate';
 };
-export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: z.string().max(6200) }).strict();
+export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: lyricTextSchema }).strict();
 export const musicActionSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('edit'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), edits: z.array(lyricEditSchema).min(1).max(30) }).strict(),
   z.object({ operation: z.literal('lyrics'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), prompt: z.string().trim().min(1).max(2000), indices: z.array(z.number().int().min(0).max(29)).min(1).max(30) }).strict(),
@@ -28,6 +44,20 @@ export type MusicAction = z.infer<typeof musicActionSchema>;
 export type MusicOperation = { id: string; musicId: string; status: 'queued' | 'running' | 'completed' | 'failed' | 'needs_review' | 'conflict'; progress: number; stage: string; error?: string; resultVersion?: number };
 export function chunkName(text: string, index: number) { return text.match(/^\s*\[([^\]]+)\]/)?.[1] ?? `Chunk ${index + 1}`; }
 export function lyricsOf(text: string) { return text.replace(/^\s*\[[^\]]+\]\s*\n?/, '').replace(/\{[^}]*\}/g, '').trim(); }
+function textWithLyrics(text: string, lyrics: string) {
+  lyricTextSchema.parse(lyrics);
+  const header = text.match(/^\s*\[[^\]]+\]/)?.[0] ?? '';
+  const directions = [...text.matchAll(/\{[^}]*\}/g)].map(match => match[0]);
+  return chunkTextSchema.parse([header, ...directions, lyrics].filter(Boolean).join('\n'));
+}
+/** Preview the same assembled-text validation used when saving manual or generated lyrics. */
+export function lyricEditError(text: string, lyrics: string): string | undefined {
+  try { textWithLyrics(text, lyrics); }
+  catch (error) {
+    if (error instanceof z.ZodError) return error.issues[0]!.message;
+    throw error;
+  }
+}
 export function applyLyrics(plan: CompositionPlan, edits: z.infer<typeof lyricEditSchema>[]): CompositionPlan {
   if (new Set(edits.map(edit => edit.index)).size !== edits.length) throw new Error('Choose each chunk once.');
   const result = structuredClone(plan);
@@ -35,12 +65,7 @@ export function applyLyrics(plan: CompositionPlan, edits: z.infer<typeof lyricEd
     lyricEditSchema.parse(edit);
     const chunk = result.chunks[edit.index];
     if (!chunk) throw new Error('The selected chunk no longer exists.');
-    if (/[[\]{}]/.test(edit.lyrics)) throw new Error('Enter lyrics without section labels or production directions. Those remain part of the composition.');
-    const lines = edit.lyrics.split('\n');
-    if (lines.length > 29 || lines.some(line => line.length > 200)) throw new Error('Use at most 29 lyric lines of 200 characters per chunk.');
-    const header = chunk.text.match(/^\s*\[[^\]]+\]/)?.[0] ?? '';
-    const directions = [...chunk.text.matchAll(/\{[^}]*\}/g)].map(match => match[0]);
-    chunk.text = [header, ...directions, edit.lyrics].filter(Boolean).join('\n');
+    chunk.text = textWithLyrics(chunk.text, edit.lyrics);
   }
   return planSchema.parse(result);
 }

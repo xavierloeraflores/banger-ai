@@ -72,6 +72,7 @@ export class ElevenMusic implements MusicProvider {
     return { songId: result.songId, plan: planSchema.parse(result.compositionPlan) };
   }
   async lyrics(plan: CompositionPlan, prompt: string, indices: number[]) {
+    planSchema.parse(plan);
     validateIndices(plan, indices);
     const generated = await this.call(() => this.client.music.compositionPlan.create({
       modelId: MUSIC_MODEL, sourceCompositionPlan: structuredClone(plan) as ElevenLabs.CompositionPlan,
@@ -83,7 +84,7 @@ export class ElevenMusic implements MusicProvider {
     return applyLyrics(plan, indices.map(index=>({index,lyrics:lyricsOf(proposed.chunks[index]!.text).replace(/\{[^}]*\}/g,'').trim()})));
   }
   async generate(version: MusicVersion, indices: number[]) {
-    const requestPlan=inpaintingPlan(version,indices);
+    const requestPlan=providerPlanSchema.parse(inpaintingPlan(version,indices));
     const result=await this.call(() => this.music.composeDetailed({ modelId:MUSIC_MODEL,compositionPlan:requestPlan as ElevenLabs.CompositionPlan,storeForInpainting:true,outputFormat:'mp3_44100_128' }, {maxRetries:0,timeoutInSeconds:230}));
     if (!result.songId || !result.audio.length || result.audio.length>MAX_WAV_BYTES) throw new MusicProviderError('ElevenLabs did not return a complete stored song.', true);
     const providerPlan=providerPlanSchema.parse(result.json.compositionPlan);
