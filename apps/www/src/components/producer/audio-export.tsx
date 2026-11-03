@@ -43,7 +43,7 @@ export function AudioExport({ program, fileName, source, disabled, cloud }: { pr
     finally { setBusy(false); }
   }
   return <section className="studio-export" aria-labelledby="project-export-title">
-    <h2 id="project-export-title"><ProjectIcon name="audio" />Export audio</h2>
+    <h2 id="project-export-title"><ProjectIcon name="audio" />Export Controls</h2>
     <fieldset disabled={disabled || busy}>
       <div className="project-export-controls">
         <div className="project-export-group">

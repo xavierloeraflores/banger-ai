@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("bangerChatGPT", Object.freeze({
 
 contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
   open: () => ipcRenderer.invoke("banger:workspace-open"),
+  create: (name, source) => ipcRenderer.invoke("banger:workspace-create", name, source),
   activate: () => ipcRenderer.invoke("banger:workspace-activate"),
   list: () => ipcRenderer.invoke("banger:workspace-list"),
   read: path => ipcRenderer.invoke("banger:workspace-read", path),

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   compileMusic,
+  createDefaultProgram,
   serializeMusic,
   programDurationBeats,
   resolvePattern,
@@ -13,7 +14,7 @@ import {
   type InstrumentName,
 } from "@banger/compiler";
 import { Button, IconButton, Input, Panel, Range, Select } from "@banger/shadcn";
-import { openProject, saveProject } from "@/lib/project-files";
+import { saveProject } from "@/lib/project-files";
 import { SongArrangement } from "./song-arrangement";
 import { StepInspector } from "./step-inspector";
 import { SequencerStep } from "./sequencer-step";
@@ -37,6 +38,7 @@ import { SettingsMenu } from "./settings-menu";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import { ProjectStart } from "./project-start";
+import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder, WorkspaceFile } from "@/lib/project-workspace";
 import type { BangerFile } from "@banger/agent/protocol";
 import "./producer.css";
@@ -105,6 +107,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const [source, setSource] = useState(initialFile.source);
   const [savedSource, setSavedSource] = useState(initialFile.source);
   const [projectName, setProjectName] = useState(initialFolder?.name ?? "");
+  const [folderName, setFolderName] = useState(initialFolder?.name ?? "");
   const [hasProject, setHasProject] = useState(initiallySaved);
   const [fileName, setFileName] = useState(initialFile.name);
   const [tempoDraft, setTempoDraft] = useState(String(program.tempo));
@@ -263,23 +266,6 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     } catch { setNotice("File opened as a draft. Fix the errors, then apply it."); }
   }
 
-  async function open() {
-    if (filePending.current || workspaceBusy) return;
-    if (dirty && !window.confirm("Open another project? Unsaved changes in this tab will be replaced.")) return;
-    filePending.current = true;
-    setFileBusy(true);
-    setNotice(null);
-    try {
-      const file = await openProject();
-      if (!file) return;
-      loadOpenedFile(file);
-      setWorkspaceFile(null);
-      setProjectName("");
-      setCloudBinding(null);
-    } catch (cause) { setNotice(message(cause)); }
-    finally { filePending.current = false; setFileBusy(false); }
-  }
-
   async function save() {
     if (filePending.current || workspaceBusy) return;
     filePending.current = true;
@@ -288,11 +274,13 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     const savedRevision = revision.current;
     setNotice(null);
     try {
-      const folderFile = workspaceFile && window.bangerWorkspace
-        ? await window.bangerWorkspace.save(workspaceFile.path, snapshot, workspaceFile.source)
+      const saveToFolder = Boolean(workspaceFile || (folderName && !cloudBinding));
+      if (saveToFolder) await getProjectWorkspace().activate();
+      const folderFile = saveToFolder
+        ? await getProjectWorkspace().save(workspaceFile?.path ?? fileName, snapshot, workspaceFile?.source ?? null)
         : null;
       const file = folderFile ? { name: folderFile.path.split("/").pop()! } : await saveProject(snapshot, fileName);
-      if (folderFile) setWorkspaceFile(folderFile);
+      if (folderFile) { setWorkspaceFile(folderFile); setProjectName(folderName); }
       if (file) {
         setFileName(file.name);
         setHasProject(true);
@@ -312,7 +300,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
       setAppliedSource(file.source);
       writeSource(file.source);
       setSavedSource("");
-      setProjectName("");
+      setProjectName(folderName);
       setWorkspaceFile(null);
       setFileName(file.name);
       setTempoDraft(String(next.tempo));
@@ -485,26 +473,35 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           <div className="project-dialog-title"><span className="project-dialog-emblem"><ProjectIcon name="folder" /></span><div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div></div>
           <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
         </div>
-        <section className="project-file-card" aria-label="Studio file">
-          <div className="project-file-identity"><ProjectIcon name="file" /><div><h2>{fileName}</h2><p>{dirty ? "Unsaved changes" : hasProject ? "Saved" : "No saved project"}{workspaceFile ? ` · ${workspaceFile.path}` : ""}</p></div></div>
-          <div className="project-file-actions">
-            <Button variant="secondary" onClick={open} disabled={fileBusy || workspaceBusy}><ProjectIcon name="folder" />Open</Button>
-            <Button variant="primary" onClick={save} disabled={fileBusy || workspaceBusy}><ProjectIcon name="save" />Save .banger</Button>
-          </div>
-          {notice && <p role="status">{notice}</p>}
-        </section>
-        <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
-        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile} onFolderChange={() => { setWorkspaceFile(null); setProjectName(""); }} onLoad={async (file, saved, name) => {
-          if (filePending.current || (dirty && !window.confirm("Load this workspace file and replace unsaved studio edits?"))) return;
-          await window.bangerWorkspace?.activate();
-          loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
-          setProjectName(name); setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
-          projectDialog.current?.close();
-        }} />
-        <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setVocalStudio(true);}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
-          if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
-          loadGeneratedFile(file, sourceRevision); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close();
-        }} />
+        <DesktopProjectWorkspace studioBusy={fileBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile}
+          canReplace={() => !filePending.current && (!dirty || window.confirm("Replace unsaved changes in the current song?"))}
+          onFolderChange={folder => {
+            setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);
+            if (!folder.file) {
+              loadOpenedFile({ name: "Untitled.banger", source: serializeMusic(createDefaultProgram()) });
+              setHasProject(false);
+            }
+          }}
+          onLoad={async (file, saved, name) => {
+            await getProjectWorkspace().activate();
+            loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
+            setProjectName(name); setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
+          }}
+          songCard={<>
+            <div className="project-file-identity"><ProjectIcon name="file" /><div><h2>{fileName}</h2><p>{dirty ? "Unsaved changes" : hasProject ? "Saved" : "No saved song"}{workspaceFile ? ` · ${workspaceFile.path}` : ""}</p></div></div>
+            <div className="project-file-actions">
+              <Button variant="primary" onClick={save} disabled={fileBusy || workspaceBusy}><ProjectIcon name="save" />Save .banger</Button>
+            </div>
+            {notice && <p role="status">{notice}</p>}
+          </>}
+          cloudControls={<details className="project-cloud-controls"><summary>Cloud projects</summary>
+            <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setVocalStudio(true);}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
+              if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
+              loadGeneratedFile(file, sourceRevision); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close();
+            }} />
+          </details>}
+        />
+        <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy || workspaceBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
       </dialog>
 
       <section className="producer-transport" aria-label="Transport">

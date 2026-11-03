@@ -31,29 +31,21 @@ try {
   assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), '112');
   await smokePiano(window);
   const source = await smokeFocusedEditor(window);
-  const downloaded = new Promise((resolve, reject) => {
-    window.webContents.session.once('will-download', (_event, item) => {
-      const path = join(directory, item.getFilename()); item.setSavePath(path);
-      item.once('done', (_event, state) => state === 'completed' ? resolve(path) : reject(new Error(state)));
-    });
-  });
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Project').click()");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Save .banger').click()");
-  const path = await downloaded;
-  assert.equal(await readFile(path, 'utf8'), source, 'Browser download contains the edited piano source.');
-  // Reopen through the browser File input using Chromium's native file selection API.
-  window.webContents.debugger.attach('1.3');
-  await window.webContents.debugger.sendCommand('Page.enable');
-  await window.webContents.debugger.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true });
-  const chooser = new Promise(resolve => window.webContents.debugger.once('message', (_e, method, params) => {
-    if (method === 'Page.fileChooserOpened') resolve(params);
-  }));
-  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Open').click()");
-  const { backendNodeId } = await chooser;
-  await window.webContents.debugger.sendCommand('DOM.setFileInputFiles', { files: [path], backendNodeId });
+  await evaluate(`new Promise((resolve, reject) => { const end = Date.now() + 5000; const poll = () => {
+    if (document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')) resolve();
+    else if (Date.now() > end) reject(new Error('Browser save timed out')); else setTimeout(poll, 25);
+  }; poll(); })`);
+  const stored = await evaluate("(async () => { const folder = await window.smokeProjectParent.getDirectoryHandle('Sample Project'); return (await (await folder.getFileHandle('night-drive.banger')).getFile()).text(); })()");
+  assert.equal(stored, source, 'Browser folder contains the edited piano source.');
+  await evaluate("void (window.showDirectoryPicker = () => window.smokeProjectParent.getDirectoryHandle('Sample Project'))");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Open Project').click()");
   await evaluate(`new Promise((resolve, reject) => { const end = Date.now() + 5000; const poll = () => {
     if (document.querySelector('.producer-footer [role=status]').textContent.startsWith('Opened ')) resolve();
     else if (Date.now() > end) reject(new Error('Browser reopen timed out')); else setTimeout(poll, 25);
   }; poll(); })`);
+  await evaluate("document.querySelector('#project-controls').close()");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
   assert.deepEqual(compileMusic(await evaluate("document.querySelector('#producer-source').value")), compileMusic(source));
   for (const [index, track] of compileMusic(source).tracks.entries()) {
@@ -61,8 +53,7 @@ try {
     const rendered = await evaluate(`[...document.querySelectorAll('#track-editor-${index} .piano-note')].map(note => ({ midi: Number(note.dataset.midi), start: Number(note.dataset.start), duration: Number(note.dataset.duration), velocity: Number(note.dataset.velocity) }))`);
     assert.deepEqual(rendered, pianoNotes(track), 'Reopened notes render with the saved pitch, timing and velocity.');
   }
-  window.webContents.debugger.detach();
-  console.log('Web smoke passed: HTTP app without desktop bridge, real browser download and file-input reopen.');
+  console.log('Web smoke passed: HTTP app without desktop bridge, folder-backed save and reopen using directory-handle fixtures.');
 } catch (error) {
   console.error(error); process.exitCode = 1;
 } finally {
