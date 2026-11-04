@@ -224,7 +224,11 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
         <div className="library-grid" aria-label="Records">
       {records.map((record, index) => <section className="library-record" key={record.id} aria-label={`Record: ${record.name}`}>
         {record.songs[0]?.renameRecord && record.songs[0]?.regenerateArtwork && <RecordOptions name={record.name} generating={record.songs.some(song => song.artworkPending)} rename={record.songs[0].renameRecord} regenerate={record.songs[0].regenerateArtwork} openProject={record.songs.map(projectAction).find(Boolean)} songs={songs.filter(song => song.storage === record.songs[0]?.storage && (!song.recordId || song.recordKey === record.id))} selectedSongs={record.songs.map(song => song.id)} editSongs={record.songs[0].editRecordSongs} onChange={changed} />}
-        <Button className="library-card" aria-label={`Show songs on ${record.name}`} aria-pressed={activeRecord?.id === record.id} aria-controls="library-songs" onClick={() => setRecordFilter(record.id)}>
+        <Button className="library-card" aria-label={`Play ${record.name}`} aria-pressed={activeRecord?.id === record.id} aria-controls="library-songs" onClick={() => {
+          setRecordFilter(record.id);
+          const firstSong = record.songs[0];
+          if (firstSong) void choose(firstSong, true);
+        }}>
           <span className={`library-art library-record-art library-art-${index % 4}`}>
             <span className="library-art-fallback" aria-hidden="true">♫</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
