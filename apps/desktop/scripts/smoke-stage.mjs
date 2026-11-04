@@ -42,6 +42,15 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelector('#performance-stage').open && document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'one character per track');
     assert.equal(await evaluate("document.querySelectorAll('.performance-viewport canvas').length"), 1);
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.concert"), 'true');
+    await wait("document.querySelector('.performance-viewport canvas').dataset.playing === 'true'", 'automatic playback when ready');
+    assert.equal(await evaluate("document.querySelectorAll('.performance-transport button').length"), 1, 'one transport button');
+    assert.equal(await evaluate("document.querySelector('.performance-transport button').textContent"), 'Stop');
+    assert.equal(await evaluate("!!document.querySelector('.performance-options')"), false, 'controls initially collapsed');
+    assert.equal(await evaluate("!!document.querySelector('#performance-title, .performance-live, #performance-description')"), false, 'removed heading and badge');
+    await click('Stop');
+    await wait("document.querySelector('.performance-viewport canvas').dataset.playing === 'false'", 'manual stop');
+    await delay(300);
+    assert.equal(await evaluate("document.querySelector('.performance-transport button').textContent"), 'Play', 'stop does not trigger autoplay again');
     const cameraPosition = () => evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraPosition");
     const cameraDistance = async () => Number(await evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraDistance"));
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraMode"), 'auto');
@@ -63,6 +72,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
       await writeFile(`/tmp/banger-band-stage-${shot}.png`, (await window.webContents.capturePage()).toPNG());
     }
     assert.deepEqual([...shots].sort(), ['close', 'orbit', 'overhead', 'wide'], 'automatic camera uses every shot style');
+    await clickSelector('.performance-controls-trigger');
     await click('Take control');
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraMode"), 'manual');
     const heldPosition = await cameraPosition();
@@ -81,6 +91,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'mouseUp', x: 850, y: 450, button: 'left', clickCount: 1 });
     await delay(700);
     assert.notEqual(await cameraPosition(), beforeDrag, 'manual drag orbits');
+    await clickSelector('.performance-controls-trigger');
     await click('Auto camera');
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraMode"), 'auto');
     const resumedPosition = await cameraPosition();
@@ -88,7 +99,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.notEqual(await cameraPosition(), resumedPosition, 'automatic camera resumes');
     const outfits = await evaluate("document.querySelector('.performance-viewport canvas').dataset.outfits");
     assert.equal(JSON.parse(outfits).length, trackCount, 'each performer receives an outfit');
-    await click('Play band');
+    await clickSelector('.performance-transport button');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.playing === 'true'", 'audio playback');
     const firstBeat = Number(await evaluate("document.querySelector('.performance-viewport canvas').dataset.beat"));
     await delay(600);
@@ -99,15 +110,19 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelector('.performance-viewport canvas').dataset.playing === 'false'", 'stopped pose');
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.outfits"), outfits, 'stopping preserves outfits');
     await evaluate("void (window.previousStage = document.querySelector('.performance-viewport canvas'))");
+    if (!await evaluate("!!document.querySelector('.performance-options')")) await clickSelector('.performance-controls-trigger');
     await clickSelector('.performance-options input');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "' && document.querySelector('.performance-viewport canvas') !== window.previousStage", 'still mode rebuild');
+    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.playing"), 'false', 'still mode does not restart stopped audio');
     const stillPosition = await cameraPosition();
     await delay(500);
     assert.equal(await cameraPosition(), stillPosition, 'still mode freezes camera');
     await evaluate("void (window.previousStage = document.querySelector('.performance-viewport canvas'))");
+    if (!await evaluate("!!document.querySelector('.performance-options')")) await clickSelector('.performance-controls-trigger');
     await clickSelector('.performance-options input');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "' && document.querySelector('.performance-viewport canvas') !== window.previousStage", 'animation rebuild');
     for (let iteration = 0; iteration < 3; iteration++) {
+      if (!await evaluate("!!document.querySelector('.performance-options')")) await clickSelector('.performance-controls-trigger');
       await click('Take control');
       await clickSelector('[aria-label="Close band stage"]');
       await wait("!document.querySelector('.performance-viewport canvas')", 'renderer disposal');
@@ -115,10 +130,13 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
       await click('Band stage');
       await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'reopened renderer');
       assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraMode"), 'auto', 'reopening defaults to automatic');
+      await wait("document.querySelector('.performance-viewport canvas').dataset.playing === 'true'", 'reopening starts playback');
+      await click('Stop');
     }
     window.setMinimumSize(0, 0); window.setContentSize(390, 844);
     await delay(2500);
     assert.ok(await evaluate("document.querySelector('#performance-stage').scrollWidth <= document.querySelector('#performance-stage').clientWidth + 1"));
+    await clickSelector('.performance-controls-trigger');
     await click('Take control');
     await wait("document.querySelector('[aria-label=\"Zoom in\"]') && document.querySelector('.performance-viewport canvas').dataset.cameraMode === 'manual'", 'mobile manual controls');
     assert.ok(await evaluate("[...document.querySelectorAll('.performance-camera-controls button')].every(button => { const rect = button.getBoundingClientRect(); return rect.x >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight; })"), 'mobile camera controls fit');
@@ -126,6 +144,11 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await delay(300);
     await writeFile('/tmp/banger-band-stage-mobile.png', (await window.webContents.capturePage()).toPNG());
     window.setContentSize(1440, 1000);
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await wait("!document.querySelector('.performance-options')", 'Escape collapses controls');
+    assert.equal(await evaluate("document.activeElement === document.querySelector('.performance-controls-trigger')"), true, 'Escape restores controller focus');
+    assert.equal(await evaluate("document.querySelector('#performance-stage').open"), true);
     window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
     await wait("!document.querySelector('#performance-stage').open", 'Escape closes modal');

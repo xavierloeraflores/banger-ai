@@ -246,8 +246,8 @@ async function run(){
    assert.equal(await evaluate("document.querySelector('.music-workshop audio').paused"),false,'Stage uses the existing vocal recording');
    await click('Stop');
    await wait("document.querySelector('.music-workshop audio').paused");
-   await click('Play band');
-   await wait("document.querySelector('.performance-live').textContent==='LIVE'");
+   await evaluate("document.querySelector('.performance-transport button').click()");
+   await wait("document.querySelector('.performance-transport button').textContent==='Stop'");
    await click('Close band stage');
    await wait("!document.querySelector('#performance-stage')?.open");
    assert.ok((await evaluate("document.querySelector('#producer-source').value")).includes('tempo 140'),'Stage preserves the studio draft');

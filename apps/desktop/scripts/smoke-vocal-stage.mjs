@@ -56,10 +56,12 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelectorAll('.library-card').length === 2", 'library ready');
     await click(`[aria-label="Play ${name}"]`);
     await wait("document.querySelector('.library-player audio').duration > 0", 'recording ready');
+    await evaluate("document.querySelector('.library-player audio').pause()");
     await click('.performance-stage-trigger');
     const canvas = "document.querySelector('.performance-viewport canvas')";
     await wait(`${canvas}?.dataset.singer === 'true'`, 'singer appears');
     assert.equal(await evaluate(`${canvas}.dataset.characterCount`), '2');
+    await wait("!document.querySelector('.library-player audio').paused", 'recorded audio autoplays on stage ready');
     await evaluate("document.querySelector('.library-player audio').pause()");
     await seek(1);
     await wait(`${canvas}.dataset.mouth === '0.000'`, 'paused mouth');
@@ -72,8 +74,10 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait(`${canvas}.dataset.singing === 'true'`, 'forward seek');
     await seek(.8);
     await wait(`${canvas}.dataset.singing === 'true' && Number(${canvas}.dataset.beat) < 3`, 'backward seek and score clock');
+    if (!await evaluate("!!document.querySelector('.performance-options')")) await click('.performance-controls-trigger');
     await click('.performance-options input');
     await wait(`${canvas}?.dataset.singer === 'true' && ${canvas}.dataset.mouth === '0.000'`, 'still singer');
+    if (!await evaluate("!!document.querySelector('.performance-options')")) await click('.performance-controls-trigger');
     await click('.performance-options input');
     await wait(`${canvas}?.dataset.singer === 'true'`, 'animated singer returns');
     await evaluate("document.querySelector('.library-player audio').pause()");

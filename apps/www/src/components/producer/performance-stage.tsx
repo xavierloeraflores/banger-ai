@@ -45,6 +45,26 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
   const [still, setStill] = useState(false);
   const [manualCamera, setManualCamera] = useState(false);
   const manualCameraRef = useRef(false);
+  const autoplayAttempted = useRef(false);
+  const controls = useRef<HTMLDivElement>(null);
+  const controlsTrigger = useRef<HTMLButtonElement>(null);
+  const [controlsOpen, setControlsOpen] = useState(false);
+
+  // Each opening gets one attempt; stopping or rebuilding the camera must stay stopped.
+  useEffect(() => {
+    if (!open || status !== "ready" || performers === 0 || autoplayAttempted.current) return;
+    autoplayAttempted.current = true;
+    if (!playing && !starting) void onPlay();
+  }, [open, status, performers, playing, starting, onPlay]);
+
+  useEffect(() => {
+    if (!controlsOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !controls.current?.contains(event.target)) setControlsOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [controlsOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,31 +101,38 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
   }
   function show() {
     onOpen?.();
+    autoplayAttempted.current = false;
+    setControlsOpen(false);
     manualCameraRef.current = false; setManualCamera(false);
     setFailure(null); setStatus("loading"); setOpen(true); dialog.current?.showModal();
   }
   return <>
     <BandStageButton ref={trigger} onClick={show} />
-    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else { onClose?.(); } }} onClose={() => { setHero(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
+    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-label="Band stage" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else if (controlsOpen) { event.preventDefault(); setControlsOpen(false); controlsTrigger.current?.focus(); } else { onClose?.(); } }} onClose={() => { setHero(false); setControlsOpen(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
-        <div><span className="performance-eyebrow">BANGER / LIVE ROOM</span><h2 id="performance-title">Meet your band<span className={playing ? "performance-live playing" : "performance-live"}>{playing ? "LIVE" : "READY"}</span></h2><p id="performance-description">{singer ? "Your band and a singing Muse, following the recorded vocals." : "One little performer for every track. Your music brings them to life."}</p></div>
         <Button variant="secondary" onClick={close} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
       </header>
       <div className="performance-viewport" ref={viewport}>
         {open && status === "loading" && <div className="performance-overlay" role="status">Getting the band together…</div>}
         {open && status === "error" && <div className="performance-overlay" role="alert"><strong>Couldn’t open the stage</strong><p>{failure}</p><p>Close and reopen to retry. The studio is still available.</p></div>}
         {open && performers === 0 && status === "ready" && <div className="performance-overlay">Add a track to meet your first performer.</div>}
-        {!hero && <div id="performance-camera-help" className="performance-camera-hint">{manualCamera ? "Drag to orbit · Right-drag to pan · Scroll or pinch to zoom" : still ? "Camera paused in still mode" : "Automatic camera · Take control to explore"}</div>}
       </div>
       {open && hero && <MuseHero program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} stop={stopGame} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
       <Button ref={heroTrigger} className="performance-hero-trigger" variant="secondary" hidden={hero} disabled={heroDisabled || status !== "ready" || tracks === 0} aria-expanded={hero} aria-controls="muse-hero" onClick={() => setHero(true)}>Muse Hero <span aria-hidden="true">↗</span></Button>
       <footer className="performance-footer" hidden={hero}>
-        <div className="performance-transport"><Button variant="primary" onClick={() => void onPlay()} disabled={playing || starting || status !== "ready" || performers === 0}>{starting ? "Starting…" : playing ? "Playing" : "Play band"}</Button><Button variant="secondary" onClick={onStop} disabled={!playing && !starting}>Stop</Button><span>{tempo} BPM<span className="performance-divider">/</span>{performers} {performers === 1 ? "performer" : "performers"}</span></div>
-        <div className="performance-options"><div className="performance-camera-controls" role="group" aria-label="Camera controls">
-          <Button variant="secondary" disabled={status !== "ready"} aria-pressed={manualCamera} aria-describedby="performance-camera-help" onClick={toggleCamera}>{manualCamera ? "Auto camera" : "Take control"}</Button>
-          {manualCamera && <><Button variant="secondary" aria-label="Zoom in" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(.85)}>+</Button><Button variant="secondary" aria-label="Zoom out" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(1 / .85)}>−</Button></>}
-          <Button variant="secondary" disabled={status !== "ready"} onClick={() => stage.current?.resetCamera()}>Reset view</Button>
-        </div><label><input type="checkbox" checked={still} onChange={event => setStill(event.target.checked)} /> Still mode</label></div>
+        <div className="performance-transport"><Button variant="primary" onClick={() => { if (playing || starting) onStop(); else void onPlay(); }} disabled={!playing && !starting && (status !== "ready" || performers === 0)}>{playing || starting ? "Stop" : "Play"}</Button><span>{tempo} BPM<span className="performance-divider">/</span>{performers} {performers === 1 ? "performer" : "performers"}</span></div>
+        <div className="performance-controls" ref={controls}>
+          <Button ref={controlsTrigger} variant="secondary" className="performance-controls-trigger" aria-label="Band controls" aria-expanded={controlsOpen} aria-controls="performance-controls" onClick={() => setControlsOpen(value => !value)}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7h10c2 0 3 1.5 3.5 4l1 6c.4 2-1.8 3-3.2 1.6L15.5 16h-7l-2.8 2.6C4.3 20 2.1 19 2.5 17l1-6C4 8.5 5 7 7 7Z M7.5 10v4 M5.5 12h4" /><circle cx="16" cy="11" r=".7" fill="currentColor" /><circle cx="18" cy="13" r=".7" fill="currentColor" /></svg>
+          </Button>
+          {controlsOpen && <div id="performance-controls" className="performance-options" role="group" aria-label="Band controls"><div className="performance-camera-controls" role="group" aria-label="Camera controls">
+            <Button variant="secondary" disabled={status !== "ready"} aria-pressed={manualCamera} aria-describedby="performance-camera-help" onClick={toggleCamera}>{manualCamera ? "Auto camera" : "Take control"}</Button>
+            {manualCamera && <><Button variant="secondary" aria-label="Zoom in" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(.85)}>+</Button><Button variant="secondary" aria-label="Zoom out" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(1 / .85)}>−</Button></>}
+            <Button variant="secondary" disabled={status !== "ready"} onClick={() => stage.current?.resetCamera()}>Reset view</Button>
+          </div><label><input type="checkbox" checked={still} onChange={event => setStill(event.target.checked)} /> Still mode</label>
+            <p id="performance-camera-help">{manualCamera ? "Drag to orbit · Right-drag to pan · Scroll or pinch to zoom" : still ? "Camera paused in still mode" : "Automatic camera"}</p>
+          </div>}
+        </div>
       </footer>
       {error && !hero && <p className="performance-error" role="alert">{error}</p>}
     </dialog>
