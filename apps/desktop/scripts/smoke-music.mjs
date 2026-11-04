@@ -407,6 +407,23 @@ async function run(){
   await fillLyrics('We write our own tomorrow');await click('Save lyrics & style');
   await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 2')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1, line 1\"]').value"),'We write our own tomorrow');
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
+  if (process.argv.includes('--export-only')) {
+    await click('Generate new variation');
+    await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+    const downloaded = cloud ? new Promise((resolve, reject) => window.webContents.session.once('will-download', (_event, item) => {
+      item.setSavePath(join(root, 'final.mp3'));
+      item.once('done', (_event, state) => state === 'completed' ? resolve() : reject(new Error(state)));
+    })) : null;
+    await exportSong();
+    if (downloaded) await downloaded;
+    await wait("document.querySelector('.music-status').textContent.includes('Exported and saved to library.')");
+    assert.deepEqual(await readFile(join(root, 'final.mp3')), finalAudio);
+    await click('Beat Studio');
+    await exportSong();
+    await wait("document.querySelector('.studio-export-status')?.textContent.includes('Exported and saved to library.')");
+    console.log(`${cloud ? 'Browser' : 'Desktop'} export smoke passed: vocal and beat modals, keyboard navigation, Escape/focus return, narrow layout, real audio download and library save.`);
+    return;
+  }
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
   await openChat();await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await closeChat();await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
