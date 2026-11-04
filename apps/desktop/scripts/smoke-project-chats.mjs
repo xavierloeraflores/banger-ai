@@ -11,6 +11,8 @@ const source = 'tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x
 for (const name of ['Project A', 'Project B']) { await mkdir(join(directory, name)); await writeFile(join(directory, name, 'song.banger'), source); }
 let selected = 'Project A';
 dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [join(directory, selected)] });
+// Reloading fixture drafts must not block on the native discard prompt.
+dialog.showMessageBoxSync = () => 1;
 let release;
 const calls = [];
 globalThis.fetch = async (_url, options) => {
@@ -47,6 +49,7 @@ async function run(window) {
     await wait("!document.querySelector('.ai-chat-launcher').disabled && document.querySelectorAll('.app-sidebar-chat').length === 1");
     await chooseChat(0); await input('ai-chat-prompt', 'background A'); await click('Send');
     await wait("document.querySelector('.app-chat-indicator[data-status=running]')");
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Close chat"]').disabled`), true);
     await close();
     selected = 'Project B'; await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()"); await click('Open Project');
     await wait("document.querySelectorAll('.app-sidebar-chat').length === 2 && document.querySelector('.producer-project').textContent.includes('Project B')");
@@ -94,6 +97,20 @@ async function run(window) {
     const recent = JSON.parse(await readFile(join(directory, 'profile', 'recent-projects.json'), 'utf8'));
     assert.equal(recent.length, 2);
     assert.ok(recent.every(item => item.id && item.root && item.openedAt));
+    // Closing deletes the selected history without changing its song or other chats.
+    await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
+    await wait("document.querySelectorAll('.app-sidebar-chat').length === 2 && document.querySelector('.ai-chat-launcher')");
+    assert.match(await evaluate("document.querySelector('#producer-source').value"), /tempo 103/);
+    await chooseChat(1); await wait("document.querySelector('.ai-chat-answer')?.textContent.includes('Fresh reply')");
+    await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
+    await chooseChat(0); await wait("document.querySelector('#producer-source').value.includes('B draft')");
+    await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
+    await wait("document.querySelectorAll('.app-sidebar-chat').length === 0 && document.querySelector('.ai-chat-launcher')");
+    await delay(350);
+    assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('banger.project-chats.v1'))"), []);
+    window.webContents.reload();
+    await wait("document.querySelector('.producer-start')");
+    assert.equal(await evaluate("document.querySelectorAll('.app-sidebar-chat').length"), 0);
     console.log('Project chats smoke passed: background completion, project isolation, draft preservation, distinct histories, cancellation after switching, recent projects, and reload persistence. Real IPC/harness, fixture model.');
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { release?.(); clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, {recursive:true,force:true,maxRetries:5,retryDelay:100}); app.exit(process.exitCode ?? 0); }
