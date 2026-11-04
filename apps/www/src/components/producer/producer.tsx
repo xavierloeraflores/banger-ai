@@ -98,7 +98,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; studio: "beat" | "vocal"; chatId?: string } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [requiredStudio, setRequiredStudio] = useState<"beat" | "vocal" | null>(null);
-  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [startDestination, setStartDestination] = useState<AppDestination>("library");
   const startStudio = startDestination === "vocal" ? "vocal" : "beat";
   const [savedChats, setSavedChats] = useState<ProjectChat[]>([]);
@@ -766,7 +766,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
       onAddProject={showProjects} onOpenRecent={id => void openRecent(id)}
       chats={hasProject ? chats : []} activeChat={chatView ? activeChat : undefined} onChat={id => void selectChat(id)}
       onNewChat={hasProject ? () => { if (canSwitchChat()) addChat(); } : undefined}
-      active={chatView ? "chat" : studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
+      hasProject={hasProject} active={chatView ? "chat" : studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
     <main className="producer" data-view={chatView ? "chat" : beatStudio ? view : studio}>
       <header className="producer-header" hidden={chatView}>
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>

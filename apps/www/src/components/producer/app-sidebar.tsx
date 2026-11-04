@@ -15,9 +15,10 @@ const destinations = [
   { id: "vocal", label: "Vocal Studio", icon: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> },
 ] as const;
 
-export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, songs = [], activeSong, activeProject, projectName, songsBusy = false, onSong, onAddSong, children }: {
+export function AppShell({ active, expanded: requestedExpanded, hasProject = false, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, songs = [], activeSong, activeProject, projectName, songsBusy = false, onSong, onAddSong, children }: {
   active: AppDestination | "chat";
   expanded: boolean;
+  hasProject?: boolean;
   onToggle(): void;
   onNavigate(destination: AppDestination): void;
   chats?: ProjectChat[];
@@ -35,6 +36,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
   onAddSong?(): void;
   children: ReactNode;
 }) {
+  const expanded = hasProject && requestedExpanded;
   const [settingsTarget, setSettingsTarget] = useState<HTMLDivElement | null>(null);
   const recent = useRecentProjects();
   const navigationId = useId();
@@ -45,7 +47,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
   return <TooltipProvider delayDuration={150}><div className="app-shell" data-sidebar-expanded={expanded}>
     <aside className="app-sidebar app-sidebar-rail" aria-label="App navigation">
       <div className="app-sidebar-heading">
-        <button ref={toggleRef} className="app-sidebar-toggle" type="button" aria-label={toggleLabel} title={toggleLabel} aria-expanded={expanded} aria-controls={navigationId} onClick={onToggle}>
+        <button ref={toggleRef} className="app-sidebar-toggle" type="button" aria-label={toggleLabel} title={toggleLabel} aria-expanded={expanded} aria-controls={navigationId} disabled={!hasProject} onClick={onToggle}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="3" /><path d="M9 3v18" /><path d={expanded ? "m16 9-3 3 3 3" : "m14 9 3 3-3 3"} />
           </svg>
@@ -56,7 +58,12 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{destination.icon}</svg>
         </button>)}
       </nav>
-      <div className="app-sidebar-footer" ref={setSettingsTarget} />
+      <div className="app-sidebar-footer">
+        {!hasProject && <button type="button" aria-label="Add project" title="Add project" aria-haspopup="dialog" disabled={!onAddProject} onClick={event => onAddProject?.(event.currentTarget)}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3zM12 10v7M8.5 13.5h7" /></svg>
+        </button>}
+        <div ref={setSettingsTarget} />
+      </div>
     </aside>
     {expanded && <button className="app-sidebar-backdrop" type="button" aria-label="Close sidebar" onClick={closePanel} />}
     <aside id={navigationId} className="app-sidebar app-sidebar-panel" aria-label="Songs, chats, and projects" hidden={!expanded} onKeyDown={event => {
