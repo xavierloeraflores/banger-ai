@@ -1,10 +1,10 @@
 # Banger cloud backend
 
-`@banger/api` is a Next.js service. `@banger/www` stays a static export so Electron can keep packaging it. The browser connects through the Cloud projects panel. Access tokens stay in memory and are never placed in URLs or local storage. The panel currently accepts a JWT from your identity provider; it does not implement a hosted sign-in screen.
+`@banger/api` is a Next.js service. `@banger/www` stays a static export so Electron can keep packaging it. The hosted browser app starts with username/password signup or sign-in. Accounts own separate workspaces. Browser sessions use opaque HttpOnly cookies backed by PostgreSQL; logout revokes the session immediately. Electron continues to use the static studio without web authentication.
 
 ## Setup
 
-Use Node 24 and the repository's pnpm version. Provision PostgreSQL, a **private** Vercel Blob store, a Vercel project with Sandbox access, and a JWT issuer. Copy `.env.example` to `.env.local` and set the values for that environment. No credentials are required to build.
+Use Node 24 and the repository's pnpm version. Provision PostgreSQL, a **private** Vercel Blob store, a Vercel project with Sandbox access, and, for external API clients, a JWT issuer. Copy `.env.example` to `.env.local` and set the values for that environment. No credentials are required to build.
 
 From the repository root:
 
@@ -50,10 +50,13 @@ ElevenLabs does not document idempotency for these operations. Workers disable S
 
 ## API
 
-All endpoints except signed Blob callbacks and the separately authenticated worker require `Authorization: Bearer <JWT>`.
+Authenticated endpoints accept either the hosted browser session or `Authorization: Bearer <JWT>` for external clients. Cookie-authenticated mutations require the exact app Origin. Account signup/sign-in, signed Blob callbacks and the separately authenticated worker have their own checks.
 
 | Route | Purpose |
 | --- | --- |
+| `POST /api/accounts` | Sign up with `{username, password}` and begin a session |
+| `GET/POST/DELETE /api/session` | Check the account, sign in with `{username, password}`, or revoke the session |
+| `POST /api/chat`, `POST /api/lyrics` | Authenticated BYOK generation; credentials are used for this request only |
 | `GET/POST /api/projects` | List accessible projects or create one with `name` and `files` |
 | `GET /api/projects/:id?since=N` | Read a full project or revision delta |
 | `PATCH /api/projects/:id` | Save `{baseRevision, changes: [{path, source}]}`; `source: null` deletes |
@@ -115,3 +118,28 @@ Lyric drafts keep the measurements of their referenced audio. Generating audio
 replaces the measurements, including clearing old values when a response omits
 them. Consumers must use `audioVersion`, not the lyric document's `version`, when
 matching timings to a recording. This storage adds no waveform or karaoke view.
+
+## Browser accounts
+
+Apply migration `003_web_accounts.sql` before deploying this version. Set
+`APP_ORIGIN` to the public HTTPS origin, and keep PostgreSQL private. Accounts
+use case-insensitive usernames with 3–32 ASCII letters, numbers or underscores,
+and passwords with 12–128 characters. Passwords use individually salted scrypt
+hashes. Session tokens expire after 12 hours, are stored only as hashes in the
+database, and are replaced on sign-in. Database counters throttle login and
+signup across server instances. Back up PostgreSQL along with the private Blob
+store; both contain durable user data.
+
+`BANGER_WEB_PASSWORD`, `BANGER_WEB_USER`, access-fragment URLs, and
+`BANGER_SESSION_SECRET` no longer grant browser access. Existing shared-workspace
+data remains owned by its previous user ID. To assign it to an account, a trusted
+database administrator must first verify the owner and sign up that account,
+then revoke its sessions and change its `web_accounts.user_id` to the existing
+owner ID in a transaction. Never assign the old workspace to the first signup.
+There is no email verification or self-service password recovery in this
+username-only flow.
+
+BYOK chat and lyric requests go through the same-origin authenticated API.
+Provider endpoints are fixed by the provider adapter; clients cannot supply a
+proxy destination. Keys are not saved in the server database or logged. Browser
+keys remain in account-scoped tab storage and are cleared on sign-out.

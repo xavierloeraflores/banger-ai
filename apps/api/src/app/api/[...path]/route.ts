@@ -3,8 +3,9 @@ import { timingSafeEqual } from 'node:crypto';
 import { z, ZodError } from 'zod';
 import { get } from '@vercel/blob';
 import type { HandleUploadBody } from '@vercel/blob/client';
+import { browserGeneration } from '../../../server/web-ai';
 import { authenticate } from '../../../server/auth';
-import {assertWebOrigin,hasWebSession,sessionCookie,sessionUser,signIn,webOrigin,webSessionEnabled} from '../../../server/web-session';
+import {assertWebOrigin,hasWebSession,sessionAccount,signIn,signOut,webOrigin,webSessionEnabled} from '../../../server/web-session';
 import { ApiError, changeSchema, id, saveSchema } from '../../../server/domain';
 import { db } from '../../../server/db';
 import { authorize, createProject, projectFiles, saveChanges, setMember } from '../../../server/projects';
@@ -30,17 +31,17 @@ async function body(request: Request) {
 async function dispatch(request: Request, path: string[]) {
   const method = request.method;
   const url = new URL(request.url);
-  if(path.join('/')==='session') {
-    if(method==='GET') {
-      let authenticated=false;
-      try{await sessionUser(request);authenticated=true;}catch{/* A missing or expired session displays the sign-in form. */}
-      return json({authenticated,signInEnabled:webSessionEnabled(),services:{storage:Boolean(process.env.DATABASE_URL&&process.env.BLOB_READ_WRITE_TOKEN),agent:Boolean(process.env.SANDBOX_RUNNER_BLOB_PATH&&process.env.BANGER_MODEL&&process.env.BANGER_API_KEY)}});
+  if(path.join('/')==='session' || path.join('/')==='accounts') {
+    if(method==='GET' && path[0]==='session') {
+      let account: {id:string;username:string}|null=null;
+      try{account=await sessionAccount(request);}catch(error){if(!(error instanceof ApiError && error.status===401))throw error;}
+      return json({authenticated:Boolean(account),account,signInEnabled:webSessionEnabled(),services:{storage:Boolean(process.env.DATABASE_URL&&process.env.BLOB_READ_WRITE_TOKEN),agent:Boolean(process.env.SANDBOX_RUNNER_BLOB_PATH&&process.env.BANGER_MODEL&&process.env.BANGER_API_KEY)}});
     }
     if(method==='POST') {
-      const input=z.object({password:z.string().max(512)}).strict().parse(await body(request));
-      const cookie=await signIn(request,input.password);const response=json({authenticated:true});response.headers.set('Set-Cookie',cookie);return response;
+      const input=z.object({username:z.string().max(32),password:z.string().max(128)}).strict().parse(await body(request));
+      const cookie=await signIn(request,input.username,input.password,path[0]==='accounts');const response=json({authenticated:true});response.headers.set('Set-Cookie',cookie);return response;
     }
-    if(method==='DELETE') {assertWebOrigin(request);const response=json({authenticated:false});response.headers.set('Set-Cookie',sessionCookie(request,''));return response;}
+    if(method==='DELETE' && path[0]==='session') {assertWebOrigin(request);const response=json({authenticated:false});response.headers.set('Set-Cookie',await signOut(request));return response;}
   }
   if (path.join('/') === 'worker' && ['GET','POST'].includes(method)) {
     const secret = process.env.CRON_SECRET, provided = request.headers.get('authorization') ?? '';
@@ -50,6 +51,7 @@ async function dispatch(request: Request, path: string[]) {
   }
   if (path.join('/') === 'uploads' && method === 'POST') return json(await uploadCallback(request, await body(request) as HandleUploadBody));
   const user = await authenticate(request);
+  if (method === 'POST' && path.length === 1 && (path[0] === 'chat' || path[0] === 'lyrics')) return json(await browserGeneration(user, path[0], await body(request), request.signal));
   const elevenLabsKey = request.headers.get('x-banger-elevenlabs-key');
   if (elevenLabsKey !== null && (!elevenLabsKey || elevenLabsKey.length > 8192 || /[^\x21-\x7e]/.test(elevenLabsKey))) throw new ApiError(400,'Invalid ElevenLabs API key.');
   if (path[0] === 'projects') {
@@ -127,6 +129,8 @@ async function route(request:Request,context:{params:Promise<{path:string[]}>}) 
     else if (error instanceof ZodError) response=json({error:'Invalid request.',details:error.issues},400);
     else { console.error('API request failed', error instanceof Error ? error.name : 'UnknownError'); response=json({error:'The service could not complete the request.'},500); }
   }
+  if (response.status === 429) response.headers.set('Retry-After','900');
+  response.headers.set('X-Content-Type-Options','nosniff');
   response.headers.set('Cache-Control','private, no-store'); response.headers.set('Vary','Origin');
   if (origin && (same || allowed.includes(origin))) { response.headers.set('Access-Control-Allow-Origin',origin); response.headers.set('Access-Control-Allow-Headers','Authorization, Content-Type, X-Banger-ElevenLabs-Key'); response.headers.set('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, DELETE, OPTIONS'); }
   return response;

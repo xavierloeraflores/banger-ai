@@ -1,3 +1,4 @@
+import { browserStorageKey } from "./browser-account";
 export type LyricDraft = { schemaVersion: 1; lyrics: string };
 export type LibrarySelection = { audio: string; instrumental?: string; lyrics?: string };
 declare global {
@@ -27,7 +28,7 @@ export function draftStorage(key: string, token?: string) {
     const bridge = window.bangerStorage;
     return { read: () => bridge.readDraft(token), save: (draft: LyricDraft, expected: LyricDraft | null) => bridge.saveDraft(token, draft, expected), retire: (draft: LyricDraft) => bridge.retireDraft(token, draft) };
   }
-  const path = `banger:lyric-draft:${key}`;
+  const path = browserStorageKey(`banger:lyric-draft:${key}`);
   const read = async (): Promise<LyricDraft | null> => JSON.parse(localStorage.getItem(path) ?? 'null');
   return { read, async save(draft: LyricDraft, expected: LyricDraft | null) {
     if (localStorage.getItem(`${path}:retired`)) throw new Error('This draft has been retired. Edit the chunk lyrics instead.');
