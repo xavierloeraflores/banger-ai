@@ -16,6 +16,12 @@ const created = join(directory, 'New project');
 const source = 'tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain 0.5; }';
 await mkdir(existing);
 await writeFile(join(existing, 'entry.banger'), source);
+const emptyRecent = join(directory, 'Empty recent project');
+await mkdir(emptyRecent);
+if (!web) await writeFile(join(directory, 'recent-projects.json'), JSON.stringify([
+  { id: 'missing', root: join(directory, 'missing'), name: 'Unavailable project', openedAt: 2 },
+  { id: 'empty', root: emptyRecent, name: 'Empty recent project', openedAt: 1 },
+]));
 let pickerMode = 'cancel', pickerCalls = 0, server, exitCode = 0;
 dialog.showOpenDialog = async () => {
   pickerCalls++;
@@ -114,6 +120,35 @@ async function run(window) {
     for (const destination of ['library', 'beat', 'vocal']) { await chooseView(destination); await wait(`({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === '${destination}'`); }
     assert.equal(await evaluate("document.querySelector('.producer-project-required')"), null, 'An open project allows switching studios');
     await window.loadURL(window.webContents.getURL()); await wait("document.querySelector('.producer-start')"); await setupBrowser();
+    if (!web) {
+      await wait("[...document.querySelectorAll('.producer-start-recents button')].some(b => b.textContent === 'Existing project')");
+      const beforeRestore = pickerCalls;
+      for (const destination of ['beat', 'vocal']) {
+        await click('Open Library'); await chooseView(destination);
+        await wait("document.querySelector('.producer-project-required .producer-start-recents')");
+        await click('Unavailable project', '.producer-project-required .producer-start-recents'); await idle();
+        assert.match(await evaluate("document.querySelector('.producer-project-required [role=alert]').textContent"), /unavailable/);
+        assert.equal(await evaluate("document.querySelector('.app-sidebar-link[aria-current=page]').getAttribute('aria-label')"), 'Library');
+        window.setContentSize(390, 844); await delay(100);
+        assert.equal(await evaluate("document.querySelector('.producer-project-required').scrollWidth <= document.querySelector('.producer-project-required').clientWidth"), true, 'Recent projects fit a narrow prompt');
+        await writeFile('/tmp/banger-recent-project-prompt.png', (await window.webContents.capturePage()).toPNG());
+        window.setContentSize(1380, 980);
+        await click('Existing project', '.producer-project-required .producer-start-recents');
+        await wait(`document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label') === '${destination === 'beat' ? 'Beat Studio' : 'Vocal Studio'}' && !document.querySelector('.producer-project-required')`);
+        assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
+        assert.equal(pickerCalls, beforeRestore, 'Recent projects reopen without a folder picker');
+        await window.loadURL(window.webContents.getURL()); await wait("document.querySelector('.producer-start')");
+      }
+      await wait("document.querySelector('.producer-start-recents')");
+      await click('Empty recent project', '.producer-start-recents');
+      await wait("document.querySelector('.first-song-dialog')?.getAttribute('data-state') === 'open'");
+      await evaluate(`(() => { const field = document.querySelector('#first-song-name'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, 'Recent song'); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await click('Create Song', '.first-song-dialog');
+      await wait("document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label') === 'Beat Studio' && !document.querySelector('.first-song-dialog')");
+      assert.ok((await readFile(join(emptyRecent, 'Recent song.banger'), 'utf8')).length > 0);
+      assert.equal(pickerCalls, beforeRestore, 'Empty recent projects also bypass the folder picker');
+      await window.loadURL(window.webContents.getURL()); await wait("document.querySelector('.producer-start')");
+    }
     await click('Open Library'); await chooseView('beat'); await wait("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')");
     await mode('create'); await click('Create New Project', '.producer-project-required');
     await wait("(document.querySelector('.first-song-dialog')?.getAttribute('data-state') === 'open')");

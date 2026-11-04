@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { FirstSongDialog } from "./first-song-dialog";
+import { useRecentProjects } from "./recent-projects";
 import { Button, Modal, type ModalHandle } from "@banger/shadcn";
 import type { BangerFile } from "@banger/agent/protocol";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
@@ -27,21 +28,27 @@ export function ProjectStart({ sample, onStart, onOpenLibrary, requiredStudio, o
   const [error, setError] = useState("");
   const pending = useRef(false);
   const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
+  const recent = useRecentProjects();
 
   function start(folder: ProjectFolder) {
     if (!folder.file) { setEmptyFolder(folder); return; }
     onStart({ name: folder.file.path.split("/").pop()!, source: folder.file.source }, true, folder);
   }
 
-  async function choose(action: "create" | "open" | "sample") {
+  async function choose(action: "create" | "open" | "sample" | { recentId: string }) {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setError("");
     try {
       const bridge = getProjectWorkspace();
-      const folder = action === "open" ? await bridge.open() : action === "sample" ? await bridge.create(sample.name, sample.source) : await bridge.create();
-      if (folder) start(folder);
+      const folder = typeof action === "object"
+        ? await bridge.restore?.(action.recentId)
+        : action === "open" ? await bridge.open() : action === "sample" ? await bridge.create(sample.name, sample.source) : await bridge.create();
+      if (folder) {
+        window.dispatchEvent(new Event("banger:projects-changed"));
+        start(folder);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not open the project.");
     } finally {
@@ -59,6 +66,14 @@ export function ProjectStart({ sample, onStart, onOpenLibrary, requiredStudio, o
       <p id={`${id}-description`}>{requiredStudio
         ? `Open a project or create a new one to use ${requiredStudio === "vocal" ? "Vocal Studio" : "Beat Studio"}.`
         : "Open a project folder or choose where to store a new project."}</p>
+      {recent.length > 0 && <section className="producer-start-recents" aria-labelledby={`${id}-recent-title`}>
+        <h3 id={`${id}-recent-title`}>Recent projects</h3>
+        <ul>{recent.map(project => <li key={project.id}>
+          <Button variant="secondary" disabled={busy} onClick={() => void choose({ recentId: project.id })} aria-label={`Open project ${project.name}`}>
+            {project.name}
+          </Button>
+        </li>)}</ul>
+      </section>}
       <div className="producer-start-actions">
         <Button variant="primary" disabled={busy} onClick={() => void choose("open")}>Open Project</Button>
         <Button variant="secondary" disabled={busy} onClick={() => void choose("create")}>Create New Project</Button>
