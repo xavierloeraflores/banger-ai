@@ -563,6 +563,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </div>
           {playback.state.hasPendingUpdate && <span className="producer-transport-state" role="status">Changes next bar</span>}
         </div>
+        <AudioExport compact program={program} fileName={fileName} source={source} disabled={draft || fileBusy} />
         <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill} fill={playback.fill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
           onLaunch={launchPattern} />
@@ -648,7 +649,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <div id="vocal-studio" hidden={!vocalStudio}>
           <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={vocalStudio} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
-        {studio === "library" && <SongLibrary key={`${projectEpoch}-${cloudMusicContext?.projectId ?? "local"}`} cloud={cloudMusicContext} studioFile={{ name: fileName, source }} folderName={folderName} onOpenProject={showProjects} />}
+        {studio === "library" && <SongLibrary />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}

@@ -1,4 +1,5 @@
 import "./audio-worklet";
+import { saveLibraryBundle } from "@/lib/browser-library";
 import { ProjectIcon } from "./project-icon";
 import { useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
@@ -12,12 +13,12 @@ function download(wav: ArrayBuffer, name: string) {
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-export function AudioExport({ program, fileName, source, disabled, cloud }: { program: MusicProgram; fileName: string; source: string; disabled: boolean; cloud?: CloudBinding | null }) {
+export function AudioExport({ program, fileName, source, disabled, cloud, compact = false }: { program: MusicProgram; fileName: string; source: string; disabled: boolean; cloud?: CloudBinding | null; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [sampleRate, setSampleRate] = useState(44100);
   const [stem, setStem] = useState("");
-  async function render(individual: boolean, upload = false) {
+  async function render(individual: boolean, upload = false, library = false) {
     if (busy) return;
     setBusy(true); setStatus("Rendering audio…");
     const name = fileName.replace(/\.banger$/i, "").replace(/[^\w.-]/g, "_");
@@ -37,18 +38,26 @@ export function AudioExport({ program, fileName, source, disabled, cloud }: { pr
           await uploadWav(cloud, audio.wav, percentage => setStatus(`Uploading WAV: ${Math.round(percentage)}%`));
           setStatus(`WAV uploaded to cloud revision ${cloud.revision}.`); return;
         }
-        download(audio.wav, `${name}.wav`); setStatus(`Exported stereo WAV with ${audio.tailSeconds.toFixed(1)} seconds of effect tails.`);
+        if (library) {
+          if (window.bangerStorage) await window.bangerStorage.addToLibrary(fileName, source, new Uint8Array(audio.wav));
+          else await saveLibraryBundle(name, audio.wav, { [`${name}.banger`]: source, [`${name}.wav`]: audio.wav });
+        }
+        download(audio.wav, `${name}.wav`); setStatus(library ? "Exported and saved to library." : `Exported stereo WAV with ${audio.tailSeconds.toFixed(1)} seconds of effect tails.`);
       }
     } catch (cause) { setStatus(cause instanceof Error ? cause.message : "Audio export failed."); }
     finally { setBusy(false); }
   }
+  const menu = <Select aria-label="Export song" value="" disabled={disabled || busy} onChange={event => { const library = event.target.value === 'library'; void render(false, false, library); }}>
+    <option value="" disabled>Export…</option><option value="export">Export</option><option value="library">Export and save to library</option>
+  </Select>;
+  if (compact) return <div>{menu}<span role="status">{status}</span></div>;
   return <section className="studio-export" aria-labelledby="project-export-title">
     <h2 id="project-export-title"><ProjectIcon name="audio" />Export Controls</h2>
     <fieldset disabled={disabled || busy}>
       <div className="project-export-controls">
         <div className="project-export-group">
           <label>Sample rate<Select aria-label="Export sample rate" value={sampleRate} onChange={e => setSampleRate(Number(e.target.value))}><option value={44100}>44.1 kHz</option><option value={48000}>48 kHz</option></Select></label>
-          <Button variant="primary" onClick={() => void render(false)}><ProjectIcon name="audio" />Export WAV</Button>
+          {menu}
         </div>
         <div className="project-export-group">
           <label>Stem<Select aria-label="Stem track" value={program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name ?? ""} onChange={e => setStem(e.target.value)}>{program.tracks.map(track => <option key={track.name}>{track.name}</option>)}</Select></label>

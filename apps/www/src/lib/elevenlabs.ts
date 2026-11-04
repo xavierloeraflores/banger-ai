@@ -9,7 +9,7 @@ export type MusicBackend={
   act(id:string,action:MusicAction,key:string):Promise<MusicOperation>;operations():Promise<MusicOperation[]>;
   audio(version:MusicVersion):Promise<string>;save(version:MusicVersion):Promise<void>;
 };
-type NativeMusic={list():Promise<MusicSummary[]>;get(id:string):Promise<MusicVersion>;versions(id:string,before?:number):Promise<MusicHistory>;importWav(key:string):Promise<MusicOperation|null>;rendered(bytes:Uint8Array,name:string,key:string,token?:string):Promise<MusicOperation>;act:MusicBackend['act'];operations():Promise<MusicOperation[]>;operation(id:string):Promise<MusicOperation>;audio(id:string,version:number):Promise<{bytes:Uint8Array;contentType:string}>;save(id:string,version:number):Promise<boolean>};
+type NativeMusic={addToLibrary(id:string,version:number):Promise<{name:string}>;list():Promise<MusicSummary[]>;get(id:string):Promise<MusicVersion>;versions(id:string,before?:number):Promise<MusicHistory>;importWav(key:string):Promise<MusicOperation|null>;rendered(bytes:Uint8Array,name:string,key:string,token?:string):Promise<MusicOperation>;act:MusicBackend['act'];operations():Promise<MusicOperation[]>;operation(id:string):Promise<MusicOperation>;audio(id:string,version:number):Promise<{bytes:Uint8Array;contentType:string}>;save(id:string,version:number):Promise<boolean>};
 declare global{interface Window{bangerMusic?:NativeMusic}}
 export function desktopMusic():MusicBackend|undefined {
   const native=window.bangerMusic;if(!native)return;

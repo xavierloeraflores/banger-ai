@@ -12,7 +12,8 @@ import {serveApp} from '../dist/static-app.js';
 import {createMusicStore} from '../dist/elevenlabs-music.js';
 import {installSongStorage} from '../dist/song-storage-ipc.js';
 import {installWorkspaceHandlers} from '../dist/project-workspace.js';
-import {installMusicHandlers} from '../dist/elevenlabs-ipc.js';
+import {createSongStorage} from '../dist/song-storage.js';
+import {installMusicHandlers,musicStorageHooks} from '../dist/elevenlabs-ipc.js';
 import {fixtureProvider,wav,fixturePlan} from '../../../packages/elevenlabs/test/fixtures.mjs';
 const cloud=process.argv.includes('--web');
 app.on('window-all-closed',()=>{});
@@ -22,7 +23,7 @@ const projectId=randomUUID(),artifactId=randomUUID();const source='tempo 120; me
 // fixture.mp3 is the synthesized WAV from fixtures.mjs encoded with libmp3lame at 32 kbps.
 const finalAudio=await readFile(new URL('../../../packages/elevenlabs/test/fixture.mp3',import.meta.url));
 const generatedInputs=[];const provider=fixtureProvider(),generate=provider.generate;provider.generate=async(version,indices)=>{generatedInputs.push({version,indices});return {...await generate(version),audio:finalAudio};};
-const store=createMusicStore(join(root,'music'),()=>provider);let uploaded,window,exitCode=0;
+const store=createMusicStore(join(root,'music'),()=>provider,musicStorageHooks(createSongStorage(root)));let uploaded,window,exitCode=0;
 const pathname=`projects/${projectId}/audio/${artifactId}.wav`;
 const job=operation=>({...operation,kind:'elevenlabs',activity:[],result:operation.status==='completed'?{musicId:operation.musicId,version:operation.resultVersion}:null});
 async function run(){
@@ -81,7 +82,7 @@ async function run(){
   const senderWindow=event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;};
   const storage=installSongStorage(senderWindow);
   installWorkspaceHandlers({senderWindow,onOpen:(window,root)=>storage.setRoot(window,root),selectModel:async()=>{throw new Error('Music smoke must not request a project model');}});
-  installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store);
+  installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store,storage);
   let vocalsConfigured=true;
   ipcMain.handle('banger:ai-load',()=>({activeProvider:'openai',providers:{openai:{model:'fixture',configured:true}},elevenLabsConfigured:vocalsConfigured}));
   ipcMain.handle('banger:elevenlabs-save',()=>{vocalsConfigured=true;});
@@ -161,7 +162,7 @@ async function run(){
   await click('Play song');await wait("document.querySelector('.music-workshop audio')?.duration>7");
   await evaluate("(()=>{const audio=document.querySelector('.music-workshop audio');audio.muted=true;return audio.play();})()");await wait("document.querySelector('.music-workshop audio').currentTime>0");
   const download=cloud?new Promise((resolve,reject)=>window.webContents.session.once('will-download',(_event,item)=>{item.setSavePath(join(root,'final.mp3'));item.once('done',(_event,state)=>state==='completed'?resolve():reject(new Error(state)));})):null;
-  await click('↓ Download');if(download)await download;else for(let i=0;i<100;i++){try{await readFile(join(root,'final.mp3'));break;}catch{await delay(20);}}
+  await fill('.music-workshop [aria-label="Export song"]','library');if(download)await download;else for(let i=0;i<100;i++){try{await readFile(join(root,'final.mp3'));break;}catch{await delay(20);}}
   assert.deepEqual(await readFile(join(root,'final.mp3')),finalAudio);assert.deepEqual(provider.calls,{analyze:1,lyrics:0,generate:2});
   assert.equal(await evaluate("document.querySelectorAll('.music-chunk .producer-tag,.music-chunk details').length"),0);
   assert.equal(await evaluate("document.querySelectorAll('.music-timeline-chunks button').length"),2);
@@ -198,9 +199,9 @@ async function run(){
   // Library playback must leave both editors intact and release audio on exit.
   const selectView = value => fill('[aria-label="View"]',value);
   await selectView('library');
-  await wait("document.querySelectorAll('.library-card').length>=2");
+  await wait("document.querySelectorAll('.library-card').length>=1");
   assert.equal(await evaluate("document.querySelector('.producer-transport').checkVisibility()"),false);
-  await evaluate("[...document.querySelectorAll('.library-card')].find(card=>/Vocal Studio|Cloud vocals/.test(card.textContent)).click()");
+  await evaluate("[...document.querySelectorAll('.library-card')].find(card=>!card.textContent.includes('Cover song')).click()");
   await wait("document.querySelector('.library-player audio').currentTime>0");
   assert.equal(await evaluate("document.querySelector('.music-workshop audio').paused"),true);
   await click('Pause library song');await wait("document.querySelector('.library-player audio').paused");
@@ -210,7 +211,7 @@ async function run(){
    await wait("document.querySelector('.library-card img').naturalWidth===1");
   }
   // Render and play the open beat without loading it into either editor.
-  await evaluate("document.querySelector('.library-card').click()");
+  await evaluate("(()=>{const audio=document.querySelector('.library-player audio');audio.currentTime=0;return audio.play();})()");
   await wait("document.querySelector('.library-player audio').currentTime>0 && !document.querySelector('.library-player button').disabled");
   assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Library fits a narrow viewport.');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-library-mobile.png'),(await window.webContents.capturePage()).toPNG());
@@ -219,7 +220,9 @@ async function run(){
   await evaluate("void(window.libraryAudio=document.querySelector('.library-player audio'))");
   await selectView('beat');await wait("window.libraryAudio.paused");
   assert.equal(await evaluate("document.querySelector('.song-library')"),null);
-  await selectView('library');await wait("document.querySelectorAll('.library-card').length>=2");
+  await fill('.producer-transport [aria-label="Export song"]','library');
+  await wait("document.querySelector('.producer-transport').textContent.includes('Exported and saved to library.')");
+  await selectView('library');await wait("document.querySelectorAll('.library-card').length>=1");
   assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
   console.log(`${cloud?'Cloud browser':'Desktop'} music smoke passed: WAV upload, extracted chunks, lyric edits, AI lyrics, full and selective generation, decoded playback, original-version switching, historical chunk retries, download, and preserved conflicting draft.`);
  }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);console.error('Fixture state:',{uploaded:uploaded?.length,operations:await store.operations()});exitCode=1;}

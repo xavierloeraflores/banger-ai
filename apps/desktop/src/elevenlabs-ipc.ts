@@ -50,6 +50,17 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
     const location = storage ? token ? storage.resolve(window,token) : await storage.prepare(window,name) : undefined;
     return store.importWav(bytes,name.slice(0,120),key,location);
   });
+  ipcMain.handle('banger:music-add-library', async (event, id: string, version: number) => {
+    const window = senderWindow(event);
+    if (!storage) throw new Error('Song storage is unavailable.');
+    const history = await store.versions(id, version + 1);
+    const selected = history.versions.find(item => item.version === version);
+    if (!selected) throw new Error('Select a saved song version.');
+    const location = await store.location(id) ?? await storage.prepare(window, selected.name);
+    await store.bind(id, location);
+    const audio = await store.audio(id, version);
+    return storage.storage.addToLibrary(location, await toWav(audio.bytes), undefined, selected);
+  });
   ipcMain.handle('banger:music-save',async(event,id:string,version?:number)=>{
     const window=senderWindow(event);if(dialogs.has(window.id))throw new Error('A music file dialog is already open.');dialogs.add(window.id);
     try{const audio=await store.audio(id,version);const extension=audio.contentType==='audio/wav'?'wav':'mp3';

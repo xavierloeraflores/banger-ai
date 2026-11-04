@@ -20,19 +20,17 @@ async function fixture(t) {
   await writeFile(join(project, 'Beat.banger'), 'tempo 120;');
   return { root, project, library: createSongLibrary(root) };
 }
-test('library includes project beats, global and project audio, artwork and fallback projects', async t => {
+test('library includes only explicitly saved global and project library entries', async t => {
   const { root, project, library } = await fixture(t);
   await mkdir(join(root, 'projects', 'unsaved'), { recursive: true });
   await writeFile(join(root, 'projects', 'unsaved', 'unsaved.banger'), 'tempo 80;');
   const entries = await library.list(project);
-  assert.deepEqual(entries.map(item => item.name), ['Beat', 'Dawn', 'Night', 'unsaved']);
+  assert.deepEqual(entries.map(item => item.name), ['Dawn', 'Night']);
   assert.match(entries.find(item => item.name === 'Dawn').artwork, /^data:image\/png;base64,/);
-  assert.equal(entries.find(item => item.name === 'Beat').artwork, undefined);
-  assert.equal((await library.read(entries[0].id)).source, 'tempo 120;');
-  assert.deepEqual((await library.read(entries[1].id)).bytes, wav());
+  assert.deepEqual((await library.read(entries[0].id)).bytes, wav());
   await assert.rejects(library.read('../outside'), /Refresh/);
   await library.list();
-  await assert.rejects(library.read(entries[0].id), /Refresh/);
+  await assert.rejects(library.read(entries[1].id), /Refresh/);
 });
 test('library excludes symbolic links and rechecks directories when reading a previously listed song', async t => {
   const { root, project, library } = await fixture(t);
