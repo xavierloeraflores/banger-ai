@@ -18,6 +18,7 @@ export default {
   // The release job publishes only after every platform passes its smoke check.
   publish: null,
   mac: {
+    icon: "build/icon.icns",
     executableName: "Banger",
     // Apple Silicon needs a valid local signature even without a Developer ID.
     identity: process.env.CSC_LINK || process.env.CSC_NAME || process.env.CSC_IDENTITY_AUTO_DISCOVERY === "true" ? undefined : "-",
@@ -28,7 +29,7 @@ export default {
     entitlementsInherit: "build/entitlements.mac.plist",
   },
   dmg: { sign: false },
-  win: { target: ["nsis"] },
+  win: { icon: "build/icon.ico", target: ["nsis"] },
   nsis: {
     oneClick: false,
     perMachine: false,
@@ -36,5 +37,5 @@ export default {
     deleteAppDataOnUninstall: false,
     artifactName: "Banger-${version}-win-${arch}-setup.${ext}",
   },
-  linux: { target: ["AppImage"], category: "AudioVideo", synopsis: "Banger music studio" },
+  linux: { icon: "build/icon.png", target: ["AppImage"], category: "AudioVideo", synopsis: "Banger music studio" },
 };

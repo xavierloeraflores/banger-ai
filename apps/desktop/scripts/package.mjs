@@ -59,6 +59,7 @@ export async function stageApp(destination = resolve(desktop, ".packaging/app"))
       }
     }
   }
+  await cp(resolve(desktop, "dist/icon.png"), resolve(destination, "dist/icon.png"));
   await cp(resolve(desktop, "dist/preload.cjs"), resolve(destination, "dist/preload.cjs"));
   await cp(resolve(desktop, "dist/web"), resolve(destination, "dist/web"), { recursive: true });
   await readFile(resolve(destination, "dist/web/index.html"));
