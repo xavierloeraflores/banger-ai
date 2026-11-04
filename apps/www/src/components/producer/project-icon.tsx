@@ -8,6 +8,7 @@ const paths: Record<string, ReactNode> = {
   layers: <><path d="m12 3 10 5-10 5L2 8Z M2 12l10 5 10-5M2 16l10 5 10-5" /></>,
   external: <><path d="M14 3h7v7m0-7L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></>,
   close: <path d="m6 6 12 12M6 18 18 6" />,
+  eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6m0-10v1" /></>,
 };
 

@@ -7,12 +7,14 @@ export function StepInspector({ name, index, pattern, step, disabled, newStep, o
   name?: string; index?: number; pattern?: string; step?: Step; disabled: boolean;
   newStep?: NonNullable<Step>; onChange: (step: Step) => void;
 }) {
+  if (name === undefined) return null;
+
   return <section id="producer-step-inspector" className="producer-step-inspector" aria-label="Selected step" onKeyDown={event => {
     if (event.key === "Escape") { event.preventDefault(); document.querySelector<HTMLButtonElement>('.producer-step[data-selected="true"]')?.focus(); }
   }}>
     <div className="producer-inspector-heading">
-      <strong>{name === undefined ? "Select a step" : `${name} · Step ${index! + 1}`}</strong>
-      <span>{name === undefined ? "Focus a step or Shift-click to inspect it." : `Editing ${pattern || "Base"} · ${step ? step.kind === "note" ? "Note" : "Hit" : "Rest"}`}</span>
+      <strong>{`${name} · Step ${index! + 1}`}</strong>
+      <span>{`Editing ${pattern || "Base"} · ${step ? step.kind === "note" ? "Note" : "Hit" : "Rest"}`}</span>
     </div>
     {name !== undefined && <fieldset disabled={disabled}>
       <Button variant={step ? "primary" : "secondary"} aria-pressed={!!step} onClick={() => onChange(step ? null : newStep!)}>{step ? "On" : "Off"}</Button>

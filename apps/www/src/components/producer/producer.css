@@ -430,7 +430,12 @@ body:has(.ai-chat-dialog[data-state="open"]) { overflow: hidden; }
 .producer-track-mix, .producer-ruler-mix { align-self: stretch; position: sticky; right: 0; z-index: 2; background: var(--producer-panel); box-shadow: -6px 0 0 var(--producer-panel), 16px 0 0 var(--producer-panel); }
 .producer-ruler-mix { text-align: center; }
 .producer-track-editor { position: sticky; left: 0; width: calc(100cqw - 32px); }
-.producer-grid-help { margin: 0; padding: 0 16px 12px; font-size: 11px; color: var(--producer-dim); }
+.producer .producer-help-button { align-self: center; width: 26px; height: 26px; min-height: 26px; padding: 4px; color: var(--producer-dim); }
+.producer .producer-help-button:hover, .producer .producer-help-button:focus-visible { color: var(--producer-text); background: var(--producer-border); }
+.producer-help-button .project-icon { width: 16px; height: 16px; }
+.producer-help-tooltip { z-index: 60; max-width: min(340px, 80vw); padding: 10px 12px; border: 1px solid #666; border-radius: 8px; background: #18181b; color: #fafafa; font: 12px/1.5 Arial, Helvetica, sans-serif; box-shadow: 0 4px 16px #0006; }
+.producer-help-tooltip p { margin: 0; }
+.producer-help-tooltip p + p { margin-top: 8px; }
 .producer-step-inspector { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; margin: 12px 16px; padding: 16px; border: 1px solid var(--producer-border); border-radius: 6px; background: #1e2125; }
 .producer-inspector-heading { display: grid; gap: 4px; min-width: 140px; }
 .producer-inspector-heading strong { font-size: 14px; overflow-wrap: anywhere; }

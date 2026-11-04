@@ -14,6 +14,7 @@ import {
   type SoundName,
   type InstrumentName,
 } from "@banger/compiler";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@banger/shadcn/components/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@banger/shadcn/components/tabs";
 import { Button, IconButton, Input, Panel, Range, Select, Modal, type ModalHandle } from "@banger/shadcn";
 import { saveProject } from "@/lib/project-files";
@@ -635,7 +636,15 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
         <TabsContent forceMount value="sequencer" id="studio-panel-sequencer" aria-labelledby="studio-tab-sequencer" hidden={!beatStudio || view !== "sequencer"} tabIndex={0}>
           <Panel className="producer-sequencer" aria-labelledby="sequence-title">
             <div className="producer-panel-heading">
-              <div className="producer-rack-title"><h1 id="sequence-title">Sequencer</h1><span>{program.tracks.length} tracks</span></div>
+              <div className="producer-rack-title"><h1 id="sequence-title">Sequencer</h1><span>{program.tracks.length} tracks</span>
+                <TooltipProvider delayDuration={150}><Tooltip>
+                  <TooltipTrigger asChild><IconButton className="producer-help-button" variant="ghost" aria-label="Sequencer help"><ProjectIcon name="eye" /></IconButton></TooltipTrigger>
+                  <TooltipContent className="producer-help-tooltip" side="bottom" align="start" sideOffset={8} collisionPadding={16}>
+                    <p>Click or Space to toggle. Shift-click or focus to inspect. Arrow keys move; Shift + ↑ / ↓ adjusts velocity; E opens the inspector.</p>
+                    <p><strong>Select a step</strong><br />Focus a step or Shift-click to inspect it.</p>
+                  </TooltipContent>
+                </Tooltip></TooltipProvider>
+              </div>
               <div className="producer-sequence-controls">
                 <label className="producer-tempo" htmlFor="producer-tempo">
                   <Input id="producer-tempo" type="number" inputMode="numeric" min={20} max={300} step={1} value={tempoDraft} disabled={draft || fileBusy}
@@ -653,7 +662,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
             </div>
             {draft && <div className="producer-draft-banner">Source has unapplied edits. Apply or revert the draft to edit the sequencer.</div>}
 
-            <p id="producer-step-help" className="producer-grid-help">Click or Space to toggle. Shift-click or focus to inspect. Arrow keys move; Shift + ↑ / ↓ adjusts velocity; E opens the inspector.</p>
+            <p id="producer-step-help" className="producer-sr-only">Click or Space to toggle. Shift-click or focus to inspect. Arrow keys move; Shift + ↑ / ↓ adjusts velocity; E opens the inspector.</p>
             <div className="producer-sequence-scroll" data-focused={expandedTrack !== null} role="region" aria-label="Shared beat grid" tabIndex={0} style={{ "--grid-beats": gridBeats, "--beat-width": `${beatWidth}px` } as CSSProperties}>
               <div className="producer-step-ruler" aria-hidden="true"><span className="producer-ruler-label">TRACK / PHRASE</span><div className="producer-beat-ruler">{Array.from({ length: gridBeats }, (_, beat) => <span key={beat} className={beat % 4 === 0 ? "is-beat" : ""}>{Math.floor(beat / 4) + 1}.{beat % 4 + 1}</span>)}</div><span className="producer-ruler-mix">M / S</span></div>
               <fieldset className="producer-tracks" disabled={draft || fileBusy} aria-label="Sequencer tracks">
