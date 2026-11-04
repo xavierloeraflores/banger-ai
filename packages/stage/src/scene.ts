@@ -12,6 +12,7 @@ import { PerformanceScore, trackRole, type PerformanceSnapshot } from './score.j
 import { PerformerAnimator, createInstrument } from './animation.js';
 import { createMicrophone, SingerAnimator } from './vocal.js';
 import { createAccessories } from './accessories.js';
+import { roleLabels } from './roles.js';
 
 export interface StageOptions {
   readPerformance: () => PerformanceSnapshot;
@@ -128,7 +129,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       platform.name = 'riser'; platform.userData.height = height; platform.position.y = -height / 2; platform.receiveShadow = true; anchor.add(platform);
       const strip = new THREE.Mesh(new THREE.TorusGeometry(1.51, .025, 8, 64), new THREE.MeshStandardMaterial({ color: '#65ddff', emissive: role === 'keys' ? '#b264ff' : '#53deff', emissiveIntensity: 3 }));
       strip.rotation.x = Math.PI / 2; strip.position.y = -.04; anchor.add(strip);
-      anchor.add(label(track.name, track.source.name.split('/')[1]!));
+      const caption = label(track.name, roleLabels[role]); caption.name = 'performer-label'; anchor.add(caption);
       cast.add(anchor);
       return { rig, animator: new PerformerAnimator(role, rig, instrument), accessories, anchor, instrument, role, target: new THREE.Vector3() };
     });
@@ -208,11 +209,25 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       const nextSignature = JSON.stringify([snapshot.program.tracks.map(track => [track.name, track.source]), Boolean(snapshot.vocals)]);
       if (nextSignature !== signature) { signature = nextSignature; rebuild(snapshot); }
       const motions = score.sample(snapshot);
-      performers.forEach(({ rig, animator, target, anchor }, index) => {
+      performers.forEach((performer, index) => {
         const motion = motions[index]!;
-        animator.update(options.reducedMotion ? { ...motion, playing: false, active: false, energy: 0 } : motion, options.reducedMotion ? undefined : delta);
-        target.copy(anchor.position).add(rig.body.position);
+        const role = motion.role ?? trackRole(snapshot.program.tracks[index]!);
+        if (role !== performer.role) {
+          disposeObjects(performer.instrument); performer.instrument.removeFromParent();
+          performer.instrument = createInstrument(role, performer.rig);
+          performer.anchor.add(performer.instrument);
+          performer.animator = new PerformerAnimator(role, performer.rig, performer.instrument, true);
+          performer.role = role;
+          const oldLabel = performer.anchor.getObjectByName('performer-label') as THREE.Sprite;
+          labels.delete(oldLabel);
+          const texture = oldLabel.material.map!; texture.dispose(); ownedTextures.delete(texture);
+          oldLabel.material.dispose(); oldLabel.removeFromParent();
+          const caption = label(snapshot.program.tracks[index]!.name, roleLabels[role]); caption.name = 'performer-label'; performer.anchor.add(caption);
+        }
+        performer.animator.update(options.reducedMotion ? { ...motion, playing: false, active: false, energy: 0 } : motion, options.reducedMotion ? undefined : delta);
+        performer.target.copy(performer.anchor.position).add(performer.rig.body.position);
       });
+      renderer.domElement.dataset.instruments = performers.map(performer => performer.role).join(',');
       const vocalMotion = singer?.animator.update(snapshot.vocals, snapshot.program.tempo, options.reducedMotion, delta);
       if (singer) singer.target.copy(singer.anchor.position).add(singer.rig.body.position);
       renderer.domElement.dataset.singing = String(vocalMotion?.active ?? false);

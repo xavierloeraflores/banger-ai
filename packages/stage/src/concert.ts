@@ -7,7 +7,7 @@ export function concertLayout(roles: PerformanceRole[], compact = false): StageP
   const positions: StagePosition[] = roles.map(() => ({ x: 0, y: 0, z: 0 }));
   const columns = compact ? 2 : 5;
   const drums = roles.flatMap((role, i) => role === 'drums' ? [i] : []);
-  const front = roles.flatMap((role, i) => role === 'dance' || role === 'bass' ? [i] : []);
+  const front = roles.flatMap((role, i) => role !== 'drums' && role !== 'keys' ? [i] : []);
   const keys = roles.flatMap((role, i) => role === 'keys' ? [i] : []);
   const row = (indices: number[], rear: boolean) => indices.forEach((index, i) => {
     const r = Math.floor(i / columns), count = Math.min(columns, indices.length - r * columns);

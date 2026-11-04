@@ -12,7 +12,7 @@ function noiseBuffer(context: BaseAudioContext, metal: boolean): AudioBuffer {
   }
   buffers[index] = buffer; return buffer;
 }
-export function synthForEvent(event: MusicEvent): SynthConfig | null | undefined {
+export function synthForEvent(event: Pick<MusicEvent, 'track' | 'step'>): SynthConfig | null | undefined {
   const config = event.track.modular === null ? null : event.track.modular?.config ?? event.track.synth;
   return config ? {...config,...event.step.locks} : config;
 }

@@ -38,7 +38,7 @@ export class PoseSmoother {
 }
 
 /** Aim a mitten's end at an instrument contact point, with a small plush stretch. */
-export function reachInstrument(rig: CharacterRig, side: 'left' | 'right', reference: Group, x: number, y: number, z: number): void {
+export function reachInstrument(rig: CharacterRig, side: 'left' | 'right', reference: Group, x: number, y: number, z: number, minimumScale = 1): void {
   const arm = side === 'left' ? rig.leftArm : rig.rightArm;
   const hand = side === 'left' ? rig.sockets.leftHand : rig.sockets.rightHand;
   reference.updateWorldMatrix(true, false);
@@ -49,6 +49,6 @@ export function reachInstrument(rig: CharacterRig, side: 'left' | 'right', refer
   direction.subVectors(destination, arm.position);
   const reach = direction.length();
   restDirection.copy(hand.position);
-  arm.scale.setScalar(Math.min(1.13, Math.max(1, reach / restDirection.length())));
+  arm.scale.setScalar(Math.min(1.13, Math.max(minimumScale, reach / restDirection.length())));
   arm.quaternion.setFromUnitVectors(restDirection.normalize(), direction.normalize());
 }

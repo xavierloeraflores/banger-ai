@@ -39,6 +39,8 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await evaluate("document.querySelector('[data-smoke-click]')?.removeAttribute('data-smoke-click')");
   };
   try {
+    // Keep the camera check running when another app occludes the test window.
+    window.webContents.setBackgroundThrottling(false);
     await enterStudio(window);
     window.setSize(1440, 1000); window.show(); window.focus();
     const trackCount = compileMusic(await evaluate("document.querySelector('#producer-source').value")).tracks.length;

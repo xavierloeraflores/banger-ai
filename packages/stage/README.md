@@ -10,9 +10,14 @@
 
 Drum tracks play percussion, bass and pluck tracks play a bass guitar, keys/organ/bell tracks play keyboards, and lead/pad tracks dance. Each track keeps its own character even while muted or silent. The character is a procedural interpretation of the supplied front-view reference, using a skinned hood and body, articulated limbs and fleece fibers. It is not a scanned asset.
 
+Synth overrides follow the engine's modular patch, synth config and step-lock precedence. The six instrument presets use a trumpet, transverse flute, retro keyboard, violin and bow, kalimba, and effects slider. Recognition compares sound settings, so renamed modular patches and tracks without preset names work. Nearby edits retain their sound family; unknown synth patches use keys. The original source mappings apply when there is no synth override. Disconnected or disabled patches do not perform.
+
+Held notes keep the flute and bow raised, while brass valves, chiptune keys and kalimba thumbs react to onsets. The effects slider follows the scheduled gate. Simultaneous notes share one gesture and the longest chord voice sets its duration. These are stylized mitten gestures within the existing rig's reach limits, not anatomical fingerings. Instrument replacements retain the character and outfit, blend its pose, and dispose the old prop's GPU resources.
+
 The stage blends each performer's displayed pose toward its current score pose with time-based damping. Position and scale interpolate linearly, while rotations use quaternion slerp. A fixed target settles 95% in about 165 ms, including when another note interrupts the movement. Drumsticks attach after blending so they stay in the hands. Score sampling, key presses and audio timing remain immediate. New performers and still mode use the target pose directly; long frame gaps have a bounded blend step.
 
 Run `pnpm --filter @banger/stage test` for rig and score tests. After `pnpm fullbuild`, run `pnpm --filter @banger/desktop exec electron scripts/smoke-stage.mjs` for the interactive modal check. Add `--keep-open` to leave the final window open.
+Run `pnpm --filter @banger/desktop exec electron scripts/smoke-synth-stage.mjs` for all six presets, modular overrides, live step-lock instrument replacement, real audio playback, close-up renders and disposal/reopen checks.
 
 ## Recorded vocals
 
