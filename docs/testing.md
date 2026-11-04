@@ -85,6 +85,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Musical options | `pnpm --filter @banger/desktop smoke:musical` |
 | Raw .banger editor | `pnpm --filter @banger/desktop exec electron scripts/smoke-source-editor.mjs` |
 | Muse Hero | `pnpm --filter @banger/desktop exec electron scripts/smoke-muse-hero.mjs` |
+| Library shuffle | `pnpm --filter @banger/desktop exec electron scripts/smoke-library-shuffle.mjs` |
 | Library/Band/Muse Hero playback | `pnpm --filter @banger/desktop exec electron scripts/smoke-playback-handoff.mjs` |
 | Library sing-along | `pnpm --filter @banger/desktop exec electron scripts/smoke-sing-along.mjs` |
 | Vocal stage | `pnpm --filter @banger/desktop exec electron scripts/smoke-vocal-stage.mjs` |

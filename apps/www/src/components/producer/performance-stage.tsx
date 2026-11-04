@@ -15,6 +15,8 @@ export const BandStageButton = forwardRef<HTMLButtonElement, ComponentPropsWitho
 });
 
 interface Props {
+  playbackKey?: string;
+  disabled?: boolean;
   duration?: number;
   onOpen?: () => void;
   onClose?: () => void;
@@ -30,7 +32,7 @@ interface Props {
   onPlay: () => Promise<void>;
   onStop: () => void;
 }
-export function PerformanceStage({ duration, onOpen, onClose, program, fileName, heroDisabled, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
+export function PerformanceStage({ playbackKey, disabled, duration, onOpen, onClose, program, fileName, heroDisabled, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
   const singer = Boolean(readPerformance().vocals);
   const performers = tracks + (singer ? 1 : 0);
   const dialog = useRef<ModalHandle>(null);
@@ -115,7 +117,7 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
     setFailure(null); setStatus("loading"); setOpen(true); dialog.current?.showModal();
   }
   return <>
-    <BandStageButton ref={trigger} onClick={show} />
+    <BandStageButton disabled={disabled} ref={trigger} onClick={show} />
     <Modal ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-label="Band stage" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else if (controlsOpen) { event.preventDefault(); setControlsOpen(false); controlsTrigger.current?.focus(); } else { setOpen(false); onClose?.(); } }} onClose={() => { if (dialog.current?.open) return; setHero(false); setControlsOpen(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
         <Button variant="secondary" onClick={close} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
@@ -125,7 +127,7 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
         {open && status === "error" && <div className="performance-overlay" role="alert"><strong>Couldn’t open the stage</strong><p>{failure}</p><p>Close and reopen to retry. The studio is still available.</p></div>}
         {open && performers === 0 && status === "ready" && <div className="performance-overlay">Add a track to meet your first performer.</div>}
       </div>
-      {open && hero && <MuseHero duration={duration} program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
+      {open && hero && <MuseHero key={playbackKey} duration={duration} program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
       <Button ref={heroTrigger} className="performance-hero-trigger" variant="secondary" hidden={hero} disabled={heroDisabled || status !== "ready" || tracks === 0} aria-expanded={hero} aria-controls="muse-hero" onClick={() => setHero(true)}>Muse Hero <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7h10c2 0 3 1.5 3.5 4l1 6c.4 2-1.8 3-3.2 1.6L15.5 16h-7l-2.8 2.6C4.3 20 2.1 19 2.5 17l1-6C4 8.5 5 7 7 7Z M7.5 10v4 M5.5 12h4" /><circle cx="16" cy="11" r=".7" fill="currentColor" /><circle cx="18" cy="13" r=".7" fill="currentColor" /></svg></Button>
       <footer className="performance-footer" hidden={hero}>
         <div className="performance-transport"><Button variant="primary" onClick={() => { if (playing || starting) onStop(); else void onPlay(); }} disabled={!playing && !starting && (status !== "ready" || performers === 0)}>{playing || starting ? "Stop" : "Play"}</Button><span>{tempo} BPM<span className="performance-divider">/</span>{performers} {performers === 1 ? "performer" : "performers"}</span></div>

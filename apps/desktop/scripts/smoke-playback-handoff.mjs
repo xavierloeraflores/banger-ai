@@ -45,7 +45,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
   try {
     await enterStudio(window);
     window.setContentSize(1440, 1000); window.setAlwaysOnTop(true); window.show(); window.focus(); window.webContents.focus();
-    await evaluate(`(() => { const field = document.querySelector('[aria-label="View"]'); field.value = 'library'; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await click('.app-sidebar-nav button[aria-label="Library"]');
     await click('[aria-label="Play Continuous song"]');
     await wait(`${audio}.duration === 40 && !${audio}.paused`, 'library playback');
     await evaluate(`${audio}.currentTime = 30`);

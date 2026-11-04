@@ -5,6 +5,7 @@ import type { PerformanceSnapshot, VocalWord } from '@banger/stage';
 
 export interface StageRecording {
   id: string;
+  name?: string;
   element: HTMLAudioElement;
   words: readonly VocalWord[];
   vocals: boolean;
