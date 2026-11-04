@@ -105,7 +105,7 @@ app.whenReady().then(async () => {
         await evaluate(`(() => { const wanted=[${fullSend !== 'lyrics'},${fullSend !== 'beat'},true]; [...document.querySelectorAll('.ai-chat-permissions input')].forEach((input,index)=>{if(input.checked!==wanted[index])input.click();}); })()`);
         await setText('#ai-chat-prompt', 'Change the tempo to 111 and write hopeful lyrics within the enabled permissions.');
         await click('Send');
-        await wait("document.querySelector('.ai-chat-footer').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-transcript').textContent.includes('Full Send complete') || Boolean(document.querySelector('.ai-chat-footer [role=alert]'))");
+        await wait("document.querySelector('.ai-chat-footer').textContent.includes('Produce and Add to Library complete') || document.querySelector('.ai-chat-transcript').textContent.includes('Produce and Add to Library complete') || Boolean(document.querySelector('.ai-chat-footer [role=alert]'))");
         assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"), '');
         assert.equal(await evaluate("document.querySelector('#producer-source').value"), fullSend === 'lyrics' ? fixture : fixture.replace('tempo 124;', 'tempo 111;'));
         await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
@@ -113,7 +113,7 @@ app.whenReady().then(async () => {
         assert.ok(songs.length >= 2);
         assert.equal(songs.some(song => song.songType === 'vocal'), fullSend !== 'beat');
         if (fullSend === 'beat') assert.equal(await evaluate("(async()=>{const token=await window.bangerStorage.prepare('night-drive.banger');return (await window.bangerStorage.readDraft(token)).lyrics;})()"), 'Saved project lyrics');
-        console.log(`PASS: hosted Full Send ${fullSend}, permission-scoped edits, rendered audio and persisted library`);
+        console.log(`PASS: hosted Produce and Add to Library ${fullSend}, permission-scoped edits, rendered audio and persisted library`);
       } else {
         await click('Use studio WAV');
         await wait("document.querySelector('.music-workshop').textContent.includes('Draft fitted and saved') || Boolean(document.querySelector('.music-workshop [role=alert]'))");

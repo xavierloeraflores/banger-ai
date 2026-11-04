@@ -100,7 +100,7 @@ async function exercise(window, desktop) {
 
   await openChat();
   await waitFor("document.activeElement.id === 'ai-chat-prompt'");
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => [input.parentElement.textContent, (input.getAttribute('aria-checked') === 'true')])"), [["Edit beat", true], ["Edit lyrics", false], ["Full Send", false]]);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => [input.parentElement.textContent, (input.getAttribute('aria-checked') === 'true')])"), [["Edit beat", true], ["Edit lyrics", false], ["Produce and Add to Library", false]]);
   assert.equal(await evaluate("!!document.querySelector('[aria-label=\"AI editing target\"]')"), false);
   await input("ai-chat-prompt", "Keep this draft");
   await closeChat();

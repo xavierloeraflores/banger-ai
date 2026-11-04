@@ -207,7 +207,7 @@ async function run(){
     await evaluate(`(() => { const wanted=[${fullSendMode!=='lyrics'},${fullSendMode!=='beat'},true]; [...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].forEach((input,index)=>{if((input.getAttribute('aria-checked') === 'true')!==wanted[index])input.click();}); })()`);
     await fill('#ai-chat-prompt',fullSendMode==='lyrics'?'Write a hopeful morning song':'Change only the tempo to 111'+(fullSendMode==='both'?' and write a hopeful morning song':''));
     await click('Send');
-    await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-footer').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-footer [role=alert]')");
+    await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Produce and Add to Library complete') || document.querySelector('.ai-chat-footer').textContent.includes('Produce and Add to Library complete') || document.querySelector('.ai-chat-footer [role=alert]')");
     assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"),'');
     const expected=fullSendMode==='lyrics'?originalSource:originalSource.replace(/tempo \d+;/,'tempo 111;');
     assert.equal(await evaluate("document.querySelector('#producer-source').value"),expected);
@@ -234,7 +234,7 @@ async function run(){
     }
     await closeChat();await click('Library');
     await wait(`document.querySelectorAll('.library-card').length>=${cloud?1:2}`);
-    console.log(`${cloud?'Browser':'Desktop'} Full Send ${fullSendMode} passed: edited source, WAV, ${fullSendMode==='beat'?'no provider calls':'analysis, saved chunk lyrics, vocal generation'}, library.`);
+    console.log(`${cloud?'Browser':'Desktop'} Produce and Add to Library ${fullSendMode} passed: edited source, WAV, ${fullSendMode==='beat'?'no provider calls':'analysis, saved chunk lyrics, vocal generation'}, library.`);
     return;
   }
   if(process.argv.includes('--draft')){

@@ -230,8 +230,8 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
     const latest=current.current;
     const unsaved=latest.song?.plan.chunks.some((chunk,index)=>latest.lyrics[index]!==lyricsOf(chunk.text)||(latest.styles[index]??'')!==(chunk.vocalStyle??''));
     if(request.current||(!afterEdits&&running)||unsaved||draftDirty)throw new Error('Save your lyrics and vocal styles and wait for the current operation to finish.');
-    if(withVocals&&!vocals)throw new Error('Add an ElevenLabs API key in Settings to use Full Send with lyrics.');
-    if(withVocals&&!backend)throw new Error('Connect a cloud project or wait for the song to load before using Full Send with lyrics.');
+    if(withVocals&&!vocals)throw new Error('Add an ElevenLabs API key in Settings to use Produce and Add to Library with lyrics.');
+    if(withVocals&&!backend)throw new Error('Connect a cloud project or wait for the song to load before using Produce and Add to Library with lyrics.');
   }
   const fullSend:FullSend=async({file,vocals:withVocals},signal,progress)=>{
     checkFullSend(withVocals,true);
@@ -248,7 +248,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
       const previousId=current.current.song?.id??list[0]?.id;
       const previous=withVocals&&previousId?await backend!.get(previousId):null;
       const lyricText=existingDraft?.lyrics??previous?.plan.chunks.map(chunk=>chunk.text).join('\n\n');
-      if(withVocals&&!lyricText?.trim())throw new Error('No saved lyrics are available. Ask the agent to write lyrics before Full Send.');
+      if(withVocals&&!lyricText?.trim())throw new Error('No saved lyrics are available. Ask the agent to write lyrics before Produce and Add to Library.');
       report('Rendering WAV…');
       const rendered=await renderWav(compileMusic(file.source));
       signal.throwIfAborted();
@@ -258,7 +258,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
         signal.throwIfAborted();
         if(window.bangerStorage)await window.bangerStorage.addToLibrary(file.name,file.source,new Uint8Array(rendered.wav),songToken);
         else await saveLibraryBundle(file.name.replace(/\.banger$/i,''),rendered.wav,{[file.name]:file.source,'original.wav':rendered.wav},beat,undefined,record);
-        return 'Full Send complete. WAV added to your library.';
+        return 'Produce and Add to Library complete. WAV added to your library.';
       }
       const api=backend!;
       report('Uploading WAV and analyzing chunks…');
@@ -280,7 +280,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
       report('Adding completed song to library…');
       await exportSong(true,version,false);
       await load(version.id);
-      return 'Full Send complete. Vocalized song added to your library.';
+      return 'Produce and Add to Library complete. Vocalized song added to your library.';
     } finally {request.current=false;setBusy(false);}
   };
   function discard(){return !dirty||window.confirm('Discard unsaved lyrics and vocal styles?');}

@@ -133,7 +133,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
     if (!languageModel || !text || request.current || fileBusy) return;
     if(fullSend && (permissions.beat || permissions.lyrics)) {
       try { onFullSendCheck(permissions.lyrics); }
-      catch(cause){setError(cause instanceof Error?cause.message:"Full Send is unavailable.");return;}
+      catch(cause){setError(cause instanceof Error?cause.message:"Produce and Add to Library is unavailable.");return;}
     }
     if (permissions.beat && projectMode && projectDirty && !action) {
       setError(null);
@@ -182,9 +182,9 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
         if (permissions.lyrics && !fullSend) onProjectComplete();
         if(fullSend && (permissions.beat || permissions.lyrics)) {
           controller.signal.throwIfAborted();
-          if(!result.ok || result.reply.status !== "completed")throw new Error("Full Send stopped because the project task did not complete. Review its saved changes before retrying.");
-          if(result.reply.changedPaths?.some(path=>path.endsWith(".banger")&&path!==snapshot.activeFile))throw new Error("The agent edited another song. Open that song before running Full Send so its beat and lyrics stay together.");
-          if(!snapshot.activeFile)throw new Error("Open the song you want to send, then run Full Send.");
+          if(!result.ok || result.reply.status !== "completed")throw new Error("Produce and Add to Library stopped because the project task did not complete. Review its saved changes before retrying.");
+          if(result.reply.changedPaths?.some(path=>path.endsWith(".banger")&&path!==snapshot.activeFile))throw new Error("The agent edited another song. Open that song before running Produce and Add to Library so its beat and lyrics stay together.");
+          if(!snapshot.activeFile)throw new Error("Open the song you want to send, then run Produce and Add to Library.");
           setNotice(await onFullSend({file:completedFile,vocals:permissions.lyrics},controller.signal,setProgress));
         }
       } catch (cause) {
@@ -208,7 +208,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
       const reply = await sendChat({ permissions, messages: [...messages, { role: "user", content: text }], currentFile: { name: fileName, source }, previousFiles, targetFile: selectedTarget ?? fileName, targetVersion: selectedTarget ? "generated" : "editor" }, controller.signal);
       if(fullSend && reply.files.length>1){
         setTurns(previous=>[...previous,{prompt:text,reply,revision:snapshotRevision}]);
-        throw new Error("Full Send needs one song. Your proposals are kept; ask the agent to edit a single song.");
+        throw new Error("Produce and Add to Library needs one song. Your proposals are kept; ask the agent to edit a single song.");
       }
       if(permissions.lyrics && reply.lyricPrompt)reply.text += `\n\n${await onLyrics(`${reply.lyricPrompt}\nOriginal user request; preserve these edit restrictions:\n${text}`,controller.signal)}`;
       if (request.current !== controller) return;
@@ -251,13 +251,23 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
     finally { savingRef.current = false; setSaving(false); }
   }
 
+  const beatTarget = projectMode ? activeFile || fileName : selectedTarget || fileName;
+  const lyricsTarget = (activeFile || fileName).replace(/\.banger$/i, "") + ".lyrics";
+  const projectName = folderName || fileName.replace(/\.banger$/i, "");
+  const editTargets = [permissions.beat && beatTarget, permissions.lyrics && lyricsTarget].filter(Boolean) as string[];
+
   if (!active) return null;
   return <>
     <Panel id="ai-chat-view" className="producer-ai" aria-labelledby="ai-chat-title">
     <header className="ai-chat-header">
       <h1 id="ai-chat-title" className="producer-sr-only">{turns[0]?.prompt.slice(0, 70) || "New chat"}</h1>
       <AIModelSelect id="chat-ai" mode="model-menu" disabled={busy} />
-      <span className="ai-chat-project" title={folderName || fileName}>{folderName || fileName}</span>
+      <div className="ai-chat-project" aria-label="Project and files to edit">
+        <span className="ai-chat-project-name" title={projectName}>{projectName}</span>
+        <ul className="ai-chat-edit-targets">
+          {editTargets.length ? editTargets.map(path => <li key={path} title={path}>{path}</li>) : <li>No files selected for editing</li>}
+        </ul>
+      </div>
     </header>
     <div ref={transcript} onScroll={event => { const element = event.currentTarget; followTranscript.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
       {!turns.length && !busy && <div className="ai-chat-empty">
@@ -285,7 +295,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
     </div>
     <div className="ai-chat-composer-area">
     <details className="ai-chat-controls">
-      <summary>Song controls <span>{[permissions.beat && "Beat", permissions.lyrics && "Lyrics", fullSend && "Full Send"].filter(Boolean).join(" · ") || "Reply only"}</span></summary>
+      <summary>Song controls <span>{[permissions.beat && "Beat", permissions.lyrics && "Lyrics", fullSend && "Produce and Add to Library"].filter(Boolean).join(" · ") || "Reply only"}</span></summary>
     {permissions.beat && (projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
       <Select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
         <option value="">{fileName} · current editor</option>
@@ -296,7 +306,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
       <legend className="producer-sr-only">Allow AI edits</legend>
       <label><Checkbox  checked={permissions.beat} onCheckedChange={checked => setPermissions(previous => ({ ...previous, beat: checked === true }))} />Edit beat</label>
       <label><Checkbox  checked={permissions.lyrics} onCheckedChange={checked => setPermissions(previous => ({ ...previous, lyrics: checked === true }))} />Edit lyrics</label>
-      <label><Checkbox  checked={fullSend} onCheckedChange={checked =>setFullSend(checked === true)} />Full Send</label>
+      <label><Checkbox  checked={fullSend} onCheckedChange={checked =>setFullSend(checked === true)} />Produce and Add to Library</label>
       {fullSend && (permissions.beat || permissions.lyrics) && <span>{permissions.lyrics?"Generate vocals with ElevenLabs and add the song to your library.":"Render a WAV and add it to your library."}</span>}
       {!permissions.beat && !permissions.lyrics && <span>Reply only. No files will be edited.</span>}
     </fieldset>
@@ -313,8 +323,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
       </div>
     </form>
     <div className="ai-chat-footer">
-      <p className="ai-chat-keyboard-hint">Enter to send · Shift + Enter for a new line</p>
-      {fullSend && permissions.lyrics && !vocals && <p>Add an ElevenLabs API key in Settings to use Full Send with lyrics.</p>}
+      {fullSend && permissions.lyrics && !vocals && <p>Add an ElevenLabs API key in Settings to use Produce and Add to Library with lyrics.</p>}
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>

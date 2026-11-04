@@ -8,7 +8,7 @@ export type FullSend = (input: FullSendRequest, signal: AbortSignal, progress: (
 export function assertLyricsPreserved(original: string, edits: { index: number; lyrics: string }[]) {
   const words = (text: string) => text.replace(/\[[^\]]*\]|\{[^}]*\}/g, '').replace(/\s+/g, ' ').trim();
   const fitted = [...edits].sort((a, b) => a.index - b.index).map(edit => edit.lyrics).join('\n');
-  if (words(original) !== words(fitted)) throw new Error('Fitting changed the saved lyrics. Full Send stopped before vocal generation; review the lyrics in Vocal Studio.');
+  if (words(original) !== words(fitted)) throw new Error('Fitting changed the saved lyrics. Produce and Add to Library stopped before vocal generation; review the lyrics in Vocal Studio.');
 }
 
 /** Only an acknowledged operation may feed the next paid request. */
@@ -21,11 +21,11 @@ export async function waitForMusic(backend: MusicBackend, operation: MusicOperat
     if (latest.status === 'completed') {
       const version = await backend.get(latest.musicId);
       signal.throwIfAborted();
-      if (version.version !== latest.resultVersion) throw new Error('The composition changed during Full Send. Review it before continuing.');
+      if (version.version !== latest.resultVersion) throw new Error('The composition changed during Produce and Add to Library. Review it before continuing.');
       return version;
     }
-    if (['failed', 'needs_review', 'conflict'].includes(latest.status)) throw new Error(latest.error || `Full Send stopped: ${latest.status}.`);
-    if (Date.now() >= deadline) throw new Error('The music request is still pending. Check Vocal Studio before retrying Full Send.');
+    if (['failed', 'needs_review', 'conflict'].includes(latest.status)) throw new Error(latest.error || `Produce and Add to Library stopped: ${latest.status}.`);
+    if (Date.now() >= deadline) throw new Error('The music request is still pending. Check Vocal Studio before retrying Produce and Add to Library.');
     await new Promise<void>((resolve, reject) => {
       const abort = () => { clearTimeout(timer); reject(signal.reason); };
       const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, 300);
