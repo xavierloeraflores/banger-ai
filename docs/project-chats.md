@@ -28,3 +28,11 @@ recent IDs and recheck access when reopening. The sidebar shows the 30 most
 recent projects. Missing or moved folders show an error; open the folder again
 to reconnect it. A clean saved song refreshes from disk when reopened, while
 unsaved drafts remain intact.
+
+Record controls sits beside Song controls in chat. Its checkboxes choose which
+songs the agent may edit, including each song's lyrics and drafts. Unchecked
+songs remain readable for context. Allow new songs controls song creation
+separately. The selection is saved per chat and cannot change during a task.
+Project-level New chat enables all songs. Starting a chat from Beat Studio or
+Vocal Studio enables only the current song and disables new song creation until
+the user expands the scope. Song controls still chooses beat and lyric editing.

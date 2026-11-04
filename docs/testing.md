@@ -141,3 +141,10 @@ The library options check also covers song menus, record creation and membership
 removing songs without deleting audio, track ordering, and reopening the original
 project. Native unit tests verify that metadata edits preserve audio, lyrics,
 project links, and concurrent renames.
+
+Chat Record controls use
+`pnpm --filter @banger/desktop exec electron scripts/smoke-record-controls.mjs`.
+This checks project-wide and song-specific defaults, keyboard selection,
+permissions during a task, blocked writes to unchecked songs, saved selections,
+and narrow layouts. Also run `smoke:chat`, `smoke:workspace`, and
+`smoke-project-chats.mjs` when changing these controls.

@@ -247,8 +247,8 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     }
     return true;
   }
-  function addChat(next = snapshotRef.current, open = true) {
-    const chat: ProjectChat = { id: crypto.randomUUID(), title: "New chat", snapshot: next, status: "idle" };
+  function addChat(next = snapshotRef.current, open = true, songOnly = false) {
+    const chat: ProjectChat = { id: crypto.randomUUID(), title: "New chat", snapshot: next, status: "idle", ...(songOnly ? { history: { prompt: "", turns: [], targetFile: null, fullSend: false, permissions: { beat: !vocalStudio, lyrics: vocalStudio, songs: [next.workspaceFile?.path ?? next.fileName], allowNewSongs: false } } } : {}) };
     updateChats(previous => [...previous.map(item => item.id === activeChatRef.current ? { ...item, snapshot: snapshotRef.current } : item), chat]);
     activeChatRef.current = chat.id; setActiveChat(chat.id);
     setChatView(open);
@@ -864,14 +864,14 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         </div>
         {studio === "library" && <SongLibrary onOpenProject={id => void openRecent(id)} onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
       </Tabs>
-        {hasProject && !chatView && <AIChatLauncher onNewChat={() => { if (canSwitchChat()) addChat(); }} />}
+        {hasProject && !chatView && <AIChatLauncher onNewChat={() => { if (canSwitchChat()) addChat(snapshotRef.current, true, beatStudio || vocalStudio); }} />}
         {hasProject && chats.map(chat => {
           const selected = chat.id === activeChat;
           const bound = selected ? snapshot : chat.snapshot;
           return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected && chatView} initialHistory={chat.history} onUpdate={updateChat}
             onFullSend={runFullSend} onFullSendCheck={checkFullSend} onLyrics={runLyrics} vocalStudio={vocalStudio} source={bound.source} fileName={bound.fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy || chats.some(other => other.id !== chat.id && other.status === "running" && other.snapshot.folder?.id === bound.folder?.id)}
             onLoad={(file, requestRevision, automatic) => { if (activeChatRef.current === chat.id) loadGeneratedFile(file, requestRevision, automatic); }}
-            folderName={bound.folder?.name ?? ""} projectEpoch={projectEpoch} activeFile={bound.workspaceFile?.path} projectDirty={bound.source !== bound.savedSource}
+            folderName={bound.folder?.name ?? ""} projectPaths={bound.folder?.paths} projectEpoch={projectEpoch} activeFile={bound.workspaceFile?.path} projectDirty={bound.source !== bound.savedSource}
             onResolveEdits={resolveEditsForAI} onProjectComplete={() => { if (activeChatRef.current === chat.id && !vocalEditsRef.current.dirty && !vocalEditsRef.current.busy) setProjectEpoch(value => value + 1); }}
             onProjectFile={(file, requestRevision) => {
               const current = chatsRef.current.find(item => item.id === chat.id);

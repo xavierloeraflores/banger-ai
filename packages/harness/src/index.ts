@@ -1,5 +1,5 @@
 import { generateText, isStepCount, tool, type ModelMessage } from "ai";
-import { editPermissionsSchema, editingInstructions, type EditPermissions } from "@banger/agent";
+import { editPermissionsSchema, editingInstructions, canEditSong, songPath, type EditPermissions } from "@banger/agent";
 import { BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
 import { type ProjectFile, type ProjectWorkspace, type Validation } from "./workspace.js";
@@ -53,6 +53,7 @@ export class ProjectSession {
     const permissions = editPermissionsSchema.parse(options.permissions ?? { beat: true, lyrics: true });
     this.running = true;
     const changed = new Set<string>();
+    const createdSongs = new Set<string>();
     const unresolved = new Set<string>();
     const observed = new Map<string, string>();
     const signal = AbortSignal.any([AbortSignal.timeout(this.selected.timeoutMs ?? 300000), ...(options.signal ? [options.signal] : [])]);
@@ -64,6 +65,13 @@ export class ProjectSession {
         this.emit({ type: "tool-start", name, ...(path ? { path } : {}) });
         try {
           if (mutation && !(name === "write_file" || name === "edit_file" ? permissions.beat : permissions.lyrics)) throw new Error("Editing is disabled for this file type.");
+          if (mutation && path) {
+            const song = songPath(path);
+            const paths = await this.workspace.list();
+            // A differently cased path can identify the same file on desktop.
+            const existing = paths.find(path => path === song) ?? paths.find(path => path.toLowerCase() === song.toLowerCase());
+            if (!createdSongs.has(song) && !canEditSong(permissions, existing ?? song, existing !== undefined || !path.endsWith(".banger"))) throw new Error("This song is not selected in Record controls, or creating songs is disabled.");
+          }
           const value = await action();
           if (mutation && path) unresolved.delete(path);
           this.emit({ type: "tool-result", name, ok: true, ...(path ? { path } : {}) });
@@ -79,7 +87,9 @@ export class ProjectSession {
       toolQueue = task.catch(() => undefined);
       return task;
     };
+    let originalSongs = new Set<string>();
     const saved = (file: ProjectFile) => {
+      if (file.path.endsWith(".banger") && !originalSongs.has(file.path)) createdSongs.add(file.path);
       observed.set(file.path, file.source); changed.add(file.path); this.lastActiveFile = file.path;
       this.emit({ type: "file-changed", file });
       return { path: file.path, message: file.path.endsWith(".banger") ? "Compiled and saved." : file.path.endsWith(".draft.json") ? "Lyric draft saved." : "Lyrics saved with a history revision." };
@@ -87,6 +97,7 @@ export class ProjectSession {
     try {
       signal.throwIfAborted();
       const paths = await this.workspace.list();
+      originalSongs = new Set(paths);
       const lyricsPaths = await this.workspace.listLyrics();
       const activeFile = options.activeFile ?? this.lastActiveFile;
       const read = (path: string) => path.endsWith(".banger") ? this.workspace.read(path) : this.workspace.readLyrics(path);

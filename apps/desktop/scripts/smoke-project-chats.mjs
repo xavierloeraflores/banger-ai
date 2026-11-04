@@ -32,7 +32,7 @@ let started = false;
 app.on('browser-window-created', (_event, window) => { if (started) return; started = true; window.webContents.once('did-finish-load', () => void run(window)); });
 await import('../dist/main.js');
 async function run(window) {
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = code => window.webContents.executeJavaScript(code, true).catch(error => { throw new Error(`${error.message} Script: ${code}`); });
   async function wait(code) { for (let i = 0; i < 300; i++) { if (await evaluate(`Boolean(${code})`)) return; await delay(25); } throw new Error(`Missing: ${code}\n${await evaluate("document.body.innerText.slice(-1800)")}`); }
   const click = label => evaluate(`(() => { const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === ${JSON.stringify(label)} && item.checkVisibility()); if (!button || button.disabled) throw new Error('Unavailable: ' + ${JSON.stringify(label)}); button.click(); })()`);
   const input = (id, value) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', {bubbles:true})); })()`);

@@ -320,3 +320,20 @@ test("Muse reasoning uses the direct Meta request field and Gateway provider nam
   for (const reasoningLevel of ["minimal", "max", undefined]) await runBangerAgent(request, selectModel({ provider: "meta", model: "muse-wonder-1.0", key: "fixture", reasoningLevel }, fetcher));
   assert.deepEqual(bodies.map(body => body.reasoning_effort), ["minimal", "max", undefined]);
 });
+
+test('record controls reject unchecked proposals, lyric requests and new songs', async () => {
+  const toolCall = (toolName, input) => ({ type: 'tool-call', toolCallId: toolName, toolName, input: JSON.stringify(input) });
+  const model = new MockLanguageModelV4({ doGenerate: [
+    response([
+      toolCall('edit_banger_file', { name: 'loop.banger', edits: [{ oldText: 'tempo 120', newText: 'tempo 90' }] }),
+      toolCall('request_lyrics', { prompt: 'Write new lyrics' }),
+      call('create', 'new.banger', source),
+    ], 'tool-calls'),
+    response([toolCall('edit_banger_file', { name: 'allowed.banger', edits: [{ oldText: 'tempo 120', newText: 'tempo 100' }] })], 'tool-calls'),
+    response([{ type: 'text', text: 'Updated the selected song.' }]),
+  ] });
+  const result = await runBangerAgent({ ...request, previousFiles: [{ name: 'allowed.banger', source }], permissions: { beat: true, lyrics: true, songs: ['allowed.banger'], allowNewSongs: false } }, { model, name: 'test' });
+  assert.deepEqual(result.files.map(file => file.name), ['allowed.banger']);
+  assert.equal(result.lyricPrompt, undefined);
+  assert.match(JSON.stringify(model.doGenerateCalls[1].prompt), /not selected in Record controls/);
+});

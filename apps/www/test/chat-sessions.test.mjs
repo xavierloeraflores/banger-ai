@@ -26,3 +26,12 @@ test('malformed storage cannot crash chat rendering', () => {
   store.values.set('banger.project-chats.v1:one',JSON.stringify([{...fixture,history:{...fixture.history,turns:[{prompt:'bad',reply:{text:'reply',model:'model',files:[null]}}]}}]));
   assert.equal(store.readChats().length, 0);
 });
+
+test('record song permissions persist per chat, including an empty selection', () => {
+  const store = sessions();
+  const permissions = { beat: true, lyrics: true, songs: ['song.banger'], allowNewSongs: false };
+  store.writeChats([{ ...fixture, history: { ...fixture.history, permissions } }, { ...fixture, id: 'empty', history: { ...fixture.history, permissions: { ...permissions, songs: [] } } }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(store.readChats().map(chat => chat.history.permissions))), [permissions, { ...permissions, songs: [] }]);
+  store.writeChats([{ ...fixture, history: { ...fixture.history, permissions: { ...permissions, songs: 'song.banger' } } }]);
+  assert.equal(store.readChats().length, 0);
+});
