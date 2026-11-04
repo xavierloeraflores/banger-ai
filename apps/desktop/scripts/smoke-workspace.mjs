@@ -81,8 +81,8 @@ async function run(window) {
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await click("Raw .banger");
     await input("producer-source", source + "\n// unsaved");
-    const openChat = () => evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
-    const closeChat = () => evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+    const openChat = () => evaluate(`(document.querySelector('.app-sidebar-chat[aria-current="page"]') || [...document.querySelectorAll('.app-sidebar-chat')].at(-1)).click()`);
+    const closeChat = () => evaluate("document.querySelector('[aria-label=\"Beat Studio\"]').click()");
     await openChat();
     await input("ai-chat-prompt", "fresh task");
     assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"Chat scope\"]'))"), false);
@@ -115,8 +115,10 @@ async function run(window) {
     await input("producer-source", source + "\n// conflicting draft");
     await openChat();
     await wait("!document.querySelector('#chat-ai-reasoning').disabled");
-    await evaluate("(() => { const s = document.querySelector('#chat-ai-reasoning'); s.value = 'high'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
-    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === 'high'");
+    await evaluate("document.querySelector('#chat-ai-reasoning').dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}))");
+    await wait("document.querySelector('[role=menu]')");
+    await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.textContent.trim() === 'High').click()");
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').textContent.includes('High')");
     await input("ai-chat-prompt", "Change both files");
     await click("Send");
     await wait("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open')");
@@ -137,8 +139,10 @@ async function run(window) {
     assert.equal(await evaluate("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open')"), false);
     assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"File to edit\"]'))"), false);
     assert.equal(calls.at(-1).providerOptions?.anthropic?.effort, "high");
-    await evaluate("(() => { const s = document.querySelector('#chat-ai-reasoning'); s.value = ''; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
-    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === ''");
+    await evaluate("document.querySelector('#chat-ai-reasoning').dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}))");
+    await wait("document.querySelector('[role=menu]')");
+    await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.textContent.trim() === 'Provider default').click()");
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').textContent.includes('Default')");
     await input("ai-chat-prompt", "Make it softer again");
     await click("Send");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('Revised chorus again')");
@@ -149,7 +153,7 @@ async function run(window) {
     await writeFile(join(tmpdir(), "banger-unified-chat.png"), (await window.webContents.capturePage()).toPNG());
     window.setMinimumSize(0, 0); window.setContentSize(390, 700);
     await delay(100);
-    assert.equal(await evaluate("(() => { const b = document.querySelector('#ai-chat-dialog').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight; })()"), true);
+    assert.equal(await evaluate("(() => { const b = document.querySelector('#ai-chat-view').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight; })()"), true);
     await writeFile(join(tmpdir(), "banger-unified-chat-mobile.png"), (await window.webContents.capturePage()).toPNG());
     window.setContentSize(1440, 1000);
     await input("ai-chat-prompt", "slow task");
@@ -172,7 +176,7 @@ async function run(window) {
     await wait("!document.querySelector('#producer-source').value.includes('newer studio draft')");
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await openChat();
-    await click("New chat");
+    await evaluate(`document.querySelector('[aria-label="New chat"]').click()`);
     await input("ai-chat-prompt", "fresh task");
     await click("Send");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('Fresh conversation')");
@@ -227,7 +231,7 @@ async function run(window) {
     await evaluate("document.querySelector('.project-workspace').scrollIntoView({ block:'start' })");
     await delay(100);
     await writeFile(join(tmpdir(), "banger-workspace-desktop.png"), (await window.webContents.capturePage()).toPNG());
-    console.log("Workspace Electron smoke passed: unified floating chat, automatic harness, save/discard/cancel decisions, mobile bounds, new conversation reset, native folder open, manual edits, dirty draft protection, external save conflict, cross-file harness edits, repeated same-file edit, continued history, real events, cancellation, and path confinement. Model network responses mocked; real harness and IPC used.");
+    console.log("Workspace Electron smoke passed: dedicated chat view, automatic harness, save/discard/cancel decisions, mobile bounds, new conversation reset, native folder open, manual edits, dirty draft protection, external save conflict, cross-file harness edits, repeated same-file edit, continued history, real events, cancellation, and path confinement. Model network responses mocked; real harness and IPC used.");
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); app.exit(process.exitCode ?? 0); }
 }

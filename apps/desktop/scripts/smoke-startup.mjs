@@ -99,7 +99,7 @@ export async function smokeStartup(window, directory) {
   await wait(window, "document.querySelector('#producer-source').value === " + JSON.stringify(sample));
   await input('#producer-source', sample + '\n// unsaved');
   await evaluate('void (window.confirm = () => false)');
-  const previousChat = await evaluate("[...document.querySelectorAll('.app-sidebar-chat')].findIndex(button => button.getAttribute('aria-current') === 'true')");
+  const previousChat = await evaluate("document.querySelectorAll('.app-sidebar-chat').length - 1");
   const previousChatCount = await evaluate("document.querySelectorAll('.app-sidebar-chat').length");
   let opened = false;
   dialog.showOpenDialog = async () => { opened = true; return { canceled: false, filePaths: [sampleFolder] }; };
@@ -108,7 +108,7 @@ export async function smokeStartup(window, directory) {
   await wait(window, `document.querySelectorAll('.app-sidebar-chat').length === ${previousChatCount + 1} && document.querySelector('#project-controls')?.getAttribute('data-state') !== 'open'`);
   await evaluate(`document.querySelectorAll('.app-sidebar-chat')[${previousChat}].click()`);
   await wait(window, "document.querySelector('#producer-source').value.includes('unsaved')");
-  await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+  await evaluate("document.querySelector('[aria-label=\"Beat Studio\"]').click()");
   await click(window, 'Project');
   await evaluate("(() => { const s = document.querySelector('#workspace-file'); s.value = 'verse.banger'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
   assert.match(await evaluate("document.querySelector('#producer-source').value"), /unsaved/);
@@ -120,13 +120,13 @@ export async function smokeStartup(window, directory) {
   await click(window, 'Close');
   await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-startup-key')");
   await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
-  await wait(window, "!document.querySelector('[aria-label=\"Open AI chat\"]').disabled");
-  await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+  await wait(window, "document.querySelectorAll('.app-sidebar-chat').length > 0");
+  await evaluate("[...document.querySelectorAll('.app-sidebar-chat')].at(-1).click()");
   await input('#ai-chat-prompt', 'Keep this task draft');
-  await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
-  await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+  await evaluate("document.querySelector('[aria-label=\"Beat Studio\"]').click()");
+  await evaluate("[...document.querySelectorAll('.app-sidebar-chat')].at(-1).click()");
   assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), 'Keep this task draft');
-  await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+  await evaluate("document.querySelector('[aria-label=\"Beat Studio\"]').click()");
   await click(window, 'Project');
   const minimum = window.getMinimumSize(); window.setMinimumSize(0, 0); window.setContentSize(390, 844);
   await wait(window, 'innerWidth === 390');
