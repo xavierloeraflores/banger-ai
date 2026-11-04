@@ -1,8 +1,8 @@
 # Muse Hero
 
 Open a `.banger` project, apply any source edits, then choose **Band stage** in
-the studio header. Hover over the floating **Muse Hero** button to show the
-game overlay. Click, tap or keyboard activation also opens it. The game fills
+the studio header. Click the floating **Muse Hero** button to show the game
+overlay. Tap or keyboard activation also opens it. The game fills
 the window and renders a transparent note highway and translucent HUD over the live Three.js band.
 
 Choose the full band or a single track for the chart. The full song still plays

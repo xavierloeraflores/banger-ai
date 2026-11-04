@@ -57,7 +57,6 @@ export function PerformanceStage({ program, fileName, heroDisabled, stopGame, re
 
   function hideHero() {
     setHero(false);
-    // Focus does not trigger the hover action, so the overlay stays dismissed.
     requestAnimationFrame(() => heroTrigger.current?.focus());
   }
   function toggleCamera() {
@@ -86,7 +85,7 @@ export function PerformanceStage({ program, fileName, heroDisabled, stopGame, re
         {!hero && <div id="performance-camera-help" className="performance-camera-hint">{manualCamera ? "Drag to orbit · Right-drag to pan · Scroll or pinch to zoom" : still ? "Camera paused in still mode" : "Automatic camera · Take control to explore"}</div>}
       </div>
       {open && hero && <MuseHero program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} stop={stopGame} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
-      <Button ref={heroTrigger} className="performance-hero-trigger" variant="secondary" hidden={hero} disabled={heroDisabled || status !== "ready" || tracks === 0} aria-expanded={hero} aria-controls="muse-hero" onPointerMove={event => { if (event.pointerType === "mouse" && !heroDisabled && status === "ready" && tracks > 0) setHero(true); }} onClick={() => setHero(true)}>Muse Hero <span aria-hidden="true">↗</span></Button>
+      <Button ref={heroTrigger} className="performance-hero-trigger" variant="secondary" hidden={hero} disabled={heroDisabled || status !== "ready" || tracks === 0} aria-expanded={hero} aria-controls="muse-hero" onClick={() => setHero(true)}>Muse Hero <span aria-hidden="true">↗</span></Button>
       <footer className="performance-footer" hidden={hero}>
         <div className="performance-transport"><Button variant="primary" onClick={() => void onPlay()} disabled={playing || starting || status !== "ready" || tracks === 0}>{starting ? "Starting…" : playing ? "Playing" : "Play band"}</Button><Button variant="secondary" onClick={onStop} disabled={!playing && !starting}>Stop</Button><span>{tempo} BPM<span className="performance-divider">/</span>{tracks} {tracks === 1 ? "performer" : "performers"}</span></div>
         <div className="performance-options"><div className="performance-camera-controls" role="group" aria-label="Camera controls">
