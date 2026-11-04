@@ -108,6 +108,12 @@ save, vocal generation, and library flow without paid provider calls. The
 lyrics-only check also revises one chunk of an existing song and verifies that
 the other chunk and beat remain unchanged.
 
+Lyric line persistence checks use `smoke-music.mjs --line-persistence`, repeated
+with `--web`. They cover splitting lines with Enter, reordering, moving between
+sections, empty sections, saving and reloading. The regular music smoke also
+checks character and chunk limits. The `--draft` flow edits, reorders and saves
+draft lines before checking automatic section assignment.
+
 Vocal style checks use `smoke-music.mjs --vocal-style`, repeated with `--web`.
 They cover applying to all or selected chunks, clearing, free saves, reloads,
 reanalysis and generation. The lyrics-only Full Send smoke also verifies that

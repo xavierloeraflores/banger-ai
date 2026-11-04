@@ -6,6 +6,7 @@ import './audio-worklet';
 import type {StageRecording} from './recorded-stage';
 import {readSingAlong} from '@/lib/sing-along';
 import './music-workshop.css';
+import {LyricLines,LyricLineGroup,draftLineError} from './lyric-lines';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {ExportMenu} from './export-menu';
@@ -36,6 +37,11 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
   const drafts=useMemo(()=>draftStorage(draftKey,token),[draftKey,token]);
   const [draft,setDraft]=useState<LyricDraft|null>(null);
   const [draftError,setDraftError]=useState('');
+  const [draftEdit,setDraftEdit]=useState<{key:string;base:LyricDraft;lyrics:string}|null>(null);
+  const localDraft=draftEdit?.key===draftKey?draftEdit:null;
+  const draftDirty=Boolean(localDraft&&localDraft.lyrics!==localDraft.base.lyrics);
+  const visibleDraft=localDraft?.base??draft;
+  const draftText=localDraft?.lyrics??draft?.lyrics??'';
   const fitAttempt=useRef('');
   useEffect(()=>{if(window.bangerStorage&&!token)return;let cancelled=false;const refresh=()=>void drafts.read().then(value=>{if(!cancelled)setDraft(previous=>JSON.stringify(previous)===JSON.stringify(value)?previous:value);}).catch(error=>{if(!cancelled)setNotice(message(error));});refresh();const timer=setInterval(refresh,1500);return()=>{cancelled=true;clearInterval(timer);};},[drafts,token]);
 
@@ -57,7 +63,8 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
   const autoplay=useRef<string|null>(null);
   const fileInput=useRef<HTMLInputElement>(null);
   const current=useRef({song,head,lyrics,styles});useEffect(()=>{current.current={song,head,lyrics,styles};},[song,head,lyrics,styles]);
-  const dirty=Boolean(song?.plan.chunks.some((chunk,index)=>lyrics[index]!==lyricsOf(chunk.text)||(styles[index]??'')!==(chunk.vocalStyle??'')));
+  const chunkDirty=Boolean(song?.plan.chunks.some((chunk,index)=>lyrics[index]!==lyricsOf(chunk.text)||(styles[index]??'')!==(chunk.vocalStyle??'')));
+  const dirty=draftDirty||chunkDirty;
   useEffect(()=>{onEditStateChange?.({dirty,busy});return()=>onEditStateChange?.({dirty:false,busy:false});},[dirty,busy,onEditStateChange]);
   const running=jobs.some(job=>['queued','running'].includes(job.status));
   const blocked=busy||running;
@@ -220,7 +227,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
     // Saves update this ref immediately; React may still show the previous job/lyrics.
     const latest=current.current;
     const unsaved=latest.song?.plan.chunks.some((chunk,index)=>latest.lyrics[index]!==lyricsOf(chunk.text)||(latest.styles[index]??'')!==(chunk.vocalStyle??''));
-    if(request.current||(!afterEdits&&running)||unsaved)throw new Error('Save your lyrics and vocal styles and wait for the current operation to finish.');
+    if(request.current||(!afterEdits&&running)||unsaved||draftDirty)throw new Error('Save your lyrics and vocal styles and wait for the current operation to finish.');
     if(withVocals&&!vocals)throw new Error('Add an ElevenLabs API key in Settings to use Full Send with lyrics.');
     if(withVocals&&!backend)throw new Error('Connect a cloud project or wait for the song to load before using Full Send with lyrics.');
   }
@@ -286,8 +293,8 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
   const recent=jobs[0];
   const editing=history.filter(item=>item.operation==='edit'||item.operation==='lyrics');
   const wavActions=<div className="music-wav-actions" aria-label="Add a WAV">
-    {!hasProject&&<KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>importComposition(await backend.upload()));else fileInput.current?.click();}}>↑ Upload WAV</Button></KeyHint>}
-    <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioPath,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));await importComposition(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token,studioFile));});}}>Use studio WAV</Button></KeyHint>
+    {!hasProject&&<KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={blocked||!vocals||draftDirty} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>importComposition(await backend.upload()));else fileInput.current?.click();}}>↑ Upload WAV</Button></KeyHint>}
+    <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={blocked||!vocals||draftDirty} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioPath,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));await importComposition(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token,studioFile));});}}>Use studio WAV</Button></KeyHint>
   </div>;
   return <section className="music-workshop" aria-label="Vocal Studio">
     {active&&exportTarget&&createPortal(<ExportMenu disabled={!song||blocked||dirty} onExport={library=>{void action(()=>exportSong(library));}}/>,exportTarget)}
@@ -311,21 +318,39 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
               <Button disabled={blocked} onClick={()=>{epoch.current++;setStyles(chunks.map(()=>bulkStyle.trim()));}}>Apply to all chunks</Button>
               <Button disabled={blocked||!indices.length} onClick={()=>{epoch.current++;setStyles(previous=>previous.map((style,index)=>indices.includes(index)?bulkStyle.trim():style));}}>Apply to selected chunks</Button>
             </div>
+            <p className="music-lyric-help">Drag lines to reorder or move between sections. You can also use the arrows and Move to menu.</p>
+            <LyricLines values={lyrics} labels={chunks.map((_,index)=>`chunk ${index+1}`)} destinations={chunks.map((chunk,index)=>chunkName(chunk.text,index))} disabled={blocked} validate={(index,text)=>lyricEditError(chunks[index]!.text,text)} onChange={values=>{epoch.current++;current.current={...current.current,lyrics:values};setLyrics(values);}}>
             <div className="music-chunks">{chunks.map((chunk,index)=><article className={`music-chunk${indices.includes(index)?' is-selected':''}`} key={`${song.id}-${index}`} id={`music-chunk-${index}`} data-playing={audio.playing&&index===currentChunk}>
               <div className="music-chunk-heading"><label><Checkbox checked={indices.includes(index)} disabled={blocked} onCheckedChange={checked =>setIndices(value=>checked === true?[...value,index].sort((a,b)=>a-b):value.filter(item=>item!==index))}/><strong>{chunkName(chunk.text,index)}</strong></label><span>{clockTime(ranges[index]!.start)} – {clockTime(ranges[index]!.end)}</span>
                 <Button aria-label={`Preview chunk ${index+1}`} title="Preview this chunk" disabled={!audio.url||audio.loading} onClick={()=>{void audio.preview(ranges[index]!.start,ranges[index]!.end);}}>▷</Button>
                 <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={!vocals||blocked||dirty} aria-label={`Retry chunk ${index+1}`} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices:[index]}))}>↻ Retry</Button></KeyHint>
               </div>
-              <Textarea aria-label={`Lyrics for chunk ${index+1}`} placeholder="Write lyrics for this chunk…" value={lyrics[index]??''} rows={Math.min(5,Math.max(2,(lyrics[index]??'').split('\n').length))} aria-invalid={Boolean(lyricErrors[index])} aria-describedby={`music-lyric-help-${index}`} disabled={blocked} onChange={event=>{epoch.current++;const value=event.target.value;setLyrics(previous=>previous.map((text,i)=>i===index?value:text));}}/>
+              <LyricLineGroup group={index}/>
               <label>Vocal style for chunk {index+1}<Textarea aria-label={`Vocal style for chunk ${index+1}`} value={styles[index]??''} maxLength={1000} rows={2} disabled={blocked} placeholder="Optional vocal performance description" onChange={event=>{epoch.current++;setStyles(previous=>previous.map((style,i)=>i===index?event.target.value:style));}}/></label>
               <p id={`music-lyric-help-${index}`} className="music-lyric-help" role={lyricErrors[index]?'alert':undefined}>{lyricErrors[index]??`Up to ${MAX_CHUNK_TEXT_LINES} lines, ${MAX_CHUNK_LINE_CHARACTERS} characters per line and ${MAX_CHUNK_TEXT_CHARACTERS.toLocaleString('en-US')} total, including the section label and retained directions.`}</p>
             </article>)}</div>
-            <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><Button disabled={blocked||!dirty||invalidLyrics} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)&&(styles[index]??'')===(chunk.vocalStyle??'')?[]:[{index,lyrics:lyrics[index]??'',vocalStyle:styles[index]??''}])}))}>Save lyrics & style</Button><KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={!vocals||blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></Button></KeyHint></div>
+            </LyricLines>
+            <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><Button disabled={blocked||!chunkDirty||invalidLyrics} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)&&(styles[index]??'')===(chunk.vocalStyle??'')?[]:[{index,lyrics:lyrics[index]??'',vocalStyle:styles[index]??''}])}))}>Save lyrics & style</Button><KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={!vocals||blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></Button></KeyHint></div>
             <div className="music-replace-wav"><p>{hasProject?"Start from the studio WAV":"Start from another WAV"}</p>{wavActions}</div>
-          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>No vocals yet.</h2><p>{hasProject?"Use this song’s studio WAV to start its vocals.":"Add a WAV or use this song’s beat to start its vocals."} Your lyrics and variations stay with this song.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
+          </>:!visibleDraft&&<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>No vocals yet.</h2><p>{hasProject?"Use this song’s studio WAV to start its vocals.":"Add a WAV or use this song’s beat to start its vocals."} Your lyrics and variations stay with this song.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
+          {visibleDraft&&<section className="music-draft" aria-label="Draft lyrics">
+            <div className="music-editor-heading"><div><h2>Lyrics</h2><p>{draftDirty?'Unsaved edits':'Draft saved'} · Drag lines to reorder. Sections appear after WAV analysis.</p></div></div>
+            <LyricLines values={[draftText]} labels={['draft']} disabled={blocked||Boolean(window.bangerStorage&&!token)} onChange={values=>{const base=localDraft?.base??visibleDraft;setDraftEdit(values[0]===base.lyrics?null:{key:draftKey,base,lyrics:values[0]!});}}>
+              <LyricLineGroup group={0}/>
+            </LyricLines>
+            {draftLineError(draftText)&&<p className="music-lyric-help" role="alert">{draftLineError(draftText)}</p>}
+            <div className="music-refine-actions">
+              <Button disabled={blocked||!draftDirty} onClick={()=>setDraftEdit(null)}>Discard draft edits</Button>
+              <Button disabled={blocked||!draftDirty||Boolean(draftLineError(draftText))} onClick={()=>void action(async()=>{
+                if(!localDraft)return;
+                const next={...localDraft.base,lyrics:localDraft.lyrics};
+                await drafts.save(next,localDraft.base);setDraft(next);setDraftEdit(null);setNotice('Draft lyrics saved.');
+              })}>Save draft lyrics</Button>
+            </div>
+            {!song&&<div className="music-replace-wav"><p>Use the studio WAV to arrange these lines into sections.</p>{wavActions}</div>}
+          </section>}
         </div>
         <p className="music-agent-note">Ask for lyrics or changes in the floating AI chat.</p>
-        {draft&&<details className="music-draft"><summary>{studioFile.name.replace(/\.banger$/i,'')}.draft.json</summary><pre>{draft.lyrics}</pre></details>}
         {draftError&&<div role="alert">{draftError}<Button disabled={blocked} onClick={()=>{fitAttempt.current='';setDraftError('');setDraft(value=>value?{...value}:null);}}>Retry fitting draft</Button></div>}
         <div className="music-status" role="status">{notice||audio.error||(dirty?'Save your lyrics and vocal styles before generating audio.':null)}{recent&&<span className="music-job-progress">{recent.stage}<Progress max={100} value={recent.progress} aria-label="Vocal Studio progress"/>{recent.error&&<span>{recent.error}</span>}</span>}</div>
       </div>
