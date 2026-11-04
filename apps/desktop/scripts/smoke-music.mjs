@@ -230,7 +230,9 @@ async function run(){
   const selectView = value => fill('[aria-label="View"]',value);
   await selectView('library');
   await wait("document.querySelectorAll('.library-card').length>=1");
-  assert.equal(await evaluate("!!document.querySelector('[aria-controls=performance-stage]')"),false,'No stale stage target before library selection');
+  assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]')?.disabled"),true,'Band stage stays disabled before library selection');
+  await evaluate("document.querySelector('[aria-controls=performance-stage]').click()");
+  assert.equal(await evaluate("!!document.querySelector('#performance-stage[open]')"),false,'Disabled library button cannot open a stale stage');
   assert.equal(await evaluate("document.querySelector('.producer-transport').checkVisibility()"),false);
   await evaluate("[...document.querySelectorAll('.library-card')].find(card=>!card.textContent.includes('Cover song')).click()");
   await wait("document.querySelector('.library-player audio').currentTime>0");
@@ -255,6 +257,7 @@ async function run(){
   await wait("document.querySelectorAll('.library-card').length>=2");
   await evaluate("[...document.querySelectorAll('.library-card')].find(card=>!card.textContent.includes('Cover song')&&!card.textContent.includes('input')&&!card.textContent.includes('Uploaded song')).click()");
   await wait("document.querySelector('.library-player audio').currentTime>0 && !document.querySelector('.library-player button').disabled");
+  assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),false,'Selecting a library song enables Band stage');
   await click('Band stage');
   await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='1'");
   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('60 BPM')"),'Library vocal selection replaces the previous stage target');
@@ -275,6 +278,7 @@ async function run(){
   await fill('.producer-transport [aria-label="Export song"]','library');
   await wait("document.querySelector('.producer-transport').textContent.includes('Exported and saved to library.')");
   await selectView('library');await wait("document.querySelectorAll('.library-card').length>=1");
+  assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),true,'Returning to the library requires a new selection');
   assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
   console.log(`${cloud?'Cloud browser':'Desktop'} music smoke passed: WAV upload, extracted chunks, lyric edits, AI lyrics, full and selective generation, decoded playback, original-version switching, historical chunk retries, download, and preserved conflicting draft.`);
  }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);console.error('Fixture state:',{uploaded:uploaded?.length,operations:await store.operations()});exitCode=1;}
