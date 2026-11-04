@@ -89,7 +89,8 @@ async function run(){
   ipcMain.handle('banger:ai-load',()=>({activeProvider:'openai',providers:{openai:{model:'fixture',configured:true}},elevenLabsConfigured:vocalsConfigured}));
   ipcMain.handle('banger:elevenlabs-save',()=>{vocalsConfigured=true;});
   ipcMain.handle('banger:elevenlabs-remove',()=>{vocalsConfigured=false;});
-  ipcMain.handle('banger:lyrics',(_event,request)=>({ok:true,edits:request.chunks.map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'}))}));
+  let failFit=process.argv.includes('--draft-failure');
+  ipcMain.handle('banger:lyrics',(_event,request)=>{if(failFit&&request.chunks.length){failFit=false;return {ok:false,error:'Fixture fitting failure'};}return {ok:true,edits:(request.chunks.length?request.chunks:[{index:0}]).map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'}))};});
   ipcMain.handle('banger:local-status',()=>({phase:'idle',selected:false}));
   ipcMain.handle('banger:chatgpt-status',()=>({accounts:[],models:[],connected:false}));
   await writeFile(join(root,'input.wav'),wav());dialog.showOpenDialog=async()=>({canceled:false,filePaths:[join(root,'input.wav')]});dialog.showSaveDialog=async()=>({canceled:false,filePath:join(root,'final.mp3')});
@@ -112,7 +113,7 @@ async function run(){
        if(String(url).startsWith('https://ai-gateway.vercel.sh/')){
          if(new Headers(options.headers).get('authorization')!=='Bearer fake-llm-key')throw new Error('Wrong LLM key');
          const input=JSON.parse(JSON.parse(options.body).prompt.at(-1).content.find(part=>part.type==='text').text);
-         return Response.json({content:[{type:'text',text:JSON.stringify(input.chunks.map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'})))}],finishReason:{unified:'stop',raw:'stop'},usage:{inputTokens:{total:10},outputTokens:{total:10}},warnings:[]});
+         return Response.json({content:[{type:'text',text:JSON.stringify((input.chunks.length?input.chunks:[{index:0}]).map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'})))}],finishReason:{unified:'stop',raw:'stop'},usage:{inputTokens:{total:10},outputTokens:{total:10}},warnings:[]});
        }
        return originalFetch(url,options);
      }; undefined;`);
@@ -127,14 +128,33 @@ async function run(){
   await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await wait("document.querySelector('#studio-tab-mixer').getAttribute('aria-selected')==='true'");
   assert.equal(await evaluate("document.querySelector('#studio-panel-mixer').checkVisibility()"),true);
   await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-  assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),true);
+  assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),false);
   await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===2");
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
+  if(process.argv.includes('--draft')){
+    await click('Open AI chat');await fill('[aria-label="AI editing target"]','lyrics');
+    await fill('#ai-chat-prompt','Write a hopeful morning song');await click('Send');
+    await wait("document.querySelector('.ai-chat-transcript').textContent.includes('.draft.json')");
+    await click('Close AI chat');
+    await wait("document.querySelector('.music-draft')?.textContent.includes('Tomorrow brings the light')");
+  }
   if(cloud){await wait("document.querySelector('.music-workshop input[type=file]')");await evaluate(`(()=>{const file=new File([Uint8Array.from(atob(${JSON.stringify(wav().toString('base64'))}),c=>c.charCodeAt(0))],'input.wav',{type:'audio/wav'});const data=new DataTransfer();data.items.add(file);const input=document.querySelector('.music-workshop input[type=file]');input.files=data.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
   else await click('↑ Upload WAV');
   await wait("document.querySelectorAll('.music-chunk').length===2");
+  if(process.argv.includes('--draft')){
+    if(process.argv.includes('--draft-failure')){await wait("document.querySelector('.music-workshop').textContent.includes('Fixture fitting failure')");assert.ok(await evaluate("!!document.querySelector('.music-draft')"));await click('Retry fitting draft');}
+    await wait("document.querySelector('.music-workshop').textContent.includes('Draft fitted and saved')");
+    await wait("!document.querySelector('.music-draft')");
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'Tomorrow brings the light');
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Generate new variation\"]').disabled"),false);
+    const version=await store.get((await store.list())[0].id);
+    assert.equal(version.version,2);assert.equal(provider.calls.generate,0);
+    if(!cloud){const location=await store.location(version.id);await assert.rejects(readFile(join(location.root,`${location.name}.draft.json`)),{code:'ENOENT'});assert.equal(JSON.parse(await readFile(join(location.root,`${location.name}.lyric.json`),'utf8')).version,2);}
+    console.log(`${cloud?'Browser':'Desktop'} draft smoke passed: floating chat draft, automatic chunk fitting, saved lyrics, draft removal, and generation ready.`);
+    return;
+  }
   assert.equal(await evaluate("document.querySelector('.music-empty')"),null);
   assert.equal(await evaluate("!!document.querySelector('[aria-controls=performance-stage]')"),false,'Uploaded vocals without a beat hide Band stage');
   assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),2);
@@ -191,7 +211,7 @@ async function run(){
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
-  await fill('#music-lyric-prompt','A hopeful morning');await click('Generate lyrics for selected chunks');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+  await click('Open AI chat');await fill('[aria-label="AI editing target"]','lyrics');await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await click('Close AI chat');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
   assert.equal(provider.calls.lyrics,0,'LLM lyrics must not call ElevenLabs');
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.saveElevenLabs('fake-vocal-key');else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));settings.elevenLabsKey='fake-vocal-key';sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("!document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
@@ -254,7 +274,7 @@ async function run(){
 
    if(!cloud){
    const location=await store.location(imported.id);
-   const saved=JSON.parse(await readFile(join(location.root,`${location.name}.lyrics.json`),'utf8'));
+   const saved=JSON.parse(await readFile(join(location.root,`${location.name}.lyric.json`),'utf8'));
    assert.deepEqual(saved.audioMetadata,fixtureMetadata);assert.equal(saved.audioVersion,1);
    const originalLocation=await store.location(id);
    const generated=JSON.parse(await readFile(join(originalLocation.root,'.banger','history',originalLocation.name,'lyrics','lyrics-v005.json'),'utf8'));

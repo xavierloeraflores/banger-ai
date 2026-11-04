@@ -71,7 +71,7 @@ export function saveLyrics(song: SongLocation, document: unknown, beforeSave?: (
     await beforeSave?.();
     const revision = await append(song, 'lyrics', json);
     try {
-      await atomic(join(song.root, `${song.name}.lyrics.json`), json, beforeSave);
+      await atomic(join(song.root, `${song.name}.lyric.json`), json, beforeSave);
     } catch (error) {
       await rm(join(song.root, '.banger', 'history', song.name, 'lyrics', revision));
       throw error;
@@ -82,4 +82,46 @@ export function saveLyrics(song: SongLocation, document: unknown, beforeSave?: (
   queues.set(key, settled);
   void settled.then(() => { if (queues.get(key) === settled) queues.delete(key); });
   return task;
+}
+
+export type LyricDraft = { schemaVersion: 1; lyrics: string };
+export function validateDraft(value: unknown): LyricDraft {
+  const draft = value as LyricDraft;
+  if (!draft || draft.schemaVersion !== 1 || typeof draft.lyrics !== 'string' || !draft.lyrics.trim() || Buffer.byteLength(draft.lyrics) > 12000 || draft.lyrics.includes('\0')) throw new Error('Use a lyric draft with schemaVersion 1 and nonempty lyrics under 12 KiB.');
+  return { schemaVersion: 1, lyrics: draft.lyrics };
+}
+export async function readDraft(song: SongLocation): Promise<LyricDraft | null> {
+  songName(song.name);
+  try { return validateDraft(JSON.parse((await readRegular(join(song.root, `${song.name}.draft.json`))).toString('utf8'))); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+}
+export async function readCurrentLyrics(song: SongLocation): Promise<string | null> {
+  songName(song.name);
+  for (const suffix of ['lyric', 'lyrics']) {
+    try { return (await readRegular(join(song.root, `${song.name}.${suffix}.json`))).toString('utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
+  return null;
+}
+export function saveDraft(song: SongLocation, value: unknown, expected: LyricDraft | null, beforeSave?: () => Promise<void>): Promise<void> {
+  const key = join(song.root, songName(song.name));
+  const task = (queues.get(key) ?? Promise.resolve()).then(async () => {
+    const draft = validateDraft(value);
+    const check = async () => {
+      await beforeSave?.();
+      if (await readCurrentLyrics(song)) throw new Error('This song has a composition. Edit its .lyric.json file instead.');
+      if (JSON.stringify(await readDraft(song)) !== JSON.stringify(expected)) throw new Error('The draft changed. Read it again before editing.');
+    };
+    await check();
+    await atomic(`${key}.draft.json`, JSON.stringify(draft, null, 2) + '\n', check);
+  });
+  const settled = task.catch(() => undefined);
+  queues.set(key, settled);
+  void settled.then(() => { if (queues.get(key) === settled) queues.delete(key); });
+  return task;
+}
+export async function retireDraft(song: SongLocation, expected: LyricDraft): Promise<void> {
+  if (!await readCurrentLyrics(song)) throw new Error('Save chunk lyrics before retiring the draft.');
+  if (JSON.stringify(await readDraft(song)) !== JSON.stringify(expected)) throw new Error('The draft changed. Fit the latest draft before retiring it.');
+  await rm(join(song.root, `${songName(song.name)}.draft.json`));
 }

@@ -29,12 +29,12 @@ const fixture = {
 };
 const actual = process.env.BANGER_SING_ALONG_FIXTURE;
 const audio = actual ? await readFile(actual) : wav();
-const lyrics = actual ? JSON.parse(await readFile(actual.replace(/\.wav$/i, '.lyrics.json'), 'utf8')) : fixture;
+const lyrics = actual ? JSON.parse(await readFile(actual.replace(/\.wav$/i, '.lyric.json'), 'utf8')) : fixture;
 const folder = join(profile, 'library', 'Sing-along fixture');
 await mkdir(folder, { recursive: true });
 const name = actual ? 'First Light' : 'Morning light';
 await writeFile(join(folder, `${name}.wav`), audio);
-await writeFile(join(folder, `${name}.lyrics.json`), JSON.stringify(lyrics));
+await writeFile(join(folder, `${name}.lyric.json`), JSON.stringify(lyrics));
 await writeFile(join(folder, 'Audio only.wav'), wav());
 const timeout = setTimeout(() => { console.error('Sing-along smoke timed out'); app.exit(1); }, 120000);
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', async () => {

@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open, opendir, realpath, rename, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { saveLyrics, songName } from "./song-storage.js";
+import { saveLyrics, songName, saveDraft, validateDraft } from "./song-storage.js";
 import { randomUUID } from "node:crypto";
 import { compileMusic, programDurationBeats } from "@banger/compiler";
 
@@ -22,20 +22,21 @@ export function validateSource(source: string): MusicSummary {
 }
 
 // Only this exact hidden subtree is exposed to the agent, never caches or libraries.
-function lyricsPath(path: string): { name: string; history: boolean } {
+function lyricsPath(path: string): { name: string; history: boolean; draft: boolean } {
   const parts = path.split("/");
   const marker = parts.indexOf(".banger");
   const history = marker !== -1;
+  const draft = path.endsWith(".draft.json");
   let name: string;
   if (history) {
     if (parts.length !== marker + 5 || parts[marker + 1] !== "history" || parts[marker + 3] !== "lyrics" || !/^lyrics-v[0-9]+\.json$/.test(parts[marker + 4]!)) throw new Error("Choose a saved lyrics revision.");
     name = parts[marker + 2]!;
   } else {
-    if (!path.endsWith(".lyrics.json")) throw new Error("Choose a .lyrics.json file.");
-    name = parts.at(-1)!.slice(0, -12);
+    if (!path.endsWith(".lyric.json") && !path.endsWith(".lyrics.json") && !draft) throw new Error("Choose a .lyric.json file.");
+    name = parts.at(-1)!.slice(0, path.endsWith(".lyrics.json") ? -12 : -11);
   }
   songName(name);
-  return { name, history };
+  return { name, history, draft };
 }
 
 export function validateLyrics(source: string): Record<string, unknown> {
@@ -105,7 +106,8 @@ export class ProjectWorkspace {
           await visit(absolute, depth + 1);
         } else if (entry.isFile() && (lyrics ? entry.name.endsWith(".json") : entry.name.endsWith(".banger"))) {
           if (lyrics) { try { await this.target(path, false, true); } catch { continue; } }
-          files.push(path);
+          const visible = lyrics ? path.replace(/\.lyrics\.json$/, ".lyric.json") : path;
+          if (!files.includes(visible)) files.push(visible);
           if (files.length > PROJECT_LIMITS.files) throw new Error("The project has more than 256 music files. Open a smaller folder.");
         }
       }
@@ -118,8 +120,12 @@ export class ProjectWorkspace {
 
   async readLyrics(path: string): Promise<ProjectFile | null> {
     try {
-      const file = await this.readFile(path, true);
-      validateLyrics(file.source);
+      const file = await this.readFile(path, true).catch(async error => {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT" || !path.endsWith(".lyric.json")) throw error;
+        const legacy = await this.readFile(path.replace(/\.lyric\.json$/, ".lyrics.json"), true);
+        return { ...legacy, path };
+      });
+      if (path.endsWith(".draft.json")) validateDraft(JSON.parse(file.source)); else validateLyrics(file.source);
       return file;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -183,18 +189,35 @@ export class ProjectWorkspace {
     return operation;
   }
 
+  writeDraft(path: string, source: string, expectedSource: string | null, signal?: AbortSignal): Promise<ProjectFile> {
+    const operation = this.queue.then(async () => {
+      signal?.throwIfAborted();
+      const absolute = await this.target(path, true, true);
+      const location = lyricsPath(path);
+      if (!location.draft || location.history) throw new Error("Choose a current .draft.json file.");
+      await this.read(path.replace(/\.draft\.json$/, ".banger"));
+      const document = validateDraft(JSON.parse(source));
+      await saveDraft({ root: dirname(absolute), name: location.name }, document, expectedSource === null ? null : validateDraft(JSON.parse(expectedSource)), async () => { signal?.throwIfAborted(); await this.target(path, true, true); });
+      return { path, source: JSON.stringify(document, null, 2) + "\n" };
+    });
+    this.queue = operation.catch(() => undefined);
+    return operation;
+  }
+
   writeLyrics(path: string, source: string, expectedSource: string, signal?: AbortSignal): Promise<ProjectFile> {
     const operation = this.queue.then(async () => {
       signal?.throwIfAborted();
-      const absolute = await this.target(path, false, true);
+      if (path.endsWith(".lyrics.json")) throw new Error("Edit the current .lyric.json path instead.");
+      const absolute = await this.target(path, true, true);
       const location = lyricsPath(path);
-      if (location.history) throw new Error("Lyrics history is read-only. Edit the current .lyrics.json file instead.");
+      if (location.history) throw new Error("Lyrics history is read-only. Edit the current .lyric.json file instead.");
+      if (location.draft) throw new Error("Use write_draft for lyric drafts.");
       const document = validateLyrics(source);
       const formatted = JSON.stringify(document, null, 2) + "\n";
       validateLyrics(formatted);
       await saveLyrics({ root: dirname(absolute), name: location.name }, document, async () => {
         signal?.throwIfAborted();
-        await this.target(path, false, true);
+        await this.target(path, true, true);
         if (typeof expectedSource !== "string" || (await this.readLyrics(path))?.source !== expectedSource) throw new Error("The file changed or was not read. Read it again before editing.");
       });
       return { path, source: formatted };

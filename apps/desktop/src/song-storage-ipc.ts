@@ -1,3 +1,4 @@
+import { songStorage } from '@banger/harness';
 import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { createSongLibrary } from './song-library.js';
 import { randomUUID } from 'node:crypto';
@@ -49,6 +50,9 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
     const song = await storage.prepare(roots.get(window.id), name, source);
     return storage.addToLibrary(song, bytes, source);
   });
+  ipcMain.handle('banger:storage-draft-read', (event, token: string) => songStorage.readDraft(resolve(senderWindow(event), token)));
+  ipcMain.handle('banger:storage-draft-save', (event, token: string, draft: unknown, expected: songStorage.LyricDraft | null) => songStorage.saveDraft(resolve(senderWindow(event), token), draft, expected));
+  ipcMain.handle('banger:storage-draft-retire', (event, token: string, expected: songStorage.LyricDraft) => songStorage.retireDraft(resolve(senderWindow(event), token), expected));
   ipcMain.handle('banger:storage-history', (event, token: string) => storage.list(resolve(senderWindow(event), token)));
   ipcMain.handle('banger:storage-library', (event, token: string, scope: 'global' | 'project', selection: LibrarySelection) => storage.copyToLibrary(resolve(senderWindow(event), token), scope, selection));
   return {

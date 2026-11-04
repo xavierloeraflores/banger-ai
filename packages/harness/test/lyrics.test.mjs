@@ -8,7 +8,7 @@ import { MockLanguageModelV4 } from 'ai/test';
 import { openProject, ProjectSession, songStorage } from '../dist/index.js';
 
 const document = text => ({ schemaVersion: 1, musicId: 'music-1', version: 2, createdAt: '2026-11-03', plan: { chunks: [{ text, durationMs: 10000, positiveStyles: ['pop'] }] } });
-const current = 'song.lyrics.json';
+const current = 'song.lyric.json';
 const revision = version => `.banger/history/song/lyrics/lyrics-v${String(version).padStart(3, '0')}.json`;
 async function fixture(t, lyrics = true) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'banger-lyrics-')));
@@ -27,14 +27,14 @@ test('discovery includes current lyrics and exact history paths, with no storage
   await songStorage.saveLyrics({ root: join(root, 'nested'), name: 'other' }, document('Nested line'));
   for (const path of ['.banger/library/copy', '.banger/history/song/vocals', '.private']) {
     await mkdir(join(root, path), { recursive: true });
-    await writeFile(join(root, path, 'secret.lyrics.json'), JSON.stringify(document('Secret')));
+    await writeFile(join(root, path, 'secret.lyric.json'), JSON.stringify(document('Secret')));
   }
   await writeFile(join(root, '.banger/history/song/lyrics/arbitrary.json'), '{}');
   await writeFile(join(root, 'settings.json'), '{}');
   assert.deepEqual(await workspace.list(), ['song.banger']);
-  assert.deepEqual(await workspace.listLyrics(), [revision(1), 'nested/.banger/history/other/lyrics/lyrics-v001.json', 'nested/other.lyrics.json', current]);
+  assert.deepEqual(await workspace.listLyrics(), [revision(1), 'nested/.banger/history/other/lyrics/lyrics-v001.json', 'nested/other.lyric.json', current]);
   for (const path of await workspace.listLyrics()) assert.ok(JSON.parse((await workspace.readLyrics(path)).source).plan);
-  assert.equal(await workspace.readLyrics('absent.lyrics.json'), null);
+  assert.equal(await workspace.readLyrics('absent.lyric.json'), null);
   assert.equal(await workspace.readLyrics('.banger/history/absent/lyrics/lyrics-v001.json'), null);
   assert.ok(!(await readdir(join(root, '.banger/history'))).includes('absent'));
   const empty = await fixture(t, false);
@@ -85,7 +85,7 @@ test('stale, unread, ambiguous, cancelled and invalid edits preserve current lyr
   assert.deepEqual(outcomes.map(result => result.status), ['fulfilled', 'rejected']);
   assert.deepEqual(JSON.parse((await workspace.readLyrics(current)).source), document('Winner'));
   assert.equal((await workspace.listLyrics()).length, 3);
-  await assert.rejects(workspace.writeLyrics('missing.lyrics.json', original, original));
+  await assert.rejects(workspace.writeLyrics('missing.lyric.json', original, original));
 });
 
 test('lyrics reads enforce UTF-8, JSON, size, path and link protections', async t => {
@@ -95,16 +95,16 @@ test('lyrics reads enforce UTF-8, JSON, size, path and link protections', async 
   const original = (await workspace.readLyrics(current)).source;
   await writeFile(join(outside, current), original);
   await symlink(outside, join(root, 'escape'));
-  await symlink(join(outside, current), join(root, 'linked.lyrics.json'));
-  await link(join(outside, current), join(root, 'hard.lyrics.json'));
+  await symlink(join(outside, current), join(root, 'linked.lyric.json'));
+  await link(join(outside, current), join(root, 'hard.lyric.json'));
   await symlink(outside, join(root, '.banger/history/escape'));
-  for (const path of ['../song.lyrics.json', join(outside, current), 'a/../song.lyrics.json', 'escape/song.lyrics.json', 'linked.lyrics.json', 'hard.lyrics.json', '.env', 'settings.json', '.banger/library/song.lyrics.json', '.banger/history/song/vocals/lyrics-v001.json', '.banger/history/song/lyrics/arbitrary.json', '.banger/history/escape/lyrics/lyrics-v001.json']) {
+  for (const path of ['../song.lyric.json', join(outside, current), 'a/../song.lyric.json', 'escape/song.lyric.json', 'linked.lyric.json', 'hard.lyric.json', '.env', 'settings.json', '.banger/library/song.lyric.json', '.banger/history/song/vocals/lyrics-v001.json', '.banger/history/song/lyrics/arbitrary.json', '.banger/history/escape/lyrics/lyrics-v001.json']) {
     await assert.rejects(workspace.readLyrics(path), path);
     await assert.rejects(workspace.writeLyrics(path, original, original), path);
   }
   for (const [name, bytes] of [['utf8', Buffer.from([0xff])], ['null', '\0'], ['big', 'x'.repeat(65537)], ['json', '{}']]) {
-    await writeFile(join(root, `${name}.lyrics.json`), bytes);
-    await assert.rejects(workspace.readLyrics(`${name}.lyrics.json`));
+    await writeFile(join(root, `${name}.lyric.json`), bytes);
+    await assert.rejects(workspace.readLyrics(`${name}.lyric.json`));
   }
   assert.equal(await readFile(join(outside, current), 'utf8'), original);
   assert.ok(!(await workspace.listLyrics()).some(path => /linked|hard|escape/.test(path)));
@@ -147,7 +147,7 @@ test('agent discovers, reads history, edits lyrics, writes again and follows up 
 test('agent reports missing lyrics gracefully and cannot write unread lyrics or history', async t => {
   const { workspace } = await fixture(t);
   const model = new MockLanguageModelV4({ doGenerate: [
-    call('read_lyrics', { path: 'missing.lyrics.json' }), finish(),
+    call('read_lyrics', { path: 'missing.lyric.json' }), finish(),
     call('write_lyrics', { path: current, source: JSON.stringify(document('Unread')) }), finish(),
     call('read_lyrics', { path: revision(1) }),
     call('write_lyrics', { path: revision(1), source: JSON.stringify(document('History edit')) }), finish(),
@@ -182,4 +182,42 @@ test('separate workspaces serialize lyric saves, and failed precommit checks rem
   assert.equal((await workspace.readLyrics(revision(2))).source, saved);
   assert.deepEqual((await readdir(join(root, '.banger/history/song/lyrics'))).sort(), ['lyrics-v001.json', 'lyrics-v002.json']);
   assert.deepEqual((await readdir(root)).sort(), ['.banger', 'song.banger', current]);
+});
+
+test('drafts persist without chunks, detect conflicts, and retire only after chunk lyrics save', async t => {
+  const {root,workspace}=await fixture(t,false);
+  const song={root,name:'song'}, path='song.draft.json';
+  const draft={schemaVersion:1,lyrics:'[Verse]\nBefore the morning'};
+  const saved=await workspace.writeDraft(path,JSON.stringify(draft),null);
+  assert.deepEqual(await songStorage.readDraft(song),draft);
+  assert.deepEqual(await workspace.listLyrics(),[path]);
+  await assert.rejects(workspace.writeDraft(path,JSON.stringify(draft),null),/changed/);
+  await assert.rejects(songStorage.retireDraft(song,draft),/Save chunk lyrics/);
+  assert.equal((await workspace.readLyrics(path)).source,saved.source);
+  await songStorage.saveLyrics(song,document('Before the morning'));
+  await assert.rejects(workspace.writeDraft(path,JSON.stringify(draft),saved.source),/composition/);
+  await songStorage.retireDraft(song,draft);
+  assert.equal(await songStorage.readDraft(song),null);
+  await assert.rejects(workspace.writeDraft(path,JSON.stringify(draft),null),/composition/);
+  assert.equal(JSON.parse((await workspace.readLyrics(current)).source).plan.chunks[0].text,'Before the morning');
+});
+
+test('the project agent creates a draft using its file tool when no composition exists', async t=>{
+  const {workspace}=await fixture(t,false);
+  const draft={schemaVersion:1,lyrics:'[Chorus]\nA brighter day'};
+  const model=new MockLanguageModelV4({doGenerate:[call('write_draft',{path:'song.draft.json',source:JSON.stringify(draft)}),finish()]});
+  const result=await new ProjectSession({workspace,selected:{model,name:'fixture'}}).run('Write lyrics for this song',{activeFile:'song.banger'});
+  assert.equal(result.status,'completed');
+  assert.deepEqual(result.changedPaths,['song.draft.json']);
+  assert.deepEqual(JSON.parse((await workspace.readLyrics('song.draft.json')).source),draft);
+});
+
+test('legacy lyrics remain discoverable and the next agent edit saves the canonical lyric filename', async t=>{
+ const {root,workspace}=await fixture(t,false);
+ await writeFile(join(root,'song.lyrics.json'),JSON.stringify(document('Legacy words')));
+ assert.deepEqual(await workspace.listLyrics(),[current]);
+ const original=await workspace.readLyrics(current);
+ await workspace.editLyrics(current,'Legacy words','Current words',original.source);
+ assert.match(await readFile(join(root,current),'utf8'),/Current words/);
+ assert.match(await readFile(join(root,'song.lyrics.json'),'utf8'),/Legacy words/);
 });

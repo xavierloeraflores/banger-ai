@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ElevenMusic, associatedBeatSchema, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
+import { ElevenMusic, associatedBeatSchema, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, lyricsOf, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
 import type { SongLocation } from './song-storage.js';
-type StorageHooks = { imported(song: SongLocation, bytes: Uint8Array): Promise<unknown>; saved(song: SongLocation, version: MusicVersion, audio?: Uint8Array): Promise<unknown> };
+type StorageHooks = { current?(song: SongLocation): Promise<MusicVersion | null>; imported(song: SongLocation, bytes: Uint8Array): Promise<unknown>; saved(song: SongLocation, version: MusicVersion, audio?: Uint8Array): Promise<unknown> };
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
 export function createMusicStore(root:string, provider:()=>MusicProvider|Promise<MusicProvider>=()=>new ElevenMusic(process.env.ELEVENLABS_API_KEY ?? ''), storage?: StorageHooks) {
   let queue:Promise<unknown>=Promise.resolve();
@@ -89,6 +89,20 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       const matches=await Promise.all(list.map(async item=>({item,match:await belongs(item.id,location)})));
       return matches.filter(value=>value.match).map(value=>value.item);
     },get,operation,
+    async refresh(id:string) {
+      const current=await get(id);
+      if(active.has(id)||!storage?.current)return current;
+      const location=await read<SongLocation>(join(root,`location-${uuid(id)}.json`)).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return undefined;throw error;});
+      if(!location)return current;
+      const edited=await storage.current(location);
+      if(!edited||edited.id!==current.id||edited.version!==current.version)return current;
+      if(edited.plan.chunks.length!==current.plan.chunks.length)throw new Error('Lyric edits must preserve the composition chunks.');
+      const edits=edited.plan.chunks.flatMap((chunk,index)=>chunk.text===current.plan.chunks[index]!.text?[]:[{index,lyrics:lyricsOf(chunk.text)}]);
+      if(!edits.length)return current;
+      const result=await performMusicAction(provider,current,musicActionSchema.parse({operation:'edit',baseVersion:current.version,edits}),randomUUID());
+      await publish(result.version,current.version);
+      return result.version;
+    },
     async versions(id:string,before?:number){
       const current=await get(id);if(before!==undefined&&(!Number.isInteger(before)||before<1))throw new Error('Invalid history cursor.');
       const end=Math.min(current.version,(before??current.version+1)-1),start=Math.max(1,end-49);

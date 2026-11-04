@@ -48,7 +48,7 @@ test('library excludes symbolic links and rechecks directories when reading a pr
 test('library reads the saved recording metadata and tolerates missing or damaged lyrics', async t => {
   const { root, library } = await fixture(t);
   const [entry] = await library.list();
-  const sidecar = join(root, 'library', 'Dawn', 'Dawn.lyrics.json');
+  const sidecar = join(root, 'library', 'Dawn', 'Dawn.lyric.json');
   assert.equal((await library.read(entry.id)).lyrics, undefined);
   const lyrics = { audioMetadata: { wordsTimestamps: [{ word: 'Dawn', startMs: 500, endMs: 1400 }], waveformVisual: [12, -30] } };
   await writeFile(sidecar, JSON.stringify(lyrics));

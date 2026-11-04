@@ -70,8 +70,8 @@ export function createSongLibrary(userData: string) {
       if (file.kind === 'beat') return { source: bytes.toString('utf8') };
       const beatPath = file.path.replace(/\.(wav|mp3)$/i, '.banger');
       const source = await safeRead(file.root, beatPath).catch(error => { if (absent(error)) return undefined; throw error; });
-      const lyricsPath = file.path.replace(/\.(wav|mp3)$/i, '.lyrics.json');
-      const lyricsBytes = await safeRead(file.root, lyricsPath).catch(error => { if (absent(error)) return undefined; throw error; });
+      const lyricsPath = file.path.replace(/\.(wav|mp3)$/i, '.lyric.json');
+      const lyricsBytes = await safeRead(file.root, lyricsPath).catch(error => { if (absent(error)) return safeRead(file.root, lyricsPath.replace(/\.lyric\.json$/, '.lyrics.json')).catch(error => { if (absent(error)) return undefined; throw error; }); throw error; });
       // A missing or damaged optional sidecar must not prevent audio playback.
       let lyrics: unknown;
       if (lyricsBytes && lyricsBytes.length <= 5 * 1024 * 1024) {

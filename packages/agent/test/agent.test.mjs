@@ -237,3 +237,13 @@ song { play chorus 2; }`;
   assert.equal(second.files[0].source,first.files[0].source.replace('play chorus 2;','play chorus 3;'));
   assert.equal(programDurationBeats(compileMusic(second.files[0].source)),96);
 });
+
+test('the floating agent routes lyric requests without inventing music files', async()=>{
+ const model=new MockLanguageModelV4({doGenerate:[
+  response([{type:'tool-call',toolCallId:'lyrics',toolName:'request_lyrics',input:JSON.stringify({prompt:'Write a hopeful chorus for this song'})}],'tool-calls'),
+  response([{type:'text',text:'Preparing your lyrics.'}]),
+ ]});
+ const reply=await runBangerAgent({...request,messages:[{role:'user',content:'Write lyrics for this song'}]},{model,name:'fixture'});
+ assert.equal(reply.lyricPrompt,'Write a hopeful chorus for this song');
+ assert.deepEqual(reply.files,[]);
+});

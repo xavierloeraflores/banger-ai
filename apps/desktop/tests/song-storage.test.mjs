@@ -28,16 +28,16 @@ test('root files, concurrent immutable numbering, selected library copies, and c
   assert.equal(history.instrumentals[0], 'midnight.instrumental-v001.wav');
   assert.equal(history.instrumentals.at(-1), 'midnight.instrumental-v012.wav');
   assert.equal(history.vocals[0], 'midnight.vocals-v001.wav');
-  assert.deepEqual(JSON.parse(await readFile(join(project, 'midnight.lyrics.json'))), document('Second lyric'));
+  assert.deepEqual(JSON.parse(await readFile(join(project, 'midnight.lyric.json'))), document('Second lyric'));
   assert.deepEqual(JSON.parse(await readFile(join(project, '.banger/history/midnight/lyrics/lyrics-v001.json'))), document('First lyric'));
   const selection = { audio: 'vocals/midnight.vocals-v001.wav', instrumental: 'midnight.instrumental-v001.wav', lyrics: 'lyrics-v001.json' };
   await assert.rejects(storage.copyToLibrary(song, 'global', { audio: selection.audio }), /instrumental/);
   for (const scope of ['global', 'project']) {
     await storage.copyToLibrary(song, scope, selection);
     const destination = join(scope === 'global' ? root : join(project, '.banger'), 'library/midnight');
-    assert.deepEqual((await readdir(destination)).sort(), ['midnight.banger', 'midnight.instrumental.wav', 'midnight.lyrics.json', 'midnight.wav']);
+    assert.deepEqual((await readdir(destination)).sort(), ['midnight.banger', 'midnight.instrumental.wav', 'midnight.lyric.json', 'midnight.wav']);
     assert.deepEqual(await readFile(join(destination, 'midnight.wav')), wav());
-    assert.deepEqual(JSON.parse(await readFile(join(destination, 'midnight.lyrics.json'))), document('First lyric'));
+    assert.deepEqual(JSON.parse(await readFile(join(destination, 'midnight.lyric.json'))), document('First lyric'));
     await assert.rejects(storage.copyToLibrary(song, scope, selection), { code: 'EEXIST' });
     assert.deepEqual(await readFile(join(destination, 'midnight.wav')), wav());
   }
@@ -93,7 +93,7 @@ test('music operations retain their project binding through restart and recover 
   assert.equal(provider.calls.generate, 1);
   assert.equal((await storage.list(song)).vocals.length, 1);
   assert.equal((await storage.list(song)).lyrics.length, 3);
-  assert.notDeepEqual(JSON.parse(await readFile(join(song.root, 'midnight.lyrics.json'))).plan, fixturePlan);
+  assert.notDeepEqual(JSON.parse(await readFile(join(song.root, 'midnight.lyric.json'))).plan, fixturePlan);
 });
 test('a short rendered WAV is archived even when ElevenLabs rejects its duration', async t => {
   const { root, storage, song } = await fixture(t);
@@ -131,7 +131,7 @@ test('desktop lyrics and harness edits share history numbering and current conte
   const { project, storage, song } = await fixture(t);
   await storage.saveLyrics(song, document('Desktop lyric'));
   const workspace = await openProject(project);
-  const current = 'midnight.lyrics.json';
+  const current = 'midnight.lyric.json';
   const original = (await workspace.readLyrics(current)).source;
   const edited = await workspace.editLyrics(current, 'Desktop lyric', 'Agent lyric', original);
   await storage.saveLyrics(song, document('Next desktop lyric'));
@@ -161,7 +161,7 @@ test('explicit library snapshot preserves current source, lyrics and audio histo
   const [entry] = await readdir(join(root, 'library'));
   const target = join(root, 'library', entry);
   assert.equal(await readFile(join(target, 'midnight.banger'), 'utf8'), 'tempo 99;');
-  assert.deepEqual(JSON.parse(await readFile(join(target, 'midnight.lyrics.json'))), document('Selected lyrics'));
+  assert.deepEqual(JSON.parse(await readFile(join(target, 'midnight.lyric.json'))), document('Selected lyrics'));
   assert.deepEqual(await readFile(join(target, 'midnight.wav')), wav());
   assert.equal((await readdir(join(target, '.history', 'instrumentals'))).length, 1);
   assert.equal((await readdir(join(target, '.history', 'vocals'))).length, 1);
@@ -194,6 +194,6 @@ test('library export retains the selected recording words and waveform with its 
   await storage.saveLyrics(song, document('Newer unsung draft'));
   await storage.addToLibrary(song, wav(), 'tempo 120;', selected);
   const folder = (await readdir(join(root, 'library'))).find(name => name.startsWith('midnight-'));
-  const stored = JSON.parse(await readFile(join(root, 'library', folder, 'midnight.lyrics.json'), 'utf8'));
+  const stored = JSON.parse(await readFile(join(root, 'library', folder, 'midnight.lyric.json'), 'utf8'));
   assert.deepEqual(stored, selected);
 });

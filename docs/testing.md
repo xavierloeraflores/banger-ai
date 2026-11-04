@@ -79,7 +79,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Startup and project prompts | `pnpm --filter @banger/desktop exec electron scripts/smoke-project-entry.mjs`, repeat with `--web` |
 | Native workspace | `pnpm --filter @banger/desktop smoke:workspace` |
 | AI settings and authentication | `pnpm --filter @banger/desktop smoke:byok`, `smoke:chatgpt`, `smoke:local`, `smoke:chat` |
-| Music workshop | `pnpm --filter @banger/desktop smoke:music`, `smoke:music:web` |
+| Music workshop | `pnpm --filter @banger/desktop smoke:music`, `smoke:music:web`; repeat each with `--draft` for the draft-to-chunk flow |
 | Cloud projects | `pnpm --filter @banger/desktop smoke:cloud` |
 | Musical options | `pnpm --filter @banger/desktop smoke:musical` |
 | Raw .banger editor | `pnpm --filter @banger/desktop exec electron scripts/smoke-source-editor.mjs` |

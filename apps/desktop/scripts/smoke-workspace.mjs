@@ -31,8 +31,8 @@ globalThis.fetch = async (url, options) => {
   const call = (name, input) => ({ type: "tool-call", toolCallId: `${name}-${calls.length}`, toolName: name, input: JSON.stringify(input) });
   let content;
   if (user.includes("revise saved lyrics")) content = !tools.length
-    ? [call("read_lyrics", { path: "chorus.lyrics.json" })]
-    : tools.length === 1 ? [call("edit_lyrics", { path: "chorus.lyrics.json", search: "Original lyric", replacement: "Revised lyric" })]
+    ? [call("read_lyrics", { path: "chorus.lyric.json" })]
+    : tools.length === 1 ? [call("edit_lyrics", { path: "chorus.lyric.json", search: "Original lyric", replacement: "Revised lyric" })]
     : [{ type: "text", text: "Saved the lyrics revision." }];
   else if (user.includes("slow task")) content = [call("edit_file", { path: "chorus.banger", search: "gain 0.2;", replacement: "gain 0.1;" })];
   else if (user.includes("fresh task")) content = [{ type: "text", text: "Fresh conversation." }];
@@ -205,8 +205,8 @@ async function run(window) {
     const lyricResult = await evaluate('window.bangerWorkspace.run("revise saved lyrics", "verse.banger", true)');
     assert.equal(lyricResult.ok, true);
     assert.equal(lyricResult.reply.status, "completed");
-    assert.deepEqual(lyricResult.reply.changedPaths, ["chorus.lyrics.json"]);
-    assert.equal(JSON.parse(await readFile(join(directory, "chorus.lyrics.json"))).plan.chunks[0].text, "Revised lyric");
+    assert.deepEqual(lyricResult.reply.changedPaths, ["chorus.lyric.json"]);
+    assert.equal(JSON.parse(await readFile(join(directory, "chorus.lyric.json"))).plan.chunks[0].text, "Revised lyric");
     assert.equal(JSON.parse(await readFile(join(directory, ".banger/history/chorus/lyrics/lyrics-v001.json"))).plan.chunks[0].text, "Original lyric");
     assert.equal(JSON.parse(await readFile(join(directory, ".banger/history/chorus/lyrics/lyrics-v002.json"))).plan.chunks[0].text, "Revised lyric");
     assert.equal(await evaluate("[...document.querySelectorAll('#workspace-file option')].some(option => option.value.endsWith('.json'))"), false);

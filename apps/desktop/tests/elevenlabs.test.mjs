@@ -84,3 +84,20 @@ test('vocals and pending operations belong to one project song across restarts',
   await assert.rejects(store.importWav(wav(),'unrelated-upload-name.wav',upload.id,second),/different task/);
  }finally{release();await rm(root,{recursive:true,force:true});}
 });
+
+test('project agent lyric edits refresh into a saved composition without changing audio or timings', async()=>{
+ const root=await mkdtemp(join(tmpdir(),'banger-music-sync-'));const provider=fixtureProvider();let current;
+ const hooks={imported:async()=>{},saved:async(_song,version)=>{current=structuredClone(version);},current:async()=>current};
+ try{
+  const store=createMusicStore(root,()=>provider,hooks);
+  const job=await store.importWav(wav(),'song.wav',randomUUID(),{root,name:'song'});await done(store,job.id);
+  const original=await store.get(job.musicId);
+  current.plan.chunks[0].text='[Verse]\nEdited in the project agent';
+  const refreshed=await store.refresh(original.id);
+  assert.equal(refreshed.version,2);assert.match(refreshed.plan.chunks[0].text,/Edited in the project agent/);
+  assert.equal(refreshed.audioId,original.audioId);
+  assert.deepEqual({...refreshed.plan.chunks[0],text:original.plan.chunks[0].text},original.plan.chunks[0]);
+  assert.equal((await store.refresh(original.id)).version,2);
+  assert.equal(provider.calls.generate,0);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

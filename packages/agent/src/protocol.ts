@@ -10,7 +10,7 @@ export type ChatRequest = {
   targetFile?: string;
   targetVersion?: "editor" | "generated";
 };
-export type ChatReply = { text: string; files: BangerFile[]; model: string };
+export type ChatReply = { lyricPrompt?: string; text: string; files: BangerFile[]; model: string };
 export type ChatOutcome = { ok: true; reply: ChatReply } | { ok: false; error: string };
 export const MAX_CHAT_BODY_BYTES = 256 * 1024;
 

@@ -14,6 +14,7 @@ function checkedReply(value: unknown): ChatReply {
   const reply = value as ChatReply | null;
   if (!reply || typeof reply.text !== "string" || reply.text.length > 5000 || typeof reply.model !== "string" || reply.model.length > 200 ||
       !Array.isArray(reply.files) || reply.files.length > 4) throw new Error("The AI returned an invalid reply. Try again.");
+  if (reply.lyricPrompt !== undefined && (typeof reply.lyricPrompt !== "string" || !reply.lyricPrompt.trim() || reply.lyricPrompt.length > 4000)) throw new Error("The AI returned an invalid lyric request.");
   for (const file of reply.files) {
     if (!file || typeof file.name !== "string" || (file.name.length > 100 || !file.name.endsWith(".banger") || /[\/\\\x00-\x1f\x7f]/.test(file.name)) ||
         typeof file.source !== "string" || file.source.length > 65536) throw new Error("The AI returned an invalid file. Try again.");

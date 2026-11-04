@@ -19,3 +19,11 @@ test('lyrics reject extra, missing, duplicate and oversized chunk edits',async()
  const controller=new AbortController();controller.abort();
  await assert.rejects(generateLyrics(request,{model},controller.signal));
 });
+
+test('lyrics can be written before analysis without fabricated chunk timings', async()=>{
+ const edits=[{index:0,lyrics:'[Verse]\nWe follow the morning'}];
+ const model=modelFor(edits);
+ assert.deepEqual(await generateLyrics({prompt:'Write a hopeful song',chunks:[]},{model}),edits);
+ assert.match(JSON.stringify(model.doGenerateCalls[0].prompt),/Do not invent chunk timings/);
+ await assert.rejects(generateLyrics({prompt:'Draft',chunks:[]},{model:modelFor([{index:1,lyrics:'Wrong index'}])}));
+});

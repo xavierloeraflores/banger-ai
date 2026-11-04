@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld("bangerStorage", Object.freeze({
   addToLibrary: (name, source, bytes) => ipcRenderer.invoke("banger:storage-add-library", name, source, bytes),
   prepare: (name, source) => ipcRenderer.invoke("banger:storage-prepare", name, source),
   audio: (token, bytes) => ipcRenderer.invoke("banger:storage-audio", token, bytes),
+  readDraft: token => ipcRenderer.invoke("banger:storage-draft-read", token),
+  saveDraft: (token, draft, expected) => ipcRenderer.invoke("banger:storage-draft-save", token, draft, expected),
+  retireDraft: (token, expected) => ipcRenderer.invoke("banger:storage-draft-retire", token, expected),
   history: token => ipcRenderer.invoke("banger:storage-history", token),
   copyToLibrary: (token, scope, selection) => ipcRenderer.invoke("banger:storage-library", token, scope, selection),
 }));

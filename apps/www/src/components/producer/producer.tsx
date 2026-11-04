@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   compileMusic,
   CompileError,
@@ -27,7 +27,7 @@ import { ProjectIcon } from "./project-icon";
 import { AudioExport } from "./audio-export";
 import { useRecordedStage, type StageRecording } from "./recorded-stage";
 import { SongLibrary } from "./song-library";
-import { MusicWorkshop } from "./music-workshop";
+import { MusicWorkshop, type LyricAgent } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
 import type { CloudMusicContext } from "@/lib/elevenlabs";
 import type { CloudBinding } from "@/lib/cloud-projects";
@@ -104,6 +104,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
   function showProjects() { if (!hasProject) { onRequireProject("beat"); return; } projectDialog.current?.showModal(); }
+  const lyricAgent=useRef<LyricAgent|null>(null);
+  const setLyricAgent=useCallback((agent:LyricAgent|null)=>{lyricAgent.current=agent;},[]);
+  const runLyrics=useCallback((prompt:string,signal:AbortSignal)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");return lyricAgent.current.run(prompt,signal);},[]);
   const [vocalEdits,setVocalEdits]=useState({dirty:false,busy:false});
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const cloudMusicContext=useMemo<CloudMusicContext|undefined>(()=>cloudBinding?{url:cloudBinding.url,token:cloudBinding.token,projectId:cloudBinding.projectId,revision:cloudBinding.revision}:undefined,[cloudBinding]);
@@ -686,10 +689,10 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          {hasProject && <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
+          {hasProject && <MusicWorkshop onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
         {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
-        {hasProject && <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
+        {hasProject && <AIChat onLyrics={runLyrics} vocalStudio={vocalStudio} source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}
           onProjectBusy={setWorkspaceBusy} onProjectFile={(file, requestRevision) => {

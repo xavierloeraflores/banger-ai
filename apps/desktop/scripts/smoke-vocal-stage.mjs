@@ -29,12 +29,12 @@ const fixture = {
 };
 const actual = undefined;
 const audio = actual ? await readFile(actual) : wav();
-const lyrics = actual ? JSON.parse(await readFile(actual.replace(/\.wav$/i, '.lyrics.json'), 'utf8')) : fixture;
+const lyrics = actual ? JSON.parse(await readFile(actual.replace(/\.wav$/i, '.lyric.json'), 'utf8')) : fixture;
 const folder = join(profile, 'library', 'Sing-along fixture');
 await mkdir(folder, { recursive: true });
 const name = actual ? 'First Light' : 'Morning light';
 await writeFile(join(folder, `${name}.wav`), audio);
-await writeFile(join(folder, `${name}.lyrics.json`), JSON.stringify(lyrics));
+await writeFile(join(folder, `${name}.lyric.json`), JSON.stringify(lyrics));
 await writeFile(join(folder, 'Audio only.wav'), wav());
 const beat = 'tempo 120; track keys { instrument "synth/keys"; piano { note "C4" start 0 duration 2 velocity .7; } gain .5; }';
 await writeFile(join(folder, `${name}.banger`), beat);

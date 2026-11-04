@@ -31,8 +31,8 @@ export function createSongStorage(userData: string) {
         await writeFile(join(staging, `${name}.wav`), audio);
         const savedSource = source ?? await readRegular(join(await directory(song.root), `${name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
         if (savedSource !== undefined) await writeFile(join(staging, `${name}.banger`), savedSource);
-        const savedLyrics = lyrics === undefined ? await readRegular(join(song.root, `${name}.lyrics.json`)).catch(error => { if (missing(error)) return undefined; throw error; }) : JSON.stringify(lyrics, null, 2);
-        if (savedLyrics !== undefined) await writeFile(join(staging, `${name}.lyrics.json`), savedLyrics);
+        const savedLyrics = lyrics === undefined ? await storage.readCurrentLyrics(song) ?? undefined : JSON.stringify(lyrics, null, 2);
+        if (savedLyrics !== undefined) await writeFile(join(staging, `${name}.lyric.json`), savedLyrics);
         for (const kind of ['instrumentals', 'vocals', 'lyrics'] as const) {
           const folder = await history(song, kind);
           const target = await directory(staging, ['.history', kind]);
@@ -84,7 +84,7 @@ export function createSongStorage(userData: string) {
       }
       const audio = await selected(selection.audio); validateWav(audio, false);
       let source: Uint8Array | undefined = await readRegular(join(await directory(song.root), `${song.name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
-      const lyrics = selection.lyrics ? await selected(selection.lyrics, 'lyrics') : await readRegular(join(song.root, `${song.name}.lyrics.json`)).catch(error => { if (missing(error)) return undefined; throw error; });
+      const lyrics = selection.lyrics ? await selected(selection.lyrics, 'lyrics') : await storage.readCurrentLyrics(song) ?? undefined;
       const parsed = lyrics ? JSON.parse(lyrics.toString()) : undefined;
       if (parsed?.beat?.source !== undefined) source = Buffer.from(validateSource(parsed.beat.source));
       const hasLyrics = Boolean(parsed?.plan?.chunks?.some((chunk: { text: string }) => chunk.text.replace(/\[[^\]]*\]|\{[^}]*\}/g, '').trim()));
@@ -100,7 +100,7 @@ export function createSongStorage(userData: string) {
           await writeFile(join(target, `${song.name}.wav`), audio, { flag: 'wx' });
           if (instrumental) await writeFile(join(target, `${song.name}.instrumental.wav`), instrumental, { flag: 'wx' });
           if (source) await writeFile(join(target, `${song.name}.banger`), source, { flag: 'wx' });
-          if (lyrics) await writeFile(join(target, `${song.name}.lyrics.json`), lyrics, { flag: 'wx' });
+          if (lyrics) await writeFile(join(target, `${song.name}.lyric.json`), lyrics, { flag: 'wx' });
           return { name: song.name, scope };
         } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
       });

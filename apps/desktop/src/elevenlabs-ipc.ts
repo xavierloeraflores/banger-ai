@@ -1,3 +1,4 @@
+import { songStorage } from '@banger/harness';
 import { app, dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { open, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -9,6 +10,7 @@ import { ElevenMusic, MusicProviderError, MAX_WAV_BYTES, lyricsOf } from '@bange
 import { createMusicStore } from './elevenlabs-music.js';
 export function musicStorageHooks(storage: SongStorageBridge['storage']) {
   return {
+    current: async (song: SongLocation) => { const source=await songStorage.readCurrentLyrics(song); return source ? JSON.parse(source) as MusicVersion : null; },
     imported: (song: SongLocation, bytes: Uint8Array) => storage.saveAudio(song, 'instrumentals', bytes),
     saved: async (song: SongLocation, version: MusicVersion, audio?: Uint8Array) => {
       if (audio) await storage.saveAudio(song, version.plan.chunks.some(chunk => lyricsOf(chunk.text)) ? 'vocals' : 'instrumentals', await toWav(audio));
@@ -27,7 +29,7 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
   ipcMain.handle('banger:music-list',(event,token?:string)=>{const window=senderWindow(event);return store.list(token&&storage?storage.resolve(window,token):undefined);});
   ipcMain.handle('banger:music-operations',(event,token?:string)=>{const window=senderWindow(event);return store.operations(token&&storage?storage.resolve(window,token):undefined);});
   ipcMain.handle('banger:music-versions',(event,id:string,before?:number)=>{senderWindow(event);return store.versions(id,before);});
-  ipcMain.handle('banger:music-get',(event,id:string)=>{senderWindow(event);return store.get(id);});
+  ipcMain.handle('banger:music-get',(event,id:string)=>{senderWindow(event);return store.refresh(id);});
   ipcMain.handle('banger:music-operation',(event,id:string)=>{senderWindow(event);return store.recover(id);});
   ipcMain.handle('banger:music-act',async(event,id:string,input:unknown,key:string)=>{
     const window=senderWindow(event);
