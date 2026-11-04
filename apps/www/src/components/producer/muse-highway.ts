@@ -16,25 +16,25 @@ export function drawHighway(canvas: HTMLCanvasElement, run: HeroRun, time: numbe
     return { x: 500 + (lane - (laneCount - 1) / 2) * (150 + 620 * depth) / laneCount, y: horizon + (target - horizon) * depth, scale: .22 + .78 * depth };
   };
   ctx.beginPath(); ctx.moveTo(425, horizon); ctx.lineTo(575, horizon); ctx.lineTo(940, 1000); ctx.lineTo(60, 1000); ctx.closePath();
-  const floor = ctx.createLinearGradient(0, horizon, 0, 1000); floor.addColorStop(0, '#110f2810'); floor.addColorStop(1, '#110f2877');
+  const floor = ctx.createLinearGradient(0, horizon, 0, 1000); floor.addColorStop(0, '#0f192810'); floor.addColorStop(1, '#0f192877');
   ctx.fillStyle = floor; ctx.fill();
   for (let lane = -.5; lane <= laneCount - .5; lane++) {
     const a = point(lane, 0), b = point(lane, 1.13);
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = lane === -.5 || lane === laneCount - .5 ? '#d9a0ffbb' : '#d5bdff35';
+    ctx.strokeStyle = lane === -.5 || lane === laneCount - .5 ? '#a0c8ffbb' : '#bdd8ff35';
     ctx.lineWidth = lane === -.5 || lane === laneCount - .5 ? 2 : .8;
-    ctx.shadowColor = '#bc6dff'; ctx.shadowBlur = 10; ctx.stroke();
+    ctx.shadowColor = '#6daaff'; ctx.shadowBlur = 10; ctx.stroke();
   }
   ctx.shadowBlur = 0;
   const beatSeconds = 60 / tempo;
   for (let beat = Math.ceil(time / beatSeconds); beat * beatSeconds < time + travel; beat++) {
     const progress = 1 - (beat * beatSeconds - time) / travel;
     const a = point(-.5, progress), b = point(laneCount - .5, progress);
-    ctx.strokeStyle = beat % 4 === 0 ? '#e4caff50' : '#e4caff18'; ctx.lineWidth = 1;
+    ctx.strokeStyle = beat % 4 === 0 ? '#cae0ff50' : '#cae0ff18'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
   const left = point(-.5, 1), right = point(laneCount - .5, 1);
-  ctx.strokeStyle = '#e8d7ff'; ctx.lineWidth = 2; ctx.shadowColor = '#b188ff'; ctx.shadowBlur = 15;
+  ctx.strokeStyle = '#d7e8ff'; ctx.lineWidth = 2; ctx.shadowColor = '#88baff'; ctx.shadowBlur = 15;
   ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(right.x, right.y); ctx.stroke();
   const gem = (lane: number, progress: number, receptor = false, active = false) => {
     const p = point(lane, progress), color = HERO_COLORS[lane]!;
