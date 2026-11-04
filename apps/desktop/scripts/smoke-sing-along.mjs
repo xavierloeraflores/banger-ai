@@ -36,6 +36,8 @@ const name = actual ? 'First Light' : 'Morning light';
 await writeFile(join(folder, `${name}.wav`), audio);
 await writeFile(join(folder, `${name}.lyric.json`), JSON.stringify(lyrics));
 await writeFile(join(folder, 'Audio only.wav'), wav());
+const cover = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jU1sAAAAASUVORK5CYII=';
+await writeFile(join(folder, 'cover.png'), Buffer.from(cover, 'base64'));
 const timeout = setTimeout(() => { console.error('Sing-along smoke timed out'); app.exit(1); }, 120000);
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', async () => {
   const evaluate = code => window.webContents.executeJavaScript(code, true).catch(error => { throw new Error(`Failed: ${code}`, { cause: error }); });
@@ -65,8 +67,11 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelector('.sing-along-lines button') && document.querySelector('.library-player audio').duration > 0", 'timed lyrics');
     await wait("document.querySelector('[aria-label=" + JSON.stringify('Pause library song') + "]')", 'audio playing');
     await wait("!document.querySelector('[aria-label=\"Pause library song\"]').disabled", 'player ready');
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.sing-along-art')).animationPlayState"), 'running');
+    assert.ok(await evaluate("document.querySelector('.sing-along-art img')?.complete"));
     await click('[aria-label="Pause library song"]');
     await wait("document.querySelector('.library-player audio').paused", 'paused');
+    await wait("getComputedStyle(document.querySelector('.sing-along-art')).animationPlayState==='paused'", 'art pauses');
     const first = lyrics.audioMetadata.wordsTimestamps[0];
     await seek((first.startMs + first.endMs) / 2000);
     await wait("document.querySelector('[data-state=singing]')", 'current word highlight');
@@ -89,6 +94,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'mouseUp', ...rect, button: 'left', clickCount: 1 });
     await wait("document.querySelector('.library-player audio').currentTime > document.querySelector('.library-player audio').duration * .5", 'waveform seek');
     await click('[aria-label="Play library song"]');
+    await wait("getComputedStyle(document.querySelector('.sing-along-art')).animationPlayState==='running'", 'art resumes');
     const before = await evaluate("document.querySelector('.library-player audio').currentTime");
     await delay(250);
     assert.ok(await evaluate("document.querySelector('.library-player audio').currentTime") > before, 'playback resumes from seek');
@@ -106,6 +112,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await click('[aria-label="Play Browser recording"]');
     await click('[aria-controls="library-sing-along"]');
     await wait("document.querySelector('.sing-along-lines')?.textContent.includes('Carry me home')", 'browser bundle metadata');
+    assert.equal(await evaluate("document.querySelector('.sing-along-art img')"), null, 'browser song without artwork uses fallback');
     assert.equal(await evaluate("document.querySelector('.sing-along-title .library-song-tag')"), null, 'vocal title has no tag');
     await evaluate(`(() => { const field = document.querySelector('[aria-label="Lyrics song"]'); field.value = [...field.options].find(option => option.text === 'Audio only').value; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await wait("document.querySelector('.sing-along-title .library-song-tag')?.textContent === 'Instrumental'", 'instrumental title tag');

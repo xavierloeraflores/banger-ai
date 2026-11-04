@@ -44,7 +44,7 @@ app.on('browser-window-created',(_event,window)=>window.webContents.once('did-fi
   try {
     await enterStudio(window);window.setContentSize(1200,900);window.show();window.focus();window.webContents.focus();
     await click('.app-sidebar-nav button[aria-label="Library"]');
-    await wait(`document.querySelectorAll('.library-single').length===2`,'standalone cards');
+    await wait(`document.querySelectorAll('.library-single').length===4`,'standalone cards');
     assert.equal(await evaluate("document.querySelectorAll('.library-record').length"),1);
     assert.equal(await evaluate("document.querySelector('[aria-label=\"Play Solo gradient\"]').closest('ol')"),null);
     assert.ok(await evaluate("getComputedStyle(document.querySelector('[aria-label=\"Play Solo gradient\"] .library-art')).backgroundImage.includes('gradient')"));
@@ -62,7 +62,7 @@ app.on('browser-window-created',(_event,window)=>window.webContents.once('did-fi
     await wait("document.querySelector('.library-record-notice')?.textContent.includes('key')",'missing key feedback');
     // Use real IndexedDB and the provider adapter, with HTTP responses supplied by this fixture.
     await evaluate(`new Promise(resolve=>{const r=indexedDB.open('banger-library',2);r.onsuccess=()=>{const db=r.result,tx=db.transaction(['songs','records'],'readwrite');tx.objectStore('records').put({id:'browser-record',name:'Browser record',context:{name:'Browser record'},attempts:1,artwork:'data:image/png;base64,${png}'});for(const name of ['Browser one','Browser two','Browser solo'])tx.objectStore('songs').put({id:name,...(name!=='Browser solo'?{recordId:'browser-record'}:{}),name,wav:Uint8Array.from(atob(${JSON.stringify(wav().toString('base64'))}),c=>c.charCodeAt(0)).buffer,files:{}});tx.oncomplete=()=>{db.close();resolve()}}})`);
-    await wait("document.querySelectorAll('.library-single').length===3 && document.querySelectorAll('.library-record').length===2",'browser singles and records');
+    await wait("document.querySelectorAll('.library-single').length===7 && document.querySelectorAll('.library-record').length===2",'browser singles and records');
     await evaluate(`(() => {sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify({activeProvider:'meta',providers:{meta:{key:'fixture',model:'muse-wonder-1.0'}}}));const canvas=document.createElement('canvas');canvas.width=canvas.height=2;const ctx=canvas.getContext('2d');ctx.fillStyle='#428aff';ctx.fillRect(0,0,2,2);window.newCover=canvas.toDataURL();const original=window.fetch;window.fetch=async (url,options)=>{if(String(url).startsWith('https://api.meta.ai/')){if(String(url).endsWith('/chat/completions'))return Response.json({id:'brief',object:'chat.completion',created:1,model:'muse-wonder-1.0',choices:[{index:0,message:{role:'assistant',content:'Blue morning'},finish_reason:'stop'}]});window.imageRequest=JSON.parse(options.body);return new Promise(resolve=>window.finishCover=()=>resolve(Response.json({data:[{b64_json:window.newCover.split(',')[1]}]})));}return original(url,options);};})()`);
     await menu('Browser record');await click('.library-record-menu[data-state=open] [role=menuitem]:last-child');
     await wait('window.finishCover','generation started');
@@ -89,19 +89,25 @@ app.on('browser-window-created',(_event,window)=>window.webContents.once('did-fi
     assert.equal(await evaluate("document.querySelector('.library-now-playing strong').textContent"), 'Renamed solo');
     await action('Renamed solo', 'Add to record');
     await submitDialog();
-    await wait(`document.querySelector('[aria-label="Record: New native name"] [aria-label="Play Renamed solo"], [aria-label="Record: New native name"] [aria-label="Pause Renamed solo"]')`, 'native added to record');
+    await click('[aria-label="Show songs on New native name"]');
+    await wait(`document.querySelectorAll('.library-single').length===3 && document.querySelector('.library-single [aria-label="Options for Renamed solo"]')`, 'native added to record');
     await action('New native name', 'Edit record song list');
     await evaluate(`Array.from(document.querySelectorAll('.library-record-dialog[data-state="open"] li')).find(item=>item.textContent.includes('Renamed solo')).querySelector('button:last-child').click()`);
     await submitDialog();
-    await wait(`document.querySelector('.library-single [aria-label="Options for Renamed solo"]')`, 'native removed song remains standalone');
+    await wait(`document.querySelectorAll('.library-single').length===2 && !document.querySelector('.library-single [aria-label="Options for Renamed solo"]')`, 'removed song leaves filtered record');
+    await click('.library-section-heading button');
+    await wait(`document.querySelector('.library-single [aria-label="Options for Renamed solo"]')`, 'native removed song remains in library');
     await rename('Browser solo', 'Browser single renamed');
     await action('Browser single renamed', 'Add to record');
     await submitDialog();
-    await wait(`document.querySelector('[aria-label="Record: Name during generation"] [aria-label="Play Browser single renamed"]')`, 'browser added to record');
+    await click('[aria-label="Show songs on Name during generation"]');
+    await wait(`document.querySelectorAll('.library-single').length===3 && document.querySelector('[aria-label="Play Browser single renamed"]')`, 'browser added to record');
     await action('Name during generation', 'Edit record song list');
     await evaluate(`Array.from(document.querySelectorAll('.library-record-dialog[data-state="open"] li')).find(item=>item.textContent.includes('Browser single renamed')).querySelector('button:last-child').click()`);
     await submitDialog();
-    await wait(`document.querySelector('.library-single [aria-label="Options for Browser single renamed"]')`, 'browser removed song remains standalone');
+    await wait(`document.querySelectorAll('.library-single').length===2 && !document.querySelector('[aria-label="Play Browser single renamed"]')`, 'browser removed song leaves filtered record');
+    await click('.library-section-heading button');
+    await wait(`document.querySelector('.library-single [aria-label="Options for Browser single renamed"]')`, 'browser removed song remains in library');
     await evaluate('window.finishCover = null');
     await action('Browser single renamed', 'Regenerate artwork');
     await wait('window.finishCover', 'single artwork request');
@@ -118,7 +124,8 @@ app.on('browser-window-created',(_event,window)=>window.webContents.once('did-fi
     await action('New native name', 'Edit record song list');
     await evaluate(`document.querySelector('.library-record-dialog[data-state="open"] li:nth-child(2) button').click()`);
     await submitDialog();
-    await wait(`document.querySelector('[aria-label="Record: New native name"] li:first-child strong')?.textContent==='Record two'`, 'record order saved');
+    await click('[aria-label="Show songs on New native name"]');
+    await wait(`document.querySelector('.library-single strong')?.textContent==='Record two'`, 'record order saved');
     await action('Record one', 'Open project');
     await wait(`!document.querySelector('.song-library') && document.querySelector('.producer')?.textContent.includes('Original.banger')`, 'original project opened');
     await click('.app-sidebar-nav button[aria-label="Library"]');

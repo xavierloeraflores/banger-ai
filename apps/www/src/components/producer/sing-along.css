@@ -3,14 +3,15 @@
 .sing-along-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 26px 30px; border-bottom: 1px solid #ffffff10; }
 .producer .sing-along-title h2 { margin: 0; font-size: clamp(22px, 3vw, 34px); letter-spacing: -1px; overflow-wrap: anywhere; }
 .sing-along-body { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
-.sing-along-performance { padding: 26px 30px 20px; min-width: 0; }
-.sing-along-current { min-height: 110px; display: block; margin: 26px 0 12px; font-size: clamp(28px, 3.5vw, 52px); font-weight: 650; line-height: 1.2; letter-spacing: -1.5px; overflow-wrap: anywhere; }
-.sing-along-current [data-state="upcoming"] { color: #8291a4; }
-.sing-along-current [data-state="singing"] { color: #75b5ff; text-shadow: 0 0 30px #75b5ff44; }
-.sing-along-current [data-state="sung"] { color: #f4f6f8; }
-.sing-along-next { min-height: 40px; color: var(--sing-muted); font-size: 15px; line-height: 1.6; }
-.sing-along-detail { margin-top: 20px; padding: 18px; border: 1px solid #ffffff12; border-radius: 12px; background: #0b111955; }
-.sing-along-detail > div, .sing-along-overview > div:not(.sing-along-seek) { display: flex; justify-content: space-between; gap: 10px; color: var(--sing-muted); font-size: 10px; }
+.sing-along-performance { padding: 30px; min-width: 0; display: grid; place-items: center; }
+.sing-along-art { position: relative; display: grid; place-items: center; width: min(100%, 360px); aspect-ratio: 1; overflow: hidden; border-radius: 50%; background: linear-gradient(145deg, #3f4853, #192029); animation: sing-along-spin 20s linear infinite; animation-play-state: paused; }
+.sing-along-art[data-playing="true"] { animation-play-state: running; }
+.sing-along-art > span { font-size: 100px; color: #ffffff45; }
+.sing-along-art img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+@keyframes sing-along-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sing-along-art { animation: none; } }
+.sing-along-lines [data-state="singing"] { color: #b9d9ff; text-shadow: 0 0 20px #75b5ff66; }
+.sing-along-overview > div:not(.sing-along-seek) { display: flex; justify-content: space-between; gap: 10px; color: var(--sing-muted); font-size: 10px; }
 .sing-along svg { display: block; width: 100%; height: 80px; margin: 8px 0; overflow: hidden; }
 .sing-along time { font: 10px ui-monospace, monospace; }
 .sing-along-transcript { min-width: 0; padding: 30px 12px 20px 22px; border-left: 1px solid #ffffff10; background: #080d1326; }
@@ -32,7 +33,6 @@
 @media (max-width: 760px) {
   .sing-along-body { grid-template-columns: 1fr; }
   .sing-along-title, .sing-along-performance, .sing-along-overview { padding: 20px; }
-  .sing-along-current { min-height: 95px; margin-top: 24px; }
   .sing-along-transcript { border-left: 0; border-top: 1px solid #ffffff10; padding: 20px; }
   .sing-along-lines { max-height: 220px; }
 }

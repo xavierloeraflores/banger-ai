@@ -47,6 +47,7 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
   const [projectIds, setProjectIds] = useState<Set<string>>(new Set());
   const [lyricData, setLyricData] = useState<SingAlongData>(() => readSingAlong(null));
   const [songs, setSongs] = useState<Song[]>([]);
+  const [recordFilter, setRecordFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<Song | null>(null), [pending, setPending] = useState(false), [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0), [duration, setDuration] = useState(0);
@@ -104,6 +105,9 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
       if (cancelled) return;
       const items = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
       setSongs(items); setLoading(false);
+      if (results.every(result => result.status === 'fulfilled')) {
+        setRecordFilter(current => items.some(song => song.recordKey === current) ? current : null);
+      }
       const failures = results.filter(result => result.status === 'rejected');
       if (!failures.length) reconcileSongs(items);
       if (failures.length) setError(`Some songs could not be loaded. ${message(failures[0]!.reason)}`);
@@ -187,7 +191,6 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
     }
     finally { if (generation.current === ticket) setPending(false); }
   }
-  const singles = songs.filter(song => !song.recordId);
   const records = [...songs.filter(song => song.recordId).reduce((groups, song) => {
     const id = song.recordKey!;
     const group = groups.get(id) ?? { id, name: song.recordName ?? song.name, artwork: song.artwork, songs: [] as Song[] };
@@ -205,16 +208,40 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
   function songOptions(song: Song) {
     return song.renameSong && song.regenerateSongArtwork && <RecordOptions kind="song" name={song.name} generating={song.artworkPending} rename={song.renameSong} regenerate={song.recordId ? song.regenerateArtwork ?? song.regenerateSongArtwork : song.regenerateSongArtwork} openProject={projectAction(song)} addToRecord={song.addToRecord} records={records.filter(record => record.songs[0]?.storage === song.storage && record.id !== song.recordKey).map(record => ({ id: record.songs[0]!.recordId!, name: record.name }))} onChange={changed} />;
   }
+  const activeRecord = records.find(record => record.id === recordFilter);
+  const visibleSongs = activeRecord?.songs ?? songs;
   const currentSelected = songs.find(song => song.id === selected?.id) ?? selected;
   return <section className="song-library" data-sing-along={singAlong && !!selected} aria-labelledby={singAlong && selected ? "sing-along-title" : "library-title"}>
     {actionsTarget ? createPortal(shuffleButton, actionsTarget) : shuffleButton}
     {(!singAlong || !selected) && <header className="library-heading"><div><p>Your collection</p><h1 id="library-title">Library</h1><span>{loading ? 'Loading songs…' : `${records.length ? `${records.length} ${records.length === 1 ? 'record' : 'records'} · ` : ''}${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`}</span></div><div><Button disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div></header>}
     {error && <p className="library-error" role="alert">{error}</p>}
     {singAlong && <div className="library-sing-controls"><Button onClick={onCloseSingAlong}>← Collection</Button><Select aria-label="Lyrics song" value={selected?.id ?? ''} onChange={event => { const song = songs.find(item => item.id === event.target.value); if (song) void choose(song); }}><option value="" disabled>Choose a song</option>{songs.map(song => <option key={song.id} value={song.id}>{song.name}</option>)}</Select></div>}
-    {singAlong && selected && <SingAlong instrumental={selected.songType === 'instrumental'} name={currentSelected!.name} data={lyricData} position={position} duration={duration} pending={pending} onSeek={seek} />}
+    {singAlong && selected && <SingAlong artwork={currentSelected?.artwork} playing={playing} instrumental={selected.songType === 'instrumental'} name={currentSelected!.name} data={lyricData} position={position} duration={duration} pending={pending} onSeek={seek} />}
     {singAlong && !selected && <p className="library-help">Choose a song to see its waveform and lyrics.</p>}
-    {(!singAlong || !selected) && <div className="library-grid" aria-label="Songs and records" aria-busy={loading}>
-      {singles.map((song, index) => <section key={song.id} className="library-single">{songOptions(song)}<Button className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
+    {(!singAlong || !selected) && <>
+      <section className="library-section" aria-labelledby="library-records-title" aria-busy={loading}>
+        <h2 id="library-records-title">Records</h2>
+        <div className="library-grid" aria-label="Records">
+      {records.map((record, index) => <section className="library-record" key={record.id} aria-label={`Record: ${record.name}`}>
+        {record.songs[0]?.renameRecord && record.songs[0]?.regenerateArtwork && <RecordOptions name={record.name} generating={record.songs.some(song => song.artworkPending)} rename={record.songs[0].renameRecord} regenerate={record.songs[0].regenerateArtwork} openProject={record.songs.map(projectAction).find(Boolean)} songs={songs.filter(song => song.storage === record.songs[0]?.storage && (!song.recordId || song.recordKey === record.id))} selectedSongs={record.songs.map(song => song.id)} editSongs={record.songs[0].editRecordSongs} onChange={changed} />}
+        <Button className="library-card" aria-label={`Show songs on ${record.name}`} aria-pressed={activeRecord?.id === record.id} aria-controls="library-songs" onClick={() => setRecordFilter(record.id)}>
+          <span className={`library-art library-record-art library-art-${index % 4}`}>
+            <span className="library-art-fallback" aria-hidden="true">♫</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {record.artwork && <img key={record.artwork} src={record.artwork} alt="" onError={event => { event.currentTarget.style.display = 'none'; }} />}
+          </span>
+          <strong>{record.name}</strong><span className="library-card-detail">{record.songs.length} {record.songs.length === 1 ? 'song' : 'songs'}</span>
+        </Button>
+        {record.songs.some(song => song.artworkPending) && <p className="library-record-notice" role="status">Generating new artwork…</p>}
+        {record.songs.some(song => song.artworkError) && <p className="library-record-notice" role="status">Artwork could not be regenerated. Try again from the record menu.</p>}
+      </section>)}
+        </div>
+        {!loading && !records.length && <p className="library-help">No records yet. Add songs to a record from the song menu.</p>}
+      </section>
+      <section className="library-section" id="library-songs" aria-labelledby="library-songs-title" aria-busy={loading}>
+        <div className="library-section-heading"><h2 id="library-songs-title">{activeRecord ? `${activeRecord.name} songs` : 'Songs'}</h2>{activeRecord && <Button onClick={() => setRecordFilter(null)}>All songs</Button>}</div>
+        <div className="library-grid" aria-label={activeRecord ? `Songs on ${activeRecord.name}` : 'All songs'}>
+      {visibleSongs.map((song, index) => <section key={song.id} className="library-single">{songOptions(song)}<Button className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
         <span className={`library-art library-art-${index % 4}`}>
           <span className="library-art-fallback" aria-hidden="true">♫</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -223,23 +250,9 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
         </span>
         <strong>{song.name}</strong><span className="library-card-detail"><span>{song.scope}</span><span className="library-song-tag" data-song-type={song.songType}>{song.songType === 'vocal' ? 'Vocal' : 'Instrumental'}</span></span>
       </Button>{song.artworkPending && <p className="library-record-notice" role="status">Generating new artwork…</p>}{song.artworkError && <p className="library-record-notice" role="status">Artwork could not be regenerated. Try again from the song menu.</p>}</section>)}
-      {records.map((record, index) => <section className="library-record" key={record.id} aria-label={`Record: ${record.name}`}>
-        {record.songs[0]?.renameRecord && record.songs[0]?.regenerateArtwork && <RecordOptions name={record.name} generating={record.songs.some(song => song.artworkPending)} rename={record.songs[0].renameRecord} regenerate={record.songs[0].regenerateArtwork} openProject={record.songs.map(projectAction).find(Boolean)} songs={songs.filter(song => song.storage === record.songs[0]?.storage && (!song.recordId || song.recordKey === record.id))} selectedSongs={record.songs.map(song => song.id)} editSongs={record.songs[0].editRecordSongs} onChange={changed} />}
-        {record.artwork && <div className={`library-art library-art-${index % 4}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img key={record.artwork} src={record.artwork} alt={`${record.name} record cover`} onError={event => { event.currentTarget.style.display = 'none'; }} />
-        </div>}
-        <h2>{record.name}</h2><p className="library-record-count">{record.songs.length} {record.songs.length === 1 ? 'song' : 'songs'}</p>
-        {record.songs.some(song => song.artworkPending) && <p className="library-record-notice" role="status">Generating new artwork…</p>}
-        {record.songs.some(song => song.artworkError) && <p className="library-record-notice" role="status">Artwork could not be regenerated. Try again from the record menu.</p>}
-        <ol className="library-record-songs">{record.songs.map(song => <li key={song.id}>{songOptions(song)}
-          <Button className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
-            <span className="library-song-play" aria-hidden="true">{selected?.id === song.id && pending ? '…' : selected?.id === song.id && playing ? 'Ⅱ' : '▶'}</span>
-            <span><strong>{song.name}</strong><span className="library-card-detail"><span>{song.scope}</span><span className="library-song-tag" data-song-type={song.songType}>{song.songType === 'vocal' ? 'Vocal' : 'Instrumental'}</span></span></span>
-          </Button>
-        </li>)}</ol>
-      </section>)}
-    </div>}
+        </div>
+      </section>
+    </>}
     {!loading && songs.length === 0 && <p className="library-help">No songs added yet. Choose Export and save to library in Beat Studio or Vocal Studio.</p>}
     <footer className="library-player" aria-label="Library player">
       <audio ref={player} aria-label="Library song preview" preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); if (shuffle.current && active) void advance(); }} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} onError={() => { setPending(false); setError('This song could not be played. Select it again to retry.'); onRecordingChange(null); if (url.current) URL.revokeObjectURL(url.current); url.current = ''; }} />

@@ -136,7 +136,7 @@ The hosted workspace isolation test runs in the API integration suite.
 
 Record grouping and delayed artwork use
 `pnpm --filter @banger/desktop exec electron scripts/smoke-records.mjs`.
-This checks native and IndexedDB records, one square cover per record, automatic
+This checks native and IndexedDB records, equal-sized circular record and square song covers, fixed menu positions, record filtering, automatic
 cover refresh, uninterrupted playback, and narrow layouts. Run `smoke-sing-along.mjs`
 as well when changing the library song list.
 

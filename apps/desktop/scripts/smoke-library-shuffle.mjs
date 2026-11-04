@@ -48,9 +48,9 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await enterStudio(window);
     window.setContentSize(1440, 1000); window.setAlwaysOnTop(true); window.show(); window.focus(); window.webContents.focus();
     await click('.app-sidebar-nav button[aria-label="Library"]');
-    await wait("document.querySelectorAll('.library-card').length === 3", 'native singles and record');
+    await wait("document.querySelectorAll('.library-single').length === 3", 'native singles and record');
     await seed('Browser song');
-    await wait("document.querySelectorAll('.library-card').length === 4", 'combined library');
+    await wait("document.querySelectorAll('.library-single').length === 4", 'combined library');
     assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].some(button => /^(Save|Export)$/.test(button.textContent.trim()))"), false);
     await click('[aria-label="Shuffle library"]'); await ready();
     const visited = new Set([await evaluate(title)]);

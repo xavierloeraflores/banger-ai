@@ -7,7 +7,7 @@ import { currentLyricLine, type SingAlongData } from '@/lib/sing-along';
 import { clockTime } from './music-audio';
 import './sing-along.css';
 
-type Props = { name: string; instrumental: boolean; data: SingAlongData; position: number; duration: number; pending: boolean; onSeek(seconds: number): void };
+type Props = { artwork?: string; playing: boolean; name: string; instrumental: boolean; data: SingAlongData; position: number; duration: number; pending: boolean; onSeek(seconds: number): void };
 
 function Waveform({ samples, start, end, position, detail = false }: { samples: number[]; start: number; end: number; position: number; detail?: boolean }) {
   const peak = useMemo(() => samples.reduce((max, value) => Math.max(max, Math.abs(value)), 1), [samples]);
@@ -28,7 +28,7 @@ function Waveform({ samples, start, end, position, detail = false }: { samples: 
   </svg>;
 }
 
-export function SingAlong({ name, instrumental, data, position, duration, pending, onSeek }: Props) {
+export function SingAlong({ artwork, playing, name, instrumental, data, position, duration, pending, onSeek }: Props) {
   const active = currentLyricLine(data.lines, position * 1000);
   const next = data.lines.findIndex(line => line.startMs > position * 1000);
   const focused = active >= 0 ? active : next;
@@ -38,24 +38,19 @@ export function SingAlong({ name, instrumental, data, position, duration, pendin
     const line = container?.querySelector<HTMLElement>(`[data-line="${focused}"]`);
     if (container && line) container.scrollTo({ top: line.offsetTop - container.offsetTop - container.clientHeight / 2 + line.clientHeight / 2, behavior: 'instant' });
   }, [focused]);
-  const windowStart = Math.max(0, Math.min(position - 4, duration - 8));
-  const windowEnd = Math.min(duration || 8, windowStart + 8);
   return <section className="sing-along" id="library-sing-along" aria-label={`Lyrics for ${name}`} aria-busy={pending}>
     <div className="sing-along-title"><h2 id="sing-along-title">{name}</h2>{instrumental && <span className="library-song-tag" data-song-type="instrumental">Instrumental</span>}</div>
     <div className="sing-along-body">
       <div className="sing-along-performance">
-        <div className="sing-along-current" aria-label="Current lyric">
-          {focused >= 0 ? data.lines[focused]!.words.map((word, index) => <span key={index} data-state={position * 1000 >= word.endMs ? 'sung' : position * 1000 >= word.startMs ? 'singing' : 'upcoming'}>{word.word}{' '}</span>) : <span>{data.lines.length ? '♪' : 'Find your voice'}</span>}
-        </div>
-        <p className="sing-along-next">{focused >= 0 && data.lines[focused + 1] ? data.lines[focused + 1]!.words.map(word => word.word).join(' ') : data.lines.length ? ' ' : 'This song has no saved word timings.'}</p>
-        <div className="sing-along-detail"><div><span>In the moment</span><time>{clockTime(position)}</time></div>
-          {data.waveform.length ? <Waveform samples={data.waveform} start={windowStart} end={windowEnd} position={position} detail /> : <p className="sing-along-empty">No waveform saved for this song.</p>}
-          <div><time>{clockTime(windowStart)}</time><time>{clockTime(windowEnd)}</time></div>
+        <div className="sing-along-art" data-playing={playing && !pending} role="img" aria-label={`${name} cover art`}>
+          <span aria-hidden="true">♫</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {artwork && <img key={artwork} src={artwork} alt="" onError={event => { event.currentTarget.style.display = 'none'; }} />}
         </div>
       </div>
       <div className="sing-along-transcript"><h3>Lyrics {!data.lines.length && <span>Without timing</span>}</h3>
         <div ref={transcript} className="sing-along-lines" tabIndex={0} aria-label="Song lyrics">
-          {data.lines.length ? data.lines.map((line, index) => <Button type="button" key={index} data-line={index} aria-current={index === active ? 'true' : undefined} disabled={pending || !duration} onClick={() => onSeek(line.startMs / 1000)}><time>{clockTime(line.startMs / 1000)}</time><span>{line.words.map(word => word.word).join(' ')}</span></Button>) : <p className="sing-along-empty">{data.lyrics || 'No lyrics saved for this song. Songs exported from Vocal Studio can include lyrics and word timings.'}</p>}
+          {data.lines.length ? data.lines.map((line, index) => <Button type="button" key={index} data-line={index} aria-current={index === active ? 'true' : undefined} disabled={pending || !duration} onClick={() => onSeek(line.startMs / 1000)}><time>{clockTime(line.startMs / 1000)}</time><span>{line.words.map((word, wordIndex) => <span key={wordIndex} data-state={position * 1000 >= word.endMs ? 'sung' : position * 1000 >= word.startMs ? 'singing' : 'upcoming'}>{word.word}{' '}</span>)}</span></Button>) : <p className="sing-along-empty">{data.lyrics || 'No lyrics saved for this song. Songs exported from Vocal Studio can include lyrics and word timings.'}</p>}
         </div>
       </div>
     </div>
