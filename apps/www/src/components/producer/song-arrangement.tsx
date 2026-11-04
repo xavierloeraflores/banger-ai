@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MUSIC_LIMITS, resolvePattern, type MusicProgram, type MusicSection } from "@banger/compiler";
 import { Button, Input, Select } from "@banger/shadcn";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@banger/shadcn/components/dropdown-menu";
 
 export function SongArrangement({ program, disabled, section, preview, onPreview, onChange }: {
   program: MusicProgram; disabled: boolean; section?: string; preview?: string;
@@ -9,6 +10,8 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
   const sections = program.sections ?? [], timeline = program.timeline ?? [];
   const [dragged, setDragged] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const canAppend = !disabled && sections.length > 0 && timeline.length < MUSIC_LIMITS.timeline;
   const chain = program.chainEnabled !== false && timeline.length > 0;
   const bars = timeline.reduce((sum, entry) => sum + (sections.find(item => item.name === entry.section)?.bars ?? 0) * (entry.repeats ?? 1), 0);
   const update = (index: number, next: MusicSection) => onChange({ ...program, sections: sections.map((item, i) => i === index ? next : item) });
@@ -26,7 +29,6 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
       {preview && <Button variant="secondary" onClick={() => onPreview()}>Stop preview</Button>}
     </div>
     <fieldset disabled={disabled}>
-      <div className="studio-song-palette" aria-label="Sections to append">{sections.map(item => <Button key={item.name} variant="secondary" disabled={timeline.length >= MUSIC_LIMITS.timeline} aria-label={`Append ${item.name}`} onClick={() => onChange({ ...program, timeline: [...timeline, { section: item.name, repeats: 1 }] })}>{item.name}</Button>)}</div>
       {!sections.length && <p>Create a section below, then add it to the song.</p>}
       <ol className="studio-song-timeline" aria-label="Song timeline">{timeline.map((entry, index) => {
         const item = sections.find(item => item.name === entry.section)!;
@@ -53,6 +55,18 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
           </div>
         </li>;
       })}</ol>
+      <DropdownMenu open={pickerOpen && canAppend} onOpenChange={setPickerOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button className="studio-song-add-row" variant="ghost" disabled={!canAppend} aria-label="Add section to song" title="Add section to song">
+            <span aria-hidden="true">+</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="studio-song-section-picker" align="center" sideOffset={8} collisionPadding={16} aria-label="Choose a section to add">
+          {sections.map(item => <DropdownMenuItem key={item.name} asChild onSelect={() => {
+            if (canAppend) onChange({ ...program, timeline: [...timeline, { section: item.name, repeats: 1 }] });
+          }}><button type="button" aria-label={`Append ${item.name}`}>{item.name}</button></DropdownMenuItem>)}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <p className="studio-song-help">Drag rows to reorder, or use the arrow buttons. Click a section badge to preview. Enable Chain to play the song in order.</p>
       <details className="studio-arrangement"><summary>Edit sections · {sections.length}</summary>
         <div className="studio-sections">{sections.map((item, index) => <section key={item.name} className="studio-section">
