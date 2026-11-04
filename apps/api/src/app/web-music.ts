@@ -118,7 +118,10 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
       const payload = { action, idempotencyKey: key };
       return operation(await (action.operation === 'edit' ? request<Job>(`/music/${id}/actions`, 'POST', payload) : cloudVocalRequest<Job>(connection, `/music/${id}/actions`, payload)));
     },
-    operations: async token => (await backend(token)).operations(),
+    // Full Send submits actions through the native-compatible bridge. Refresh
+    // the cloud adapter's song IDs so it can associate those jobs after a save
+    // changes the project revision or creates the first composition.
+    operations: async token => { const api = await backend(token); await api.list(); return api.operations(); },
     operation: async id => operation(await request<Job>(`/jobs/${id}`)),
     audio: async (id, number) => audio((await version(id, number)).audioId),
     async save(id, number) {

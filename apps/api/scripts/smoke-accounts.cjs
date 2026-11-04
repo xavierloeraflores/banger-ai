@@ -7,18 +7,22 @@ const origin = process.env.BANGER_SMOKE_URL || 'http://127.0.0.1:3048';
 if (!['localhost', '127.0.0.1'].includes(new URL(origin).hostname)) throw new Error('Account smoke tests require a local test server.');
 const username = `smoke_${Date.now()}`;
 const password = 'local-fixture-password-123';
-const timer = setTimeout(() => { console.error('Account smoke timed out'); app.exit(1); }, 90000);
+const fullSend = process.argv.find(arg => arg.startsWith('--full-send='))?.split('=')[1];
+const music = process.argv.includes('--music') || Boolean(fullSend);
+const timer = setTimeout(() => { console.error('Account smoke timed out'); app.exit(1); }, 180000);
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ width: 1440, height: 1000, show: false, webPreferences: { partition: `account-smoke-${Date.now()}`, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   const errors = [];
   window.webContents.on('console-message', event => { if (event.level === 'error' && !event.message.includes('Failed to load resource')) errors.push(event.message); });
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = async code => { try { return await window.webContents.executeJavaScript(code, true); } catch (error) { throw new Error(`${code}\n${await window.webContents.executeJavaScript('document.body.innerText')}\n${error}`); } };
   const wait = async condition => {
-    for (let i = 0; i < 100; i++) { if (await evaluate(condition)) return; await new Promise(resolve => setTimeout(resolve, 100)); }
+    for (let i = 0; i < 400; i++) { if (await evaluate(condition)) return; await new Promise(resolve => setTimeout(resolve, 100)); }
     throw new Error(`Did not render: ${condition}\n${await evaluate('document.body.innerText')}`);
   };
   const fill = async (name, value) => evaluate(`(() => { const input=document.getElementById(${JSON.stringify(name)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)}); input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
   const click = text => evaluate(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent===${JSON.stringify(text)}).click()`);
+  const setText = (selector, value) => evaluate(`(() => { const input=document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,${JSON.stringify(value)}); input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+  const view = value => evaluate(`(() => { const select=document.querySelector('[aria-label=View]');select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
   await window.loadURL(origin);
   await wait("document.body.innerText.includes('Sign in to Banger')");
   await click('New to Banger? Create an account');
@@ -44,8 +48,8 @@ app.whenReady().then(async () => {
   await click('Sign in');
   await wait("document.body.innerText.includes('Start making music')");
   await writeFile('/tmp/banger-account-signed-in.png', (await window.webContents.capturePage()).toPNG());
-  if (process.argv.includes('--projects')) {
-    const fixture = 'tempo 124; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain .6; }';
+  if (process.argv.includes('--projects') || music) {
+    const fixture = 'tempo 124; meter 4/4; track kick { sound "drums/kick"; bars 4; rhythm "x . x ."; gain .6; }';
     window.webContents.session.on('will-download', (_event, item) => { item.setSavePath(`/tmp/banger-web-smoke-${username}.wav`); });
     await click('Load Sample Project');
     await wait("Boolean(document.querySelector('.web-project-picker[open]'))");
@@ -85,6 +89,68 @@ app.whenReady().then(async () => {
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     await writeFile('/tmp/banger-web-library.png', (await window.webContents.capturePage()).toPNG());
     console.log('PASS: account project creation, source save/reopen, durable drafts, WAV render/archive/download, persisted library, decoded non-silent audio and playback');
+    if (music) {
+      await evaluate("document.querySelector('[aria-label=Settings]').click()");
+      await wait("Boolean(document.querySelector('#producer-settings-dialog[open]'))");
+      await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button=>button.querySelector('span').textContent==='OpenAI').click()");
+      await fill('byok-model', 'fixture');await fill('byok-key', 'banger-fixture-key');await click('Save and select');
+      await wait("document.querySelector('.byok-settings').textContent.includes('settings saved')");
+      await fill('elevenlabs-key', 'banger-fixture-key');await click('Save ElevenLabs key');
+      await wait("document.querySelector('#elevenlabs-key').value===''");
+      await evaluate("document.querySelector('[aria-label=\"Close settings\"]').click()");
+      await view('vocal');
+      await wait("Boolean(document.querySelector('.music-empty'))");
+      if (fullSend) {
+        await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
+        await evaluate(`(() => { const wanted=[${fullSend !== 'lyrics'},${fullSend !== 'beat'},true]; [...document.querySelectorAll('.ai-chat-permissions input')].forEach((input,index)=>{if(input.checked!==wanted[index])input.click();}); })()`);
+        await setText('#ai-chat-prompt', 'Change the tempo to 111 and write hopeful lyrics within the enabled permissions.');
+        await click('Send');
+        await wait("document.querySelector('.ai-chat-footer').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-transcript').textContent.includes('Full Send complete') || Boolean(document.querySelector('.ai-chat-footer [role=alert]'))");
+        assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"), '');
+        assert.equal(await evaluate("document.querySelector('#producer-source').value"), fullSend === 'lyrics' ? fixture : fixture.replace('tempo 124;', 'tempo 111;'));
+        await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+        const songs = await evaluate('window.bangerLibrary.list()');
+        assert.ok(songs.length >= 2);
+        assert.equal(songs.some(song => song.songType === 'vocal'), fullSend !== 'beat');
+        if (fullSend === 'beat') assert.equal(await evaluate("(async()=>{const token=await window.bangerStorage.prepare('night-drive.banger');return (await window.bangerStorage.readDraft(token)).lyrics;})()"), 'Saved project lyrics');
+        console.log(`PASS: hosted Full Send ${fullSend}, permission-scoped edits, rendered audio and persisted library`);
+      } else {
+        await click('Use studio WAV');
+        await wait("document.querySelector('.music-workshop').textContent.includes('Draft fitted and saved') || Boolean(document.querySelector('.music-workshop [role=alert]'))");
+        assert.equal(await evaluate("document.querySelector('.music-workshop [role=alert]')?.textContent??''"), '');
+        assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"), 'Saved project lyrics');
+        await setText('[aria-label="Lyrics for chunk 1"]', 'Tomorrow brings the light');await click('Save lyrics');
+        await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+        await evaluate("document.querySelector('[aria-label=\"Generate new variation\"]').click()");
+        await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 4')");
+        await evaluate("document.querySelector('[aria-label=\"Retry chunk 1\"]').click()");
+        await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 5')");
+        await evaluate("document.querySelector('[aria-label=\"Select Original WAV\"]').click()");
+        await wait("document.querySelector('.music-workshop').textContent.includes('Viewing an earlier version')");
+        await click('Reload composition');
+        await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 5')");
+        await evaluate("document.querySelector('.studio-export-menu button').click()");
+        await evaluate("[...document.querySelectorAll('.studio-export-menu [role=menuitem]')].find(button=>button.textContent==='Export and save to library').click()");
+        await wait("document.querySelector('.music-status').textContent.includes('Exported and saved to library')");
+        await view('library');
+        await wait("document.querySelectorAll('.library-card').length>=2");
+        const songs = await evaluate('window.bangerLibrary.list()');
+        assert.ok(songs.some(song => song.songType === 'vocal'));
+        const vocal = songs.find(song => song.songType === 'vocal');
+        const recording = await evaluate(`window.bangerLibrary.read(${JSON.stringify(vocal.id)}).then(song=>({beat:song.beat,lyrics:song.lyrics,bytes:song.bytes.length}))`);
+        assert.equal(recording.beat.source, fixture);assert.equal(recording.lyrics.version, 5);assert.ok(recording.bytes > 1000);assert.ok(recording.lyrics.audioMetadata.wordsTimestamps.length);
+        await window.reload();
+        await wait("document.body.innerText.includes('Start making music')");
+        await click('Open Project');await wait("Boolean(document.querySelector('.web-project-picker[open]'))");
+        await evaluate("document.querySelector('.web-project-picker button[type=submit]').click()");
+        await wait("Boolean(document.querySelector('#studio-tab-source'))");await view('vocal');
+        await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 5')");
+        assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"), 'Tomorrow brings the light');
+        console.log('PASS: hosted WAV analysis, automatic draft fitting, lyric save, full and selected generation, version history and vocal library export');
+      }
+      await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      await writeFile('/tmp/banger-web-music.png', (await window.webContents.capturePage()).toPNG());
+    }
   }
   assert.deepEqual(errors, []);
   console.log('PASS: rendered signup, private cookie, reload, logout, invalid password, case-insensitive returning sign-in');

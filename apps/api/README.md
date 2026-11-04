@@ -182,3 +182,25 @@ pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --
 This check exercises account flows, project creation and reload, source saves,
 draft persistence, real WAV rendering, private uploads, library persistence and
 non-silent playback. It does not call a paid provider.
+
+For hosted vocal and Full Send checks, start that local server with the test-only
+provider preload (absolute path from the repository root):
+
+```sh
+NODE_OPTIONS="--import=$PWD/apps/api/test/fixtures/providers.mjs" \
+  NODE_ENV=production DATABASE_URL=postgresql://localhost/banger_test \
+  APP_ORIGIN=http://127.0.0.1:3048 BANGER_LOCAL_DATA_DIR=/tmp/banger-test-media \
+  pnpm --filter @banger/api exec next start --hostname 127.0.0.1 --port 3048
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --music
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --full-send=beat
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --full-send=lyrics
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --full-send=both
+```
+
+The preload accepts only dummy provider keys, returns fixture model/audio
+responses, and rejects other external requests. The tests exercise the real
+production routes, database, private media storage, provider adapters and shared
+renderer. They cover draft fitting, lyric saves, full/selected generation,
+version history, vocal exports and permission-scoped Full Send. Never enable
+this preload in a deployed server. Live provider access and Vercel Blob still
+require deployment-specific validation.
