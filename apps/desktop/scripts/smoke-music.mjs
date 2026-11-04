@@ -128,6 +128,7 @@ async function run(){
  const openChat = async () => {
   chatReturn = await evaluate("document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')") || chatReturn;
   await evaluate("[...document.querySelectorAll('.app-sidebar-chat')].at(-1).click()");
+  await wait("document.querySelector('#ai-chat-prompt')");
  };
  const closeChat = () => click(chatReturn);
  const exportSong=async()=>{

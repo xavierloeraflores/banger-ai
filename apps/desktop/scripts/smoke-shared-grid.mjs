@@ -12,7 +12,7 @@ app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 const timeout = setTimeout(() => { console.error('Shared grid smoke timed out'); app.exit(1); }, 90000);
 async function run(window) {
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = code => window.webContents.executeJavaScript(code, true).catch(error => { throw new Error(`${error.message} while evaluating: ${code}`); });
   const wait = async (code, label) => {
     for (let attempt = 0; attempt < 400; attempt++) { if (await evaluate(code)) return; await delay(25); }
     throw new Error(`Timed out: ${label}`);
@@ -137,7 +137,7 @@ async function run(window) {
     assert.equal((await program()).tracks[0].steps[0].probability, .37, 'Inspector changes only the selected phrase');
     await click('[aria-label="Edit kick"]');
     await input('[aria-label="kick pattern"]', '', 'HTMLSelectElement');
-    assert.equal(await evaluate("document.querySelector('.producer-inspector-heading strong').textContent"), 'Select a step', 'Selection clears across phrases');
+    assert.equal(await evaluate("document.querySelector('.producer-step-inspector') === null"), true, 'Selection clears across phrases');
     await click('[aria-label="Close kick editor"]');
     await click('.producer-play');
     await wait("document.querySelector('.producer-position').getAttribute('aria-label') !== 'Stopped'", 'live pattern playback');

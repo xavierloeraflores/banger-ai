@@ -20,7 +20,8 @@ globalThis.fetch = async (_url, options) => {
   if (mode === 'error') return Response.json({ error: { message: 'Fixture provider failed' } }, { status: 401 });
   if (mode === 'cancel') await new Promise((resolve, reject) => {
     release = resolve;
-    options.signal?.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+    if (options.signal?.aborted) reject(options.signal.reason);
+    else options.signal?.addEventListener('abort', () => reject(options.signal.reason), { once: true });
   });
   const index = calls++;
   const call = (toolName, input) => ({ type: 'tool-call', toolCallId: `call-${index}`, toolName, input: JSON.stringify(input) });
@@ -70,7 +71,9 @@ async function run(window) {
     assert.equal(await evaluate("[...document.querySelectorAll('#track-0-panel-routing input, #track-0-panel-routing select')].every(el => el.matches(':disabled'))"), true);
     await click('#track-0-tab-automation');
     await click('[aria-label="Edit bass piano roll"]');
-    assert.equal(await disabled('[aria-label="bass selected note"]'), true);
+    assert.equal(await disabled('[aria-label="bass selected note"]'), false);
+    await click('#track-1-panel-notes .piano-note-body');
+    assert.equal(await disabled('[aria-label="bass note pitch"]'), true);
     await click('#studio-tab-mixer');
     await click('[aria-label="Select bass channel"]');
     assert.equal(await evaluate("document.querySelector('#mixer-channel-title').textContent"), 'bass');
@@ -103,6 +106,7 @@ async function run(window) {
     assert.equal(await evaluate("document.querySelector('#track-editor-0').checkVisibility()"), true, 'inspection stays open');
     assert.match(await readFile(join(directory, 'a-song.banger'), 'utf8'), /tempo 90/);
     assert.equal(await readFile(join(directory, 'b-song.banger'), 'utf8'), source);
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     await writeFile(join(tmpdir(), 'banger-agent-edit-lock.png'), (await window.webContents.capturePage()).toPNG());
     for (let i = 0; i < 200 && !finish; i++) await delay(25);
     assert.ok(finish); finish(); finish = null;
@@ -113,6 +117,8 @@ async function run(window) {
     await click('.app-sidebar-chat');
     mode = 'cancel'; await setPrompt('Wait until cancelled'); await textClick('Send');
     await wait("document.querySelector('.ai-chat-working')");
+    for (let i = 0; i < 200 && !release; i++) await delay(25);
+    assert.ok(release);
     await click('[aria-label="Stop task"]');
     await wait("!document.querySelector('.ai-chat-working')");
     await click('[aria-label="Beat Studio"]');
