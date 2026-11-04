@@ -18,7 +18,7 @@ export interface StageOptions {
   onError?: (message: string) => void;
   reducedMotion?: boolean;
 }
-export interface StageView { dispose(): void; resetCamera(): void; setManualCamera(manual: boolean): void; zoomCamera(factor: number): void }
+export interface StageView { dispose(): void; resetCamera(): void; setManualCamera(manual: boolean): void; setLabelsVisible(visible: boolean): void; zoomCamera(factor: number): void }
 const palette = ['#e5d6b5', '#c1b7e4', '#b6d4c5', '#e6bcb4', '#b8cee5', '#c6dfc2', '#d9c1e5', '#c4dce2'];
 
 /** Owns one WebGL context. Call dispose whenever the modal closes. */
@@ -79,6 +79,8 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   let previousFrame: number | undefined;
   let disposed = false;
   const ownedTextures = new Set<THREE.Texture>();
+  const labels = new Set<THREE.Sprite>();
+  let labelsVisible = false;
 
   function disposeObjects(group: THREE.Object3D) {
     const geometries = new Set<THREE.BufferGeometry>();
@@ -102,12 +104,15 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
     const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
     ownedTextures.add(texture);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: true, toneMapped: false }));
+    sprite.visible = labelsVisible;
+    labels.add(sprite);
     sprite.scale.set(2.4, .6, 1); sprite.position.set(0, .34, 1.65); return sprite;
   }
   function rebuild(snapshot: PerformanceSnapshot) {
     singer?.rig.dispose(); singer = undefined;
     performers.forEach(({ rig, accessories }) => { accessories.dispose(); rig.root.removeFromParent(); rig.dispose(); });
     disposeObjects(cast); cast.clear();
+    labels.clear();
     ownedTextures.forEach(texture => texture.dispose()); ownedTextures.clear();
     const tracks = snapshot.program.tracks;
     performers = tracks.map((track, index) => {
@@ -233,6 +238,10 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   return {
     resetCamera,
     setManualCamera,
+    setLabelsVisible(visible) {
+      labelsVisible = visible;
+      labels.forEach(sprite => { sprite.visible = visible; });
+    },
     zoomCamera(factor) { cameraRig.zoom(factor, controls.minDistance, controls.maxDistance); },
     dispose() {
       if (disposed) return; disposed = true;
@@ -241,6 +250,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       performers.forEach(({ rig, accessories }) => { accessories.dispose(); rig.root.removeFromParent(); rig.dispose(); });
       singer?.rig.dispose();
       disposeObjects(scene); ownedTextures.forEach(texture => texture.dispose());
+      labels.clear();
       scenery.dispose(); bloom.dispose(); output.dispose(); renderPass.dispose(); composer.dispose(); key.shadow.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     },

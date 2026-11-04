@@ -43,6 +43,8 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [failure, setFailure] = useState<string | null>(null);
   const [still, setStill] = useState(false);
+  const [showLabels, setShowLabels] = useState(false);
+  const showLabelsRef = useRef(false);
   const [manualCamera, setManualCamera] = useState(false);
   const manualCameraRef = useRef(false);
   const autoplayAttempted = useRef(false);
@@ -77,6 +79,7 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
         setFailure(message); setStatus("error");
       } });
       stage.current.setManualCamera(manualCameraRef.current);
+      stage.current.setLabelsVisible(showLabelsRef.current);
       setStatus("ready");
     }).catch(cause => {
       if (cancelled) return;
@@ -94,6 +97,10 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
     const manual = !manualCameraRef.current;
     manualCameraRef.current = manual; setManualCamera(manual);
     stage.current?.setManualCamera(manual);
+  }
+  function toggleLabels(visible: boolean) {
+    showLabelsRef.current = visible; setShowLabels(visible);
+    stage.current?.setLabelsVisible(visible);
   }
   function close() {
     setOpen(false);
@@ -131,6 +138,7 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
             {manualCamera && <><Button variant="secondary" aria-label="Zoom in" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(.85)}>+</Button><Button variant="secondary" aria-label="Zoom out" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(1 / .85)}>−</Button></>}
             <Button variant="secondary" disabled={status !== "ready"} onClick={() => stage.current?.resetCamera()}>Reset view</Button>
           </div><label><input type="checkbox" checked={still} onChange={event => setStill(event.target.checked)} /> Still mode</label>
+            <label><input type="checkbox" checked={showLabels} onChange={event => toggleLabels(event.target.checked)} /> Show character labels</label>
             <p id="performance-camera-help">{manualCamera ? "Drag to orbit · Right-drag to pan · Scroll or pinch to zoom" : still ? "Camera paused in still mode" : "Automatic camera"}</p>
           </div>}
         </div>
