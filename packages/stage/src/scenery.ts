@@ -56,9 +56,12 @@ export function createScenery() {
   });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMaterial);
   floor.rotation.x = -Math.PI / 2; floor.position.y = -.018; root.add(floor);
-  const lights = Array.from({ length: 4 }, (_, i) => {
+  const lights = Array.from({ length: 6 }, (_, i) => {
+    const floorMounted = i >= 4;
     const color = i % 2 ? violet : cyan;
-    const light = new THREE.SpotLight(color, 70, 35, .38, .85, 2); root.add(light, light.target);
+    const light = new THREE.SpotLight(color, 70, 0, .38, .85, 2);
+    light.name = `${floorMounted ? 'floor' : 'overhead'}-light-${i}`;
+    root.add(light, light.target);
     const material = new THREE.ShaderMaterial({
       uniforms: { color: { value: new THREE.Color(color) }, strength: { value: .12 }, time: { value: 0 } },
       transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
@@ -70,9 +73,13 @@ export function createScenery() {
     });
     // Tip at local origin, beam extends down -Y toward the spotlight target.
     const geometry = new THREE.ConeGeometry(1, 1, 32, 1, true); geometry.translate(0, -.5, 0);
-    const beam = new THREE.Mesh(geometry, material); root.add(beam);
-    const fixture = new THREE.Mesh(new THREE.CylinderGeometry(.17, .24, .4, 16), deckMaterial); root.add(fixture);
-    return { light, beam, fixture, material };
+    const beam = new THREE.Mesh(geometry, material); beam.name = `beam-${i}`; root.add(beam);
+    const fixture = new THREE.Group(); fixture.name = `fixture-${i}`; root.add(fixture);
+    fixture.add(new THREE.Mesh(new THREE.CylinderGeometry(.17, .24, .4, 16), deckMaterial));
+    const lensMaterial = luminous(color);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(.205, 24), lensMaterial);
+    lens.rotation.x = Math.PI / 2; lens.position.y = -.205; fixture.add(lens);
+    return { light, beam, fixture, material, lensMaterial, floorMounted };
   });
   const down = new THREE.Vector3(0, -1, 0), direction = new THREE.Vector3();
   let width = 10, back = -6, front = 5;
@@ -88,7 +95,11 @@ export function createScenery() {
       edge.scale.set(width, depth, 1); edge.position.z = center;
       floor.scale.set(width * 2, depth * 2, 1); floor.position.z = center;
       backdrop.position.set(0, 3.6, back - .5); backdrop.scale.set(width * 2, 8, 1);
-      lights.forEach(({ light, fixture }, i) => { light.position.set((i / 3 - .5) * width * 1.8, 7.5, back + .8); fixture.position.copy(light.position); });
+      lights.forEach(({ light, fixture, floorMounted }, i) => {
+        if (floorMounted) light.position.set((i % 2 ? 1 : -1) * width * .85, .45, front - 1);
+        else light.position.set((i / 3 - .5) * width * 1.8, 7.5, back + .8);
+        fixture.position.copy(light.position);
+      });
     },
     update(time: number, signals: { kick: number; snare: number; chord: number; chorus: boolean }, targets: THREE.Vector3[]) {
       backdropMaterial.uniforms.time!.value = time;
@@ -96,18 +107,36 @@ export function createScenery() {
       backdropMaterial.uniforms.accent!.value = signals.snare;
       floorMaterial.uniforms.kick!.value = signals.kick; floorMaterial.uniforms.chord!.value = signals.chord;
       edgeMaterial.emissiveIntensity = 2.3 + signals.kick * 1.5;
-      lights.forEach(({ light, beam, fixture, material }, i) => {
+      lights.forEach(({ light, beam, fixture, material, lensMaterial, floorMounted }, i) => {
+        // Offset each head so the beams cross instead of swinging as one bank.
+        const phase = time * .85 + i * Math.PI * .7;
+        const sweep = signals.chorus ? 1.65 : 1;
         const target = targets[i % Math.max(1, targets.length)];
-        light.target.position.copy(target ?? new THREE.Vector3(0, 0, 0));
-        light.target.position.x += Math.sin(time * .24 + i * 2) * (signals.chorus ? 3.2 : .35);
-        light.intensity = 65 + signals.snare * 35;
-        light.angle = signals.chorus ? .52 : .34;
+        if (floorMounted) {
+          light.target.position.set(
+            (i % 2 ? -1 : 1) * width * .3 + Math.sin(phase) * width * .22 * sweep,
+            3.8 + Math.cos(phase * .7) * 1.3,
+            back + 1.8 + Math.sin(phase * .6) * 1.2,
+          );
+        } else {
+          if (target) light.target.position.copy(target);
+          else light.target.position.set(0, 1, 0);
+          light.target.position.x += Math.sin(phase) * width * .23 * sweep;
+          light.target.position.z += Math.cos(phase * .8) * 1.4 * sweep;
+        }
+        light.color.setHSL((.55 + time * .035 + i * .12) % 1, .82, .62);
+        material.uniforms.color!.value.copy(light.color);
+        lensMaterial.color.copy(light.color); lensMaterial.emissive.copy(light.color);
+        lensMaterial.emissiveIntensity = 2.5 + signals.snare * 1.5;
+        light.intensity = (floorMounted ? 45 : 65) + signals.snare * 25 + signals.kick * 15;
+        light.angle = (floorMounted ? .19 : .3) + (.5 + .5 * Math.sin(phase * .6)) * .08 + (signals.chorus ? .08 : 0);
         direction.subVectors(light.target.position, light.position);
         const length = direction.length();
         beam.position.copy(light.position); beam.quaternion.setFromUnitVectors(down, direction.normalize());
         beam.scale.set(length * Math.tan(light.angle), length, length * Math.tan(light.angle));
         fixture.quaternion.copy(beam.quaternion);
-        material.uniforms.time!.value = time; material.uniforms.strength!.value = .055 + signals.snare * .025;
+        material.uniforms.time!.value = time;
+        material.uniforms.strength!.value = (floorMounted ? .07 : .06) + signals.snare * .025 + signals.kick * .015;
       });
     },
   };
