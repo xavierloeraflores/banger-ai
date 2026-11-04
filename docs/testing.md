@@ -97,9 +97,15 @@ release or a change spanning these areas, not for every merge.
 
 `verify-sound.mjs` checks synth controls, preset rendering, chords, release tails,
 and the string, kalimba and riser envelopes. It also checks the six native synth instruments, their decay and sweep direction,
-and equivalence with explicit synth recipes. It writes twelve WAV previews to
+and equivalence with explicit synth recipes. It writes WAV previews to
 `banger-preset-demos` under the system temporary directory for listening checks.
-Use `smoke-synth-stage.mjs --extended` for the six new Muse props and animations.
+Use `smoke-synth-stage.mjs --extended` for the six native synth props and animations.
+Use `smoke-synth-stage.mjs --requested` for Music Box, Clavinet and 808 Bass.
+`verify-sound.mjs` checks their useful registers, velocity response, short gates,
+held-note decay, four-note chords, 808 tuning, step-lock isolation and WAV endings.
+`smoke-presets.mjs`, repeated with `--web`, saves and reopens all three as renamed
+modular patches and previews them. The shared agent guide generates their exact
+recipes from the factory configs; compiler tests verify those examples.
 
 Full Send uses the music fixture smoke with `--full-send-beat`, `--full-send`,
 and `--full-send-both` for beat-only, lyrics-only, and combined edits. Run each

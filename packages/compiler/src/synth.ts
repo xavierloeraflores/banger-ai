@@ -55,9 +55,9 @@ export function validatePatch(patch: SynthPatch): void {
   validateSynth(patch.config);
 }
 const patch = (name: string, config: Partial<SynthConfig>): SynthPatch => ({name, config:{...INIT_SYNTH, attack:.005, decay:.15, sustain:.4, lfo1Depth:0, glide:0, ...config}});
-/** Source recipes are separate from the visible factory browser until its UI update. */
+/** Native source recipes also appear in the Sound preset browser. */
 export const INSTRUMENT_PATCHES = {
-  'synth/808-bass': patch('808 Bass', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:.3,drive:.32,attack:.003,decay:.24,sustain:.78,release:.2,pitchEnv:19,pitchDecay:.045,glide:.12,cutoff:900,filterEnv:0,resonance:0,volume:.55}),
+  'synth/808-bass': patch('808 Bass', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:.18,drive:.025,attack:.004,decay:1.6,sustain:0,release:.12,pitchEnv:12,pitchDecay:.035,glide:0,cutoff:900,filterEnv:0,resonance:0,volume:.65}),
   'synth/marimba': patch('Marimba', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:0,fm:.1,fmRatio:4,attack:.002,decay:.24,sustain:0,release:.08,cutoff:2400,filterEnv:0,resonance:.1,volume:.7}),
   'synth/woodblock': patch('Woodblock', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:0,fm:.28,fmRatio:2.7,attack:.001,decay:.075,sustain:0,release:.035,cutoff:2800,filterEnv:0,resonance:.3,volume:.65}),
   'synth/downlifter': patch('Noise Downlifter', {tone:0,sub:0,noise:1,attack:.003,decay:1.5,sustain:0,release:.18,cutoff:10000,filterEnv:0,filterSweep:-1,resonance:.2,volume:.6}),
@@ -100,6 +100,8 @@ export const FACTORY_PATCHES: readonly SynthPatch[] = [
   patch('FM Bass',{fm:.5,fmRatio:1,cutoff:2200}),
   patch('Reese Bass',{osc1:'sawtooth',osc2:'sawtooth',voices:3,unisonDetune:20,cutoff:1200}),
   patch('Pluck Bass',{osc1:'triangle',mix:0,decay:.12,sustain:0,cutoff:1600}),
+  patch('Music Box',{osc1:'sine',osc2:'sine',mix:0,detune:0,sub:0,fm:.14,fmRatio:3,attack:.003,decay:.95,sustain:0,release:.12,cutoff:11000,filterEnv:0,resonance:.1,volume:.65}),
+  patch('Clavinet',{osc1:'sawtooth',osc2:'triangle',mix:.3,detune:0,sub:0,fm:.04,fmRatio:2,drive:.035,attack:.002,decay:.18,sustain:0,release:.045,cutoff:1100,filterEnv:.65,filterDecay:.055,velocityFilter:.25,resonance:.4,volume:.55}),
   patch('Acoustic Piano',{osc1:'triangle',osc2:'sine',fm:.08,fmRatio:2,sub:0,decay:.7,sustain:.15,release:.2,cutoff:6000}),
   patch('Electric Piano',{osc1:'sine',osc2:'triangle',fm:.2,fmRatio:2,sub:0,decay:.6,sustain:.2,cutoff:5000}),
   patch('FM Electric Piano',{fm:.4,fmRatio:3,sub:0,decay:.8,sustain:.1,cutoff:7000}),

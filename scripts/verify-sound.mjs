@@ -87,8 +87,46 @@ try {
       p.tracks[0].pianoRoll=[60,64,67].map(midi=>({midi,start:0,duration:.5,velocity:.8}));
       assert(stats((await render(p)).buffer).peak<.99,source+' chord clips');
     }
+    const requested={};
+    for(const [name,register] of [['Music Box',[60,72,84,96]],['Clavinet',[48,60,72]],['808 Bass',[24,36,48]]]){
+      const patch=[...c.FACTORY_PATCHES,...Object.values(c.INSTRUMENT_PATCHES)].find(p=>p.name===name);
+      const metrics=[];
+      for(const midi of register){
+        let quiet;
+        for(const velocity of [.25,1]){
+          const p=base();p.tracks[0].synth=patch.config;p.tracks[0].steps=[];
+          p.tracks[0].pianoRoll=[{midi,start:0,duration:4,velocity}];
+          const result=await render(p),all=stats(result.buffer),early=stats(result.buffer,.01,.08),late=stats(result.buffer,1.8,1.95);
+          assert(all.peak<.65 && all.rms>1e-5,name+' register silent or unbalanced at '+midi);
+          assert(late.peak<1e-6,name+' held note fails to decay at '+midi);
+          assert(stats(result.buffer,2+patch.config.release+.01).peak<1e-6,name+' ending leaks');
+          for(let channel=0;channel<result.buffer.numberOfChannels;channel++)assert(Math.abs(result.buffer.getChannelData(channel)[0])<1e-6,name+' attack starts with discontinuity');
+          if(velocity===.25)quiet=early.rms;else assert(early.rms>quiet*2,name+' velocity response lost');
+          if(name==='808 Bass'){
+            const data=result.buffer.getChannelData(0),rate=result.buffer.sampleRate,freq=440*2**((midi-69)/12);
+            const magnitude=f=>{let re=0,im=0;const start=Math.floor(rate*.15),end=Math.floor(rate*.65);for(let i=start;i<end;i++){const w=.5-.5*Math.cos(2*Math.PI*(i-start)/(end-start));re+=data[i]*w*Math.cos(2*Math.PI*f*i/rate);im+=data[i]*w*Math.sin(2*Math.PI*f*i/rate);}return re*re+im*im;};
+            assert(magnitude(freq)>magnitude(freq*2**(1/12))*1.15 && magnitude(freq)>magnitude(freq*2**(-1/12))*1.15,'808 loses played pitch at '+midi);
+          }
+          metrics.push({midi,velocity,...all});
+          if(midi===register[1]&&velocity===1)demos.push({name,wav:Array.from(new Uint8Array(result.wav))});
+        }
+      }
+      const short=base();short.tracks[0].synth=patch.config;short.tracks[0].steps=[];
+      short.tracks[0].pianoRoll=[{midi:register[1],start:0,duration:.125,velocity:1}];
+      assert(stats((await render(short)).buffer,.0625+patch.config.release+.01).peak<1e-6,name+' short gate clicks or leaks');
+      short.tracks[0].pianoRoll=[0,4,7,11].map(offset=>({midi:register[1]+offset,start:0,duration:.5,velocity:1}));
+      short.tracks[0].gain=1;
+      assert(stats((await render(short)).buffer).peak<.99,name+' full-velocity chord clips');
+      const locked=base();locked.tracks[0].synth=patch.config;
+      locked.tracks[0].steps[0].locks={decay:.1,cutoff:600,volume:.15};
+      const unlocked=structuredClone(locked);delete unlocked.tracks[0].steps[0].locks;
+      const a=(await render(locked)).buffer.getChannelData(0),b=(await render(unlocked)).buffer.getChannelData(0);
+      assert(a.slice(0,4000).some((value,i)=>Math.abs(value-b[i])>.0001),name+' locks have no effect');
+      assert(a.slice(22050,33075).every((value,i)=>Math.abs(value-b[i+22050])<1e-7),name+' locks leak to following note');
+      requested[name]=metrics;
+    }
     const silent=base();silent.tracks[0].synth={...c.INIT_SYNTH,tone:0,noise:0};assert(energy((await render(silent)).buffer)===0,'oscillator level zero still has tone');
-    return {controlChanges:Object.keys(deltas),factories,presets,demos,lockIsolation:true,disabledSilence:true,emptyPatchSilence:true,releaseTail:tail.tailSeconds,saveReopen:true,wavBytes:reference.wav.byteLength};
+    return {controlChanges:Object.keys(deltas),factories,presets,requested,demos,lockIsolation:true,disabledSilence:true,emptyPatchSilence:true,releaseTail:tail.tailSeconds,saveReopen:true,wavBytes:reference.wav.byteLength};
   })()`);
   const demoDirectory=join(tmpdir(),'banger-preset-demos');await mkdir(demoDirectory,{recursive:true});
   for(const demo of report.demos)await writeFile(join(demoDirectory,demo.name.toLowerCase().replaceAll(' ','-')+'.wav'),new Uint8Array(demo.wav));

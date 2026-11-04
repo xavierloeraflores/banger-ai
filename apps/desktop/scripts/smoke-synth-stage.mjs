@@ -11,9 +11,10 @@ const profile = await mkdtemp(join(tmpdir(), 'banger-synth-stage-'));
 app.setPath('userData', profile);
 app.once('will-quit', () => { void rm(profile, { recursive: true, force: true }); });
 const extended = process.argv.includes('--extended');
+const requested = process.argv.includes('--requested');
 const sources = Object.keys(INSTRUMENT_PATCHES);
-const names = extended ? Object.values(INSTRUMENT_PATCHES).map(patch => patch.name) : ['Synth Brass', 'Flute Lead', 'Chiptune Lead', 'String Ensemble', 'Kalimba Pluck', 'Noise Riser'];
-const roles = extended ? 'bass808,marimba,woodblock,downlifter,impact,mutedGuitar' : 'brass,flute,chiptune,strings,kalimba,riser';
+const names = requested ? ['Music Box', 'Clavinet', '808 Bass'] : extended ? Object.values(INSTRUMENT_PATCHES).map(patch => patch.name) : ['Synth Brass', 'Flute Lead', 'Chiptune Lead', 'String Ensemble', 'Kalimba Pluck', 'Noise Riser'];
+const roles = requested ? 'musicBox,clavinet,bass808' : extended ? 'bass808,marimba,woodblock,downlifter,impact,mutedGuitar' : 'brass,flute,chiptune,strings,kalimba,riser';
 const graphicsErrors = [];
 app.on('web-contents-created', (_event, contents) => contents.on('console-message', details => {
   if (/THREE.WebGLProgram|GL_INVALID|Shader Error|WebGL: INVALID/.test(details.message)) graphicsErrors.push(details.message);
@@ -35,7 +36,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.setBackgroundThrottling(false);
     await enterStudio(window); window.setSize(1500, 1000);
     const program = compileMusic(`tempo 90; ${names.map((_, i) => `track part_${i} { instrument "${extended ? sources[i] : 'synth/bass'}"; piano { note "C4" start 0 duration 3 velocity .8; note "E4" start 0 duration 1 velocity .6; note "G4" start 1 duration .25 velocity .7; } gain .3; }`).join('\n')}`);
-    if (!extended) names.forEach((name, i) => { program.tracks[i].synth = globalThis.structuredClone(FACTORY_PATCHES.find(patch => patch.name === name).config); });
+    if (!extended) names.forEach((name, i) => { program.tracks[i].synth = globalThis.structuredClone([...FACTORY_PATCHES, ...Object.values(INSTRUMENT_PATCHES)].find(patch => patch.name === name).config); });
     // Cover unnamed synth data and a renamed modular patch overriding the source.
     program.tracks[1].modular = { name: 'My patch', config: extended ? INSTRUMENT_PATCHES[sources[1]].config : program.tracks[1].synth };
     await apply(program); await click('Band stage');
@@ -76,7 +77,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await evaluate("document.querySelector('[aria-label=\"Close band stage\"]').click()");
     await wait(`!${canvas}`);
     assert.deepEqual(graphicsErrors, []);
-    console.log(`Synth stage smoke passed: ${extended ? 'six native instrument roles' : 'six effective preset roles'}, renamed modular override, audio playback, stop/idle, stable outfits, six close-up renders and repeated disposal.`);
+    console.log(`Synth stage smoke passed: ${requested ? 'Music Box, Clavinet and 808 Bass' : extended ? 'six native instrument roles' : 'six effective preset roles'}, renamed modular override, audio playback, stop/idle, stable outfits, ${names.length} close-up renders and repeated disposal.`);
     clearTimeout(timeout); app.exit(0);
   } catch (error) {
     await writeFile('/tmp/banger-synth-stage-failure.png', (await window.webContents.capturePage()).toPNG());

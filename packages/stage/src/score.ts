@@ -1,11 +1,23 @@
-import { programDurationBeats, sampleAutomation, type MusicProgram } from '@banger/compiler';
+import { programDurationBeats, sampleAutomation, type MusicProgram, type SynthConfig } from '@banger/compiler';
 import type { VocalPerformance } from './vocal.js';
 import { eventsForSong, synthForEvent, type MusicEvent, type PlaybackState } from '@banger/engine';
 import { trackRole, type PerformanceRole } from './roles.js';
 export { trackRole, type PerformanceRole } from './roles.js';
 
 export interface PerformanceSnapshot { program: MusicProgram; state: PlaybackState; fill: boolean; vocals?: VocalPerformance }
+export interface PerformanceNote {
+  midi: number;
+  pitchDecay: number;
+  age: number;
+  /** Scheduled gate duration in seconds, including the engine's step gate. */
+  duration: number;
+  energy: number;
+  /** Normalized ADSR level, including release and sustain-free endings. */
+  level: number;
+}
 export interface TrackMotion {
+  /** All scheduled voices for mechanisms that need chords and independent gates. */
+  notes?: PerformanceNote[];
   beat: number;
   playing: boolean;
   active: boolean;
@@ -23,6 +35,7 @@ export interface TrackMotion {
 
 interface VisualEvent {
   event: MusicEvent;
+  config?: SynthConfig | null;
   role: PerformanceRole;
   duration: number;
   sustained: boolean;
@@ -53,7 +66,7 @@ export class PerformanceScore {
           if (event.velocity <= 0 || config !== undefined && (!config?.enabled || config.volume <= 0 || (config.tone ?? 1) === 0 && config.sub === 0 && config.noise === 0)) continue;
           const list = result.get(event.track.name) ?? [], last = list.at(-1);
           const role = trackRole(event.track, event.step);
-          list.push({ event, role, duration: event.duration * (config && !event.sustained ? .85 : 1),
+          list.push({ event, config, role, duration: event.duration * (config && !event.sustained ? .85 : 1),
             sustained: event.sustained || ['flute', 'strings', 'riser', 'bass808', 'downlifter'].includes(role),
             gestureIndex: last ? last.gestureIndex + Number(last.event.beat !== event.beat) : 0 });
           result.set(event.track.name, list);
@@ -90,7 +103,26 @@ export class PerformanceScore {
       const active = audible && age < (sustained ? duration : Math.min(.18, duration));
       const tail = sustained ? Math.max(0, age - duration) : age;
       const energy = audible && event ? event.velocity * Math.exp(-tail * 10) * gain : 0;
-      return { beat: absoluteBeat, playing: audible, active, sustained: sustained && active, energy: energy < .005 ? 0 : energy, age, duration,
+      const notes: PerformanceNote[] = [];
+      if (audible) {
+        const collect = (items: VisualEvent[], offset: number) => {
+          for (const item of items) {
+            if (!['musicBox', 'clavinet', 'bass808'].includes(item.role)) continue;
+            const noteAge = (beat + offset - item.event.beat) * seconds;
+            const config = item.config!;
+            if (noteAge < 0 || noteAge >= item.duration + config.release) continue;
+            const envelope = (time: number) => time < config.attack ? time / config.attack
+              : 1 - (1 - config.sustain) * Math.min(1, (time - config.attack) / config.decay);
+            const level = noteAge < item.duration ? envelope(noteAge)
+              : envelope(item.duration) * Math.max(0, 1 - (noteAge - item.duration) / config.release);
+            notes.push({ pitchDecay: config.pitchDecay, midi: item.event.step.kind === 'note' ? item.event.step.midi : 36,
+              age: noteAge, duration: item.duration, energy: item.event.velocity * gain, level });
+          }
+        };
+        collect(this.previous.get(track.name) ?? [], length);
+        collect(events, 0);
+      }
+      return { notes, beat: absoluteBeat, playing: audible, active, sustained: sustained && active, energy: energy < .005 ? 0 : energy, age, duration,
         role: voice?.role ?? trackRole(track), gestureIndex: voice?.gestureIndex ?? 0,
         midi: event?.step.kind === 'note' ? event.step.midi : 60, index: event?.index ?? 0 };
     });

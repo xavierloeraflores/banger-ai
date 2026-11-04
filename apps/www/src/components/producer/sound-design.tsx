@@ -11,7 +11,9 @@ const format = (key: SynthParameter, value: number) => key === "filterDecay" && 
 const controlStep = (key: SynthParameter) => key === "voices" || key === "cutoff" || key === "pitchEnv" || key.toLowerCase().includes("detune") ? 1 : ["attack", "decay", "release", "glide", "pitchDecay", "filterDecay"].includes(key) ? .001 : .01;
 const soundPatches = [...FACTORY_PATCHES, ...Object.values(INSTRUMENT_PATCHES)];
 const instrumentHints: Record<string, string> = {
-  "808 Bass": "Use C1 to C3 for bass lines. Hold notes for sustain; adjust Glide, Drive and Pitch amount for slides and punch.",
+  "808 Bass": "Use C1 to C3 for bass lines. Hold notes for the 1.6-second decay; adjust Decay, Pitch amount and Pitch decay. Keep Drive low; add Glide for slides.",
+  "Music Box": "Use C4 to C7 for bell-like melodies. Try 0.5 to 2 beat notes; adjust Decay, Release and FM amount. Integer FM ratios keep the overtones pitched.",
+  Clavinet: "Use C3 to C5 for syncopated notes and chords, about 0.125 to 0.5 beats long. Adjust Envelope to filter, Filter decay and Cutoff; keep Drive low.",
   Marimba: "Use short notes or chords for warm mallet strikes. Adjust Decay and FM amount for the body and brightness.",
   Woodblock: "Use short notes for wooden percussion. Adjust Decay, FM ratio and Cutoff to shape the strike.",
   "Noise Downlifter": "Hold a C4 note for the full downward sweep. Note length controls the sweep duration; Filter sweep controls its direction and depth.",
@@ -20,7 +22,7 @@ const instrumentHints: Record<string, string> = {
 };
 const patchGroups = [
   { name: "Leads and pads", names: ["Synth Brass", "Flute Lead", "Chiptune Lead", "String Ensemble", "Init Saw", "Acid", "S&H Bleeps"] },
-  { name: "Keys and plucks", names: ["Kalimba Pluck", "Marimba", "Muted Synth Guitar", "Acoustic Piano", "Electric Piano", "FM Electric Piano", "FM Bell", "Karplus-ish"] },
+  { name: "Keys and plucks", names: ["Music Box", "Clavinet", "Kalimba Pluck", "Marimba", "Muted Synth Guitar", "Acoustic Piano", "Electric Piano", "FM Electric Piano", "FM Bell", "Karplus-ish"] },
   { name: "Bass", names: ["808 Bass", "Sub Bass", "Analog Bass", "Acid Bass", "FM Bass", "Reese Bass", "Pluck Bass"] },
   { name: "Transitions", names: ["Noise Riser", "Noise Downlifter", "Impact"] },
 ];
