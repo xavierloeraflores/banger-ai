@@ -23,6 +23,7 @@ if (!hasSingleInstanceLock) app.quit();
 const developmentUrl = getDevelopmentUrl(process.env.BANGER_DEV_URL, app.isPackaged);
 let songStorage: SongStorageBridge;
 const windows = new Set<BrowserWindow>();
+const appIcon = fileURLToPath(new URL("./icon.png", import.meta.url));
 const pendingDialogs = new Set<number>();
 const pendingChats = new Map<number, AbortController>();
 const filters = [{ name: "Banger project", extensions: ["banger"] }];
@@ -122,6 +123,7 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1440, height: 960, minWidth: 960, minHeight: 640,
     backgroundColor: "#0b0d12", title: "Banger",
+    icon: appIcon,
     webPreferences: {
       preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,
@@ -162,6 +164,7 @@ function createWindow() {
 
 void app.whenReady().then(() => {
   if (!hasSingleInstanceLock) return;
+  if (process.platform === "darwin") app.dock?.setIcon(appIcon);
   app.on("second-instance", () => {
     const window = [...windows][0];
     if (window?.isMinimized()) window.restore();
