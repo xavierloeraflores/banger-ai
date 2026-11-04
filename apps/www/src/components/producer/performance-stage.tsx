@@ -15,12 +15,12 @@ export const BandStageButton = forwardRef<HTMLButtonElement, ComponentPropsWitho
 });
 
 interface Props {
+  duration?: number;
   onOpen?: () => void;
   onClose?: () => void;
   program: MusicProgram;
   fileName: string;
   heroDisabled: boolean;
-  stopGame: () => void;
   readPerformance: () => PerformanceSnapshot;
   playing: boolean;
   starting: boolean;
@@ -30,7 +30,7 @@ interface Props {
   onPlay: () => Promise<void>;
   onStop: () => void;
 }
-export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisabled, stopGame, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
+export function PerformanceStage({ duration, onOpen, onClose, program, fileName, heroDisabled, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
   const singer = Boolean(readPerformance().vocals);
   const performers = tracks + (singer ? 1 : 0);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -96,6 +96,7 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
     stage.current?.setManualCamera(manual);
   }
   function close() {
+    setOpen(false);
     onClose?.();
     dialog.current?.close();
   }
@@ -108,7 +109,7 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
   }
   return <>
     <BandStageButton ref={trigger} onClick={show} />
-    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-label="Band stage" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else if (controlsOpen) { event.preventDefault(); setControlsOpen(false); controlsTrigger.current?.focus(); } else { onClose?.(); } }} onClose={() => { setHero(false); setControlsOpen(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
+    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-label="Band stage" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else if (controlsOpen) { event.preventDefault(); setControlsOpen(false); controlsTrigger.current?.focus(); } else { setOpen(false); onClose?.(); } }} onClose={() => { if (dialog.current?.open) return; setHero(false); setControlsOpen(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
         <Button variant="secondary" onClick={close} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
       </header>
@@ -117,7 +118,7 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
         {open && status === "error" && <div className="performance-overlay" role="alert"><strong>Couldn’t open the stage</strong><p>{failure}</p><p>Close and reopen to retry. The studio is still available.</p></div>}
         {open && performers === 0 && status === "ready" && <div className="performance-overlay">Add a track to meet your first performer.</div>}
       </div>
-      {open && hero && <MuseHero program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} stop={stopGame} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
+      {open && hero && <MuseHero duration={duration} program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
       <Button ref={heroTrigger} className="performance-hero-trigger" variant="secondary" hidden={hero} disabled={heroDisabled || status !== "ready" || tracks === 0} aria-expanded={hero} aria-controls="muse-hero" onClick={() => setHero(true)}>Muse Hero <span aria-hidden="true">↗</span></Button>
       <footer className="performance-footer" hidden={hero}>
         <div className="performance-transport"><Button variant="primary" onClick={() => { if (playing || starting) onStop(); else void onPlay(); }} disabled={!playing && !starting && (status !== "ready" || performers === 0)}>{playing || starting ? "Stop" : "Play"}</Button><span>{tempo} BPM<span className="performance-divider">/</span>{performers} {performers === 1 ? "performer" : "performers"}</span></div>

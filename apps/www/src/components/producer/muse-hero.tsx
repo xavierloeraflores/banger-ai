@@ -12,11 +12,11 @@ type Phase = 'ready' | 'countdown' | 'playing' | 'finished';
 const clockLabel = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.floor(Math.max(0, seconds) % 60)).padStart(2, '0')}`;
 
 interface Props {
+  duration?: number;
   program: MusicProgram;
   fileName: string;
   readPerformance: () => PerformanceSnapshot;
   play: () => Promise<void>;
-  stop: () => void;
   starting: boolean;
   error: string | null;
   onPrepare: () => void;
@@ -30,20 +30,31 @@ export function MuseHero(props: Props) {
   return <MuseHeroGame key={difficulty} {...props} laneCount={laneCount} />;
 }
 
-function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting, error, onPrepare, onClose, laneCount }: Props & { laneCount: 2 | 3 | 4 | 5 }) {
+function MuseHeroGame({ duration, program, fileName, readPerformance, play, starting, error, onPrepare, onClose, laneCount }: Props & { laneCount: 2 | 3 | 4 | 5 }) {
   const keys = HERO_KEYS.slice(0, laneCount);
   const backButton = useRef<HTMLButtonElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [track, setTrack] = useState('');
   const [autoplay, setAutoplay] = useState(false);
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [display, setDisplay] = useState({ score: 0, combo: 0, best: 0, perfect: 0, great: 0, good: 0, miss: 0, held: 0, accuracy: 100, multiplier: 1, time: -3, judgment: '', countdown: 3 });
-  const chart = useMemo(() => createHeroChart(program, track, laneCount), [program, track, laneCount]);
-  const run = useRef(new HeroRun(chart));
-  const mode = useRef<Phase>('ready');
+  const [restarted, setRestarted] = useState(false);
+  const [entry] = useState(() => {
+    const state = readPerformance().state;
+    return { phase: state.playing ? 'playing' as const : 'ready' as const, time: (Math.max(1, state.bar) - 1 + state.phase) * 240 / program.tempo };
+  });
+  const [phase, setPhase] = useState<Phase>(entry.phase);
+  const [display, setDisplay] = useState({ score: 0, combo: 0, best: 0, perfect: 0, great: 0, good: 0, miss: 0, held: 0, accuracy: 100, multiplier: 1, time: entry.time, judgment: '', countdown: 3 });
+  const chart = useMemo(() => {
+    const base = createHeroChart(program, track, laneCount, duration);
+    // A live pattern may have looped several times before the game is opened.
+    return !restarted && !duration && entry.time >= base.duration
+      ? createHeroChart(program, track, laneCount, Math.ceil((entry.time + .001) / base.duration) * base.duration)
+      : base;
+  }, [program, track, laneCount, duration, entry.time, restarted]);
+  const run = useRef(new HeroRun(chart, entry.time));
+  const mode = useRef<Phase>(entry.phase);
   const pressed = useRef(new Set<number>());
   const countdownStart = useRef(0);
-  const currentTime = useRef(-3);
+  const currentTime = useRef(entry.time);
   const auto = useRef(false);
   const startPending = useRef(false);
   const request = useRef(0);
@@ -53,8 +64,9 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
 
   useEffect(() => () => {
     request.current++;
-    if (mode.current !== 'ready') stop();
-  }, [stop]);
+    // Dismissing a restart countdown returns playback to the shared transport.
+    if (mode.current === 'countdown') void play();
+  }, [play]);
 
   useEffect(() => {
     let frame = 0;
@@ -80,7 +92,7 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
         // Use the audio clock, not accumulated animation frames, to judge every hit.
         time = (Math.max(1, state.bar) - 1 + state.phase) * 240 / program.tempo;
         run.current.advance(time, auto.current);
-        if (time >= run.current.chart.duration + .2) { stop(); pressed.current.clear(); setMode('finished'); }
+        if (time >= run.current.chart.duration) { pressed.current.clear(); setMode('finished'); }
       }
       currentTime.current = time;
       if (canvas.current) drawHighway(canvas.current, run.current, time, pressed.current, program.tempo, laneCount);
@@ -93,7 +105,7 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
     }
     frame = requestAnimationFrame(tick);
     return () => { cancelled = true; cancelAnimationFrame(frame); };
-  }, [play, readPerformance, stop, program.tempo, setMode, laneCount]);
+  }, [play, readPerformance, program.tempo, setMode, laneCount]);
 
   const inputTime = useCallback(() => {
     const state = readPerformance().state;
@@ -107,7 +119,7 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
     pressed.current.delete(lane);
     if ((mode.current === 'playing' || mode.current === 'countdown') && !auto.current) run.current.release(lane, inputTime());
   }, [inputTime]);
-  const end = useCallback(() => { request.current++; stop(); pressed.current.clear(); setMode('finished'); }, [setMode, stop]);
+  const end = useCallback(() => { request.current++; if (mode.current === 'countdown') void play(); pressed.current.clear(); setMode('finished'); }, [setMode, play]);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.matches('input, select, textarea')) return;
@@ -121,10 +133,20 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', hidden); };
   }, [press, release, end, laneCount]);
 
-  function start() {
-    request.current++; onPrepare(); run.current = new HeroRun(chart); pressed.current.clear();
+  const start = useCallback(() => {
+    if (!chart.notes.length || starting) return;
+    request.current++; setRestarted(true); onPrepare(); run.current = new HeroRun(createHeroChart(program, track, laneCount, duration)); pressed.current.clear();
     auto.current = autoplay; currentTime.current = -3; countdownStart.current = performance.now(); startPending.current = false; setMode('countdown');
-  }
+  }, [chart, starting, onPrepare, autoplay, setMode, program, track, laneCount, duration]);
+  useEffect(() => {
+    const restart = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyR' || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+          event.target instanceof HTMLElement && (event.target.matches('input, select, textarea') || event.target.isContentEditable)) return;
+      event.preventDefault(); start();
+    };
+    window.addEventListener('keydown', restart);
+    return () => window.removeEventListener('keydown', restart);
+  }, [start]);
   const active = phase === 'playing' || phase === 'countdown';
   const progress = Math.min(100, Math.max(0, display.time / chart.duration * 100));
   const title = fileName.replace(/\.banger$/i, '').replaceAll('-', ' ');
@@ -133,7 +155,7 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
     <canvas ref={canvas} className="muse-highway" aria-label={`${laneCount} fret lanes. Press ${keys.map(key => key.slice(-1)).join(', ')} as notes reach the glowing line. Hold long notes until their tails finish.`} />
     <header className="muse-heading">
       {active && <div className="muse-song"><span>{autoplay ? 'PRACTICE AUTOPLAY' : 'ON STAGE'}</span><strong>{title}</strong><small>{program.tempo} BPM <i /> {program.tracks.length} tracks <i /> {clockLabel(chart.duration)}</small></div>}
-      <button ref={backButton} className="muse-exit" onClick={onClose} aria-label="Hide Muse Hero">Back to band <kbd>esc</kbd></button>
+      <div className="muse-actions"><button ref={backButton} className="muse-exit" onClick={onClose} aria-label="Hide Muse Hero">Back to band <kbd>esc</kbd></button><button className="muse-exit muse-restart" onClick={start} disabled={!chart.notes.length || starting} aria-label="Restart Muse Hero" aria-keyshortcuts="R"><kbd>R</kbd> Restart</button></div>
     </header>
     <div className="muse-score muse-glass"><span>SCORE</span><strong>{display.score.toLocaleString().padStart(6, '0')}</strong><small>{autoplay ? 'PRACTICE RUN' : `${chart.notes.length} NOTES IN YOUR CHART`}</small></div>
     <div className="muse-energy"><div className="muse-stars" aria-label={`${Math.min(5, Math.floor(progress / 20 * display.accuracy / 100))} of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <span key={index} className={progress / 20 * display.accuracy / 100 >= index + 1 ? 'earned' : ''}>★</span>)}</div><div className="muse-progress" role="progressbar" aria-label="Song progress" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress}%` }} /></div><small>{clockLabel(display.time)} <span>/ {clockLabel(chart.duration)}</span></small></div>

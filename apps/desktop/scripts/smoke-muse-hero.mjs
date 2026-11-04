@@ -86,7 +86,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.equal(await evaluate("getComputedStyle(document.body).overflow"), 'hidden');
     assert.equal(await evaluate("getComputedStyle(document.querySelector('.muse-game')).backgroundColor"), 'rgba(0, 0, 0, 0)');
     assert.ok(await evaluate("document.querySelector('#performance-stage').getBoundingClientRect().width === innerWidth && document.querySelector('#performance-stage').getBoundingClientRect().height === innerHeight"));
-    await activate('.muse-start');
+    await activate('.muse-restart');
     await wait("document.querySelector('.muse-game').dataset.phase === 'countdown'", 'countdown begins');
     // Sample the receptor fill to verify that real key events reach the canvas during the count-in.
     const lit = lane => `(() => { const canvas = document.querySelector('.muse-highway'); const pixel = canvas.getContext('2d').getImageData(Math.round((500 + (${lane} - 2) * 154) / 1000 * canvas.width), Math.round(.852 * canvas.height), 1, 1).data; return pixel[3] > 230; })()`;
@@ -154,11 +154,11 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.activeElement === document.querySelector('.performance-hero-trigger')", 'keyboard toggle focused');
     key('keyDown', 'Enter'); key('char', '\r'); key('keyUp', 'Enter');
     await wait("document.querySelector('.muse-game')", 'keyboard opens overlay');
-    await activate('.muse-start');
+    await activate('.muse-restart');
     await wait("document.querySelector('.muse-game').dataset.phase === 'countdown'", 'cancellable countdown');
     key('keyDown', 'Escape'); key('keyUp', 'Escape');
     await delay(3500);
-    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.playing"), 'false', 'dismissed countdown cannot start audio');
+    assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.playing"), 'true', 'leaving a restart countdown resumes the band');
     await activate('.performance-hero-trigger');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'final open');
     assert.deepEqual(graphicsErrors, []);

@@ -10,15 +10,16 @@ export interface HeroChart { notes: HeroNote[]; duration: number }
 export interface HeroStats { score: number; combo: number; best: number; perfect: number; great: number; good: number; miss: number; held: number }
 
 /** Use the same arrangement, groove and conditional events as the audio engine. */
-export function createHeroChart(program: MusicProgram, trackName = '', laneCount: 2 | 3 | 4 | 5 = 4): HeroChart {
+export function createHeroChart(program: MusicProgram, trackName = '', laneCount: 2 | 3 | 4 | 5 = 4, durationSeconds?: number): HeroChart {
   const beats = programDurationBeats(program);
-  const cycles = Math.max(1, Math.ceil(16 / beats));
   const seconds = 60 / program.tempo;
-  const duration = beats * seconds * cycles;
+  const duration = durationSeconds !== undefined && Number.isFinite(durationSeconds) && durationSeconds > 0
+    ? durationSeconds : beats * seconds * Math.max(1, Math.ceil(16 / beats));
+  const cycles = Math.ceil(duration / (beats * seconds));
   const solo = program.tracks.some(track => track.solo);
   const events = Array.from({ length: cycles }, (_, cycle) => eventsForSong(program, 0, { cycle })
     .filter(event => (!trackName || event.track.name === trackName) && !event.track.muted && (!solo || event.track.solo) && event.track.gain > 0 && (program.masterGain ?? 1) > 0)
-    .map(event => ({ event, time: event.time + cycle * beats * seconds }))).flat();
+    .map(event => ({ event, time: event.time + cycle * beats * seconds }))).flat().filter(({ time }) => time < duration);
   const pitches = [...new Set(events.flatMap(({ event }) => event.step.kind === 'note' ? [event.step.midi] : []))].sort((a, b) => a - b);
   const notes: HeroNote[] = [];
   const lastByLane = new Map<number, HeroNote>();
@@ -45,7 +46,12 @@ export class HeroRun {
   judgment: Judgment | 'Hold lost' | '' = '';
   judgmentAt = -Infinity;
   private cursor = 0;
-  constructor(readonly chart: HeroChart) {}
+  constructor(readonly chart: HeroChart, startTime = 0) {
+    // Joining a song skips elapsed notes without awarding points or misses.
+    while (this.cursor < chart.notes.length && chart.notes[this.cursor]!.time < startTime - HIT_WINDOW) {
+      this.judged.add(chart.notes[this.cursor++]!.id);
+    }
+  }
   get multiplier() { return Math.min(4, 1 + Math.floor(this.stats.combo / 10)); }
   get accuracy() {
     const total = this.stats.perfect + this.stats.great + this.stats.good + this.stats.miss;

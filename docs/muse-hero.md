@@ -12,7 +12,10 @@ Normal is the default, and the app remembers your selection. The chart maps all
 audible tracks into the selected number of lanes. Tap the displayed keys from
 **A S D F G**, or the matching on-screen frets,
 when a note reaches the hit line. Hold sustained notes until the tail ends.
-There is no separate strum key. A three-second countdown precedes playback.
+There is no separate strum key. Opening Muse Hero during playback joins the
+current song position immediately. Earlier notes do not count as misses.
+Use **R Restart** in the top-right corner or press **R** to reset the song and
+score. A three-second countdown precedes playback after restarting.
 
 Perfect hits are within 55 ms, Great within 110 ms, and Good within 180 ms.
 Ten consecutive hits increase the multiplier, up to 4×. Missing a note,
@@ -24,10 +27,14 @@ The chart uses the audio engine's arrangement, groove, probability and
 conditional events. Muted and non-solo tracks do not contribute notes. Nearby
 notes sharing a fret merge, and overlapping holds on one fret are shortened
 to keep the chart playable. Short patterns repeat for at least four bars;
-longer arrangements play once. Runs finish automatically. **End run** stops
-early, and **Play again** restarts from the beginning. Leaving the window ends
-an active run. **Back to band** or Escape hides the game and stops game audio.
-A second Escape closes the stage and returns to the studio.
+longer arrangements play once. For a saved recording, the chart covers the
+recording’s duration, repeating the saved beat where needed. Runs finish automatically. **End run** ends
+scoring early, and **Play again** restarts from the beginning. Leaving the
+window ends an active run while the song keeps playing. **Back to band** or
+Escape hides the game. A second Escape closes the stage and returns to the
+studio. These transitions keep the same audio playing at its current position.
+For library songs, return to Library and press Pause to pause the song. Leaving
+a restart countdown resumes playback without waiting for the countdown.
 
 The game and band share the studio audio player and one WebGL scene. Starting
 a run clears any section preview. Input, notes and band animation read the
@@ -39,6 +46,7 @@ After `pnpm fullbuild`, run:
 
 ```sh
 pnpm --filter @banger/desktop exec electron scripts/smoke-muse-hero.mjs
+pnpm --filter @banger/desktop exec electron scripts/smoke-playback-handoff.mjs
 ```
 
 Add `--keep-open` to leave the sample song open in Muse Hero after the checks.

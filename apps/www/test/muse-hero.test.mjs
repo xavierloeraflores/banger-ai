@@ -117,3 +117,39 @@ test('unplayed notes expire once, autoplay completes chords and holds, and relea
   assert.equal(early.stats.held, 0);
   assert.equal(early.stats.score, 100);
 });
+
+
+test('joining mid-song skips past notes without misses or autoplay credit and keeps nearby notes playable', () => {
+  const chart = { notes: [
+    { id: 0, lane: 0, time: 0, end: 35 },
+    { id: 1, lane: 1, time: 29, end: 29 },
+    { id: 2, lane: 2, time: 29.9, end: 31 },
+    { id: 3, lane: 3, time: 31, end: 31 },
+  ], duration: 40 };
+  const joined = new HeroRun(chart, 30);
+  joined.advance(30, false);
+  assert.equal(joined.stats.miss, 0);
+  assert.equal(joined.stats.score, 0);
+  assert.equal(joined.hit(2, 30), true);
+  joined.advance(32, false);
+  assert.equal(joined.stats.miss, 1);
+  assert.equal(joined.stats.held, 1);
+  const auto = new HeroRun(chart, 30);
+  auto.advance(32, true);
+  assert.equal(auto.stats.perfect, 2);
+  assert.equal(auto.stats.miss, 0);
+  const restarted = new HeroRun(chart);
+  assert.equal(restarted.hit(0, 0), true);
+  assert.equal(restarted.stats.perfect, 1);
+});
+
+
+test('recording charts cover the media duration and clip the last cycle', () => {
+  const program = compiler.compileMusic('tempo 120; track keys { instrument "synth/keys"; notes "C4 D4 E4 F4"; }');
+  const chart = createHeroChart(program, '', 4, 40.25);
+  assert.equal(chart.duration, 40.25);
+  assert.ok(chart.notes.some(note => note.time >= 30));
+  assert.equal(chart.notes.at(-1).time, 40);
+  assert.ok(chart.notes.every(note => note.time < chart.duration && note.end <= chart.duration));
+  assert.equal(createHeroChart(program, '', 4, NaN).duration, 8);
+});
