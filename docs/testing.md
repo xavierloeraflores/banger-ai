@@ -76,6 +76,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Sequencer and piano roll | `pnpm --filter @banger/desktop smoke:grid`, `smoke:sequencer`, `smoke`, `smoke:web` |
 | Arrangement and mixer | `pnpm --filter @banger/desktop smoke:song`, `smoke:song:web`; `pnpm verify:song` |
 | Audio synthesis and DSP | `pnpm verify:audio` |
+| Startup and project prompts | `pnpm --filter @banger/desktop exec electron scripts/smoke-project-entry.mjs`, repeat with `--web` |
 | Native workspace | `pnpm --filter @banger/desktop smoke:workspace` |
 | AI settings and authentication | `pnpm --filter @banger/desktop smoke:byok`, `smoke:chatgpt`, `smoke:local`, `smoke:chat` |
 | Music workshop | `pnpm --filter @banger/desktop smoke:music`, `smoke:music:web` |
