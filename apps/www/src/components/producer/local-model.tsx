@@ -1,7 +1,8 @@
 "use client";
 
+import { Progress } from "@banger/shadcn/components/progress";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@banger/shadcn";
+import { Button, Select } from "@banger/shadcn";
 
 type LocalStatus = {
   phase: "missing" | "downloading" | "verifying" | "ready" | "starting" | "running" | "error";
@@ -51,17 +52,17 @@ export function LocalModelSettings() {
     <div className="byok-heading"><h3 id="local-model-title">Muse Glimmer 30B</h3><span className="producer-tag">{status.selected ? "Selected · local AI" : "Local AI · no API key"}</span></div>
     <p className="byok-description">Generate .banger files on this computer. Download a Meta quantization once, then run it offline. Your prompts and projects stay on this device when local AI is selected.</p>
     <label className="local-model-size" htmlFor="local-model-size">Model size
-      <select id="local-model-size" value={status.variant} disabled={busy || working || status.phase === "running"}
+      <Select id="local-model-size" value={status.variant} disabled={busy || working || status.phase === "running"}
         onChange={event => void act(event.target.value as "small" | "dynamic")}>
         <option value="small">16 GB version · Q4_K_M · 16.8 GB download</option>
         <option value="dynamic">20 GB version · Q4_K_XL Dynamic · 19.7 GB download</option>
-      </select>
+      </Select>
     </label>
     <p className="byok-storage">{status.variant === "small" ? "15.6 GiB on disk. Allow 18 GB free space. Recommended memory: 24 GB or more." : "18.3 GiB on disk. Allow 21 GB free space. Recommended memory: 32 GB or more."} This computer has {status.memoryGB} GB. You can keep both downloads and switch while the model is stopped.</p>
     {status.memoryGB < (status.variant === "small" ? 24 : 32) && <p className="has-error">This computer has less than the recommended memory. Generation may be slow or fail to start.</p>}
     {!status.supported && <p role="alert">Automatic installation is unavailable on this operating system.</p>}
     <p role="status">{status.message}</p>
-    {downloading && <div className="local-model-progress"><progress aria-label="Local model download" max={status.total} value={status.completed} /><span>{(status.completed / 1e9).toFixed(2)} / {(status.total / 1e9).toFixed(2)} GB</span></div>}
+    {downloading && <div className="local-model-progress"><Progress aria-label="Local model download" max={status.total} value={status.completed} /><span>{(status.completed / 1e9).toFixed(2)} / {(status.total / 1e9).toFixed(2)} GB</span></div>}
     <p className="byok-storage">Choose a downloaded model from the AI model menu at the top of Settings to use it for chat.</p>
     <div className="byok-actions">
       {!status.installed && !working && <Button variant="primary" disabled={busy || !status.supported} onClick={() => void act("download")}>Download model</Button>}

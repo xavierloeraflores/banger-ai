@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@banger/shadcn";
+import { Button, Select, Modal, type ModalHandle } from "@banger/shadcn";
 import type { ChatGPTStatus } from "@/lib/chatgpt";
 
 const empty: ChatGPTStatus = { selected: false, activeAccountId: null, signingIn: false, accounts: [], models: [] };
@@ -13,7 +13,7 @@ export function ChatGPTSettings() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const pending = useRef(false);
-  const welcome = useRef<HTMLDialogElement>(null);
+  const welcome = useRef<ModalHandle>(null);
   useEffect(() => {
     let active = true;
     const refresh = () => { void window.bangerChatGPT?.status().then(next => {
@@ -48,21 +48,21 @@ export function ChatGPTSettings() {
     <p>Connect a ChatGPT account to use eligible plan usage for music generation and project edits. Your music and task messages are sent to OpenAI.</p>
     {status.accounts.length > 0 && <>
       <label htmlFor="chatgpt-account">ChatGPT account</label>
-      <select id="chatgpt-account" disabled={disabled} value={status.activeAccountId ?? ""} onChange={event => {
+      <Select id="chatgpt-account" disabled={disabled} value={status.activeAccountId ?? ""} onChange={event => {
         const id = event.target.value;
         const next = status.accounts.find(item => item.id === id);
         void run(() => next?.connected && next.sharing ? window.bangerChatGPT!.selectAccount(id) : window.bangerChatGPT!.signIn(id), !next?.connected || !next.sharing);
       }}>
         <option value="" disabled>Choose an account</option>
         {status.accounts.map(item => <option key={item.id} value={item.id}>{item.label}{!item.connected ? " · signed out" : !item.sharing ? " · plan access needed" : ""}</option>)}
-      </select>
+      </Select>
     </>}
     {account?.connected && account.sharing && <>
       <label htmlFor="chatgpt-model">ChatGPT model</label>
-      <select id="chatgpt-model" value={account.model ?? ""} disabled={disabled || !status.models.length} onChange={event => void run(() => window.bangerChatGPT!.selectModel(event.target.value))}>
+      <Select id="chatgpt-model" value={account.model ?? ""} disabled={disabled || !status.models.length} onChange={event => void run(() => window.bangerChatGPT!.selectModel(event.target.value))}>
         <option value="" disabled>Select an available model</option>
         {status.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
-      </select>
+      </Select>
       <p>{status.selected ? "Using ChatGPT plan" : "Choose ChatGPT from the AI model menu to use this account."}</p>
     </>}
     <div className="byok-actions">
@@ -76,12 +76,12 @@ export function ChatGPTSettings() {
     {status.signingIn && <p role="status">Complete sign-in in your browser, then return here.</p>}
     {error && <p className="has-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
-    <dialog ref={welcome} className="chatgpt-welcome" aria-labelledby="chatgpt-welcome-title" onClose={() => {
+    <Modal ref={welcome} className="chatgpt-welcome" aria-labelledby="chatgpt-welcome-title" onClose={() => {
       try { window.localStorage.setItem(welcomeKey, "seen"); } catch { /* Optional presentation preference. */ }
     }}>
       <h3 id="chatgpt-welcome-title">You&apos;re using your ChatGPT plan</h3>
       <p>Eligible AI requests in Banger use your ChatGPT plan. Review and manage usage in ChatGPT settings.</p>
       <Button variant="primary" onClick={() => welcome.current?.close()}>Got it</Button>
-    </dialog>
+    </Modal>
   </section>;
 }

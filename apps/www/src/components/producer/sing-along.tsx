@@ -1,4 +1,6 @@
 'use client';
+import { Button } from "@banger/shadcn";
+
 
 import { useEffect, useMemo, useRef } from 'react';
 import { currentLyricLine, type SingAlongData } from '@/lib/sing-along';
@@ -54,7 +56,7 @@ export function SingAlong({ name, data, position, duration, pending, onSeek }: P
       </div>
       <div className="sing-along-transcript"><h3>Lyrics <span>{data.lines.length ? 'Click a line to jump' : 'Without timing'}</span></h3>
         <div ref={transcript} className="sing-along-lines" tabIndex={0} aria-label="Song lyrics">
-          {data.lines.length ? data.lines.map((line, index) => <button type="button" key={index} data-line={index} aria-current={index === active ? 'true' : undefined} disabled={pending || !duration} onClick={() => onSeek(line.startMs / 1000)}><time>{clockTime(line.startMs / 1000)}</time><span>{line.words.map(word => word.word).join(' ')}</span></button>) : <p className="sing-along-empty">{data.lyrics || 'No lyrics saved for this song. Songs exported from Vocal Studio can include lyrics and word timings.'}</p>}
+          {data.lines.length ? data.lines.map((line, index) => <Button type="button" key={index} data-line={index} aria-current={index === active ? 'true' : undefined} disabled={pending || !duration} onClick={() => onSeek(line.startMs / 1000)}><time>{clockTime(line.startMs / 1000)}</time><span>{line.words.map(word => word.word).join(' ')}</span></Button>) : <p className="sing-along-empty">{data.lyrics || 'No lyrics saved for this song. Songs exported from Vocal Studio can include lyrics and word timings.'}</p>}
         </div>
       </div>
     </div>

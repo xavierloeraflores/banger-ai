@@ -56,7 +56,7 @@ try {
   console.log('Loaded cloud fixture');
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   await click('Project');
-  await wait("document.querySelector('#project-controls').open");
+  await wait("(document.querySelector('#project-controls')?.getAttribute('data-state') === 'open')");
   await wait("document.querySelector('details.project-workspace')");
   await evaluate("window.confirm=()=>true;document.querySelector('details.project-workspace').open=true");
   assert.equal(await evaluate("document.querySelector('details.project-workspace input[type=url]')"),null);
@@ -64,9 +64,13 @@ try {
 
   await wait("document.querySelector('#cloud-source')?.value.includes('tempo 120')");
   await fill('#cloud-source',source.replace('120','100'));
+  await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
+  await wait("document.querySelector('#project-controls').getAttribute('data-state') === 'closed'");
   revision=2;saved=source.replace('120','90');
+  await click('Project');
   await wait("document.querySelector('details.project-workspace').textContent.includes('Saved revision 2')");
-  assert.match(await evaluate("document.querySelector('#cloud-source').value"),/tempo 100/,'Remote changes preserve the draft');
+  await wait("document.querySelector('#project-controls').getAttribute('data-state') === 'open'");
+  assert.match(await evaluate("document.querySelector('#cloud-source').value"),/tempo 100/,'Remote changes preserve the draft across closing and reopening');
   if (process.env.BANGER_CLOUD_SCREENSHOT) {
     await evaluate("document.querySelector('details.project-workspace').scrollIntoView({block:'start',behavior:'instant'});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
     await writeFile(process.env.BANGER_CLOUD_SCREENSHOT,(await window.webContents.capturePage()).toPNG());
@@ -85,7 +89,11 @@ try {
   await wait("document.querySelector('#producer-source').value.includes('tempo 90')");
   assert.ok(await evaluate("[...document.querySelectorAll('button')].some(button=>button.textContent==='Upload WAV to cloud')"));
   const download=new Promise((resolve,reject)=>window.webContents.session.once('will-download',(_event,item)=>{const path=join(directory,item.getFilename());item.setSavePath(path);item.once('done',(_event,state)=>state==='completed'?resolve(path):reject(new Error(state)));}));
-  await evaluate("document.querySelector('.studio-export').open=true");await click('Export WAV');console.log('Rendering WAV');
+  await click('Project');
+  await wait("document.querySelector('.studio-export button[aria-haspopup=menu]')");
+  await evaluate("document.querySelector('.studio-export button[aria-haspopup=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
+  await wait("document.querySelector('.studio-export-options [role=menuitem]')");
+  await click('Export and download');console.log('Rendering WAV');
   const bytes=await readFile(await download);
   assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WAVE');assert.ok(bytes.length>44);assert.ok(bytes.subarray(44).some(value=>value!==0));
   console.log('Cloud browser smoke passed: connection, revision polling, preserved draft, 409 conflict, compile validation, studio binding and real WAV download.');

@@ -66,17 +66,17 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-source')?.value");
   const openChat = async () => {
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
-    await waitFor("document.querySelector('#ai-chat-dialog').matches(':modal')");
+    await waitFor("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open' && document.querySelector('#ai-chat-dialog')?.getAttribute('aria-modal') === 'true')");
   };
   const closeChat = async () => {
     await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
-    await waitFor("!document.querySelector('#ai-chat-dialog').open");
+    await waitFor("!(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')");
   };
-  assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').open"), false);
+  assert.equal(await evaluate("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')"), false);
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.ai-chat-launcher-hint')).position"), "fixed");
   assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').disabled"),true);
   await evaluate("document.querySelector('.ai-chat-launcher').click()");
-  assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').open"),false);
+  assert.equal(await evaluate("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')"),false);
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("!document.querySelector('.byok-form fieldset').disabled");
   await input("byok-model", "anthropic/claude-opus-5-5");
@@ -87,16 +87,16 @@ async function exercise(window, desktop) {
   await waitFor("!document.querySelector('.ai-chat-launcher').disabled");
   await openChat();
   await waitFor("document.activeElement.id === 'ai-chat-prompt'");
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => [input.parentElement.textContent, input.checked])"), [["Edit beat", true], ["Edit lyrics", false], ["Full Send", false]]);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => [input.parentElement.textContent, (input.getAttribute('aria-checked') === 'true')])"), [["Edit beat", true], ["Edit lyrics", false], ["Full Send", false]]);
   assert.equal(await evaluate("!!document.querySelector('[aria-label=\"AI editing target\"]')"), false);
   await input("ai-chat-prompt", "Keep this draft");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
-  await waitFor("!document.querySelector('#ai-chat-dialog').open");
+  await waitFor("!(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')");
   await waitFor("document.activeElement.getAttribute('aria-label') === 'Open AI chat'");
   await openChat();
   assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "Keep this draft");
-  // Native modal focus cannot escape into the studio controls.
+  // Modal focus cannot escape into the studio controls.
   for (let index = 0; index < 12; index++) {
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
@@ -166,7 +166,12 @@ async function exercise(window, desktop) {
   await click("Load in studio");
   await waitFor("document.querySelector('#producer-tempo').value === '105'");
   assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
+  await closeChat();
+  await click("Project");
+  await waitFor("document.querySelector('.project-file-identity p')");
   assert.equal(await evaluate("document.querySelector('.project-file-identity p').textContent"), "Unsaved changes");
+  await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
+  await openChat();
   await evaluate("document.querySelectorAll('.ai-chat-file button')[3].click()");
   await waitFor("document.querySelector('#producer-tempo').value === '85'");
   assert.equal(await evaluate("document.querySelector('#chat-ai-reasoning').value"), "high");
@@ -232,7 +237,7 @@ async function exercise(window, desktop) {
   await click("New chat");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
   const beforeReadOnly = await evaluate("document.querySelector('#producer-source').value");
-  await evaluate("document.querySelector('.ai-chat-permissions input').click()");
+  await evaluate("document.querySelector('.ai-chat-permissions [role=checkbox]').click()");
   await waitFor("document.querySelector('.ai-chat-permissions').textContent.includes('Reply only')");
   await input("ai-chat-prompt", "Please edit the beat and write lyrics anyway");
   await click("Send");
@@ -243,8 +248,8 @@ async function exercise(window, desktop) {
   assert.equal((readOnlyCalls.at(-1).tools ?? []).length, 0);
   await closeChat();
   await openChat();
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => input.checked)"), [false, false, false]);
-  await evaluate("document.querySelectorAll('.ai-chat-permissions input')[0].click(); document.querySelectorAll('.ai-chat-permissions input')[1].click()");
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => (input.getAttribute('aria-checked') === 'true'))"), [false, false, false]);
+  await evaluate("document.querySelectorAll('.ai-chat-permissions [role=checkbox]')[0].click(); document.querySelectorAll('.ai-chat-permissions [role=checkbox]')[1].click()");
   await input("ai-chat-prompt", "Create three more loops with both permissions enabled");
   await click("Send");
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 3");
@@ -261,7 +266,7 @@ async function exercise(window, desktop) {
   await writeFile(join(tmpdir(), desktop ? "banger-chat-modal-mobile-desktop.png" : "banger-chat-modal-mobile-web.png"), (await window.webContents.capturePage()).toPNG());
   window.webContents.sendInputEvent({ type: "mouseDown", x: 2, y: 2, button: "left", clickCount: 1 });
   window.webContents.sendInputEvent({ type: "mouseUp", x: 2, y: 2, button: "left", clickCount: 1 });
-  await waitFor("!document.querySelector('#ai-chat-dialog').open");
+  await waitFor("!(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')");
   await waitFor("document.activeElement.getAttribute('aria-label') === 'Open AI chat'");
 }
 

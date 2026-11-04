@@ -212,8 +212,8 @@ body { margin: 0; background: #141415; }
 .byok-description { margin: 12px 0 24px; }
 .byok-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; }
 .byok-providers { display: flex; flex-direction: column; gap: 6px; }
-.byok-providers button { text-align: left; padding: 12px; border: 1px solid transparent; border-radius: 6px; color: var(--producer-text); background: transparent; }
-.byok-providers button[aria-pressed="true"] { background: #202730; border-color: #385376; }
+.byok-providers button { display: block; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: 6px; color: var(--producer-text); background: transparent; }
+.byok-providers button[aria-pressed="true"] { box-shadow: none; background: #202730; border-color: #385376; }
 .byok-providers button:hover { background: #26292c; }
 .byok-providers small { display: block; color: var(--producer-dim); margin-top: 4px; font-size: 10px; }
 .byok-providers button[aria-pressed="true"] small { color: var(--producer-accent); }
@@ -243,7 +243,7 @@ body { margin: 0; background: #141415; }
 .producer .ai-chat-launcher { position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 10; width: 56px; height: 56px; padding: 0; border-radius: 50%; box-shadow: 0 6px 24px #0006; }
 .ai-chat-dialog { position: fixed; inset: auto max(24px, env(safe-area-inset-right)) max(96px, calc(env(safe-area-inset-bottom) + 72px)) auto; margin: 0; padding: 0; width: min(560px, calc(100vw - 32px)); max-width: none; max-height: none; border: 1px solid var(--producer-border); border-radius: 14px; background: var(--producer-panel); color: var(--producer-text); box-shadow: 0 20px 80px #0008; overflow: auto; }
 .ai-chat-dialog::backdrop { background: #0006; }
-body:has(.ai-chat-dialog[open]) { overflow: hidden; }
+body:has(.ai-chat-dialog[data-state="open"]) { overflow: hidden; }
 .producer .producer-ai { display: flex; flex-direction: column; height: min(680px, calc(100dvh - 120px - env(safe-area-inset-bottom))); min-height: 0; padding: 0; border: 0; border-radius: 0; background: var(--producer-panel); overflow: auto; }
 .producer-ai .producer-panel-heading { position: relative; align-items: start; flex-direction: column; gap: 12px; padding: 20px 60px 20px 24px; flex-shrink: 0; }
 .producer .ai-chat-close { position: absolute; right: 14px; top: 16px; font-size: 24px; }
@@ -322,7 +322,7 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .local-model-settings h3 { margin: 0; font-size: 18px; }
 .local-model-settings > p[role="status"] { font-size: 13px; margin: 16px 0; }
 .local-model-progress { display: flex; align-items: center; gap: 14px; margin: 16px 0; font-size: 12px; }
-.local-model-progress progress { flex: 1; accent-color: var(--producer-accent); }
+.local-model-progress [role="progressbar"] { flex: 1; accent-color: var(--producer-accent); }
 .local-model-size { display: grid; gap: 8px; font-size: 13px; max-width: 480px; }
 .local-model-size select { padding: 10px; border-radius: 6px; background: var(--producer-panel); color: var(--producer-text); border: 1px solid var(--producer-border); }
 .ai-model-select, .muse-hero-settings { display: grid; gap: 8px; min-width: 0; margin: 24px 26px 0; }
@@ -446,7 +446,7 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 .producer-launch-pattern select { max-width: 140px; min-height: 36px; }
 .producer-performance-dialog { box-sizing: border-box; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 24px; border: 1px solid var(--producer-border); border-radius: 12px; background: var(--producer-panel); color: var(--producer-text); overflow: auto; box-shadow: 0 24px 80px #0009; }
 .producer-performance-dialog::backdrop { background: #000a; backdrop-filter: blur(5px); }
-body:has(.producer-performance-dialog[open]) { overflow: hidden; }
+body:has(.producer-performance-dialog[data-state="open"]) { overflow: hidden; }
 .producer-performance-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .producer .producer-performance-dialog-heading h2 { margin: 0; font-size: 20px; }
 .producer-pattern-launcher { border: 0; border-top: 1px solid var(--producer-border); padding: 10px 0 0; margin: 16px 0 0; min-width: 0; }
@@ -481,7 +481,7 @@ body:has(.producer-performance-dialog[open]) { overflow: hidden; }
 .producer-settings { flex-shrink: 0; }
 .producer-settings-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--producer-border); border-radius: 12px; background: var(--producer-panel); color: var(--producer-text); overflow: auto; }
 .producer-settings-dialog::backdrop { background: #0009; }
-body:has(.producer-settings-dialog[open]) { overflow: hidden; }
+body:has(.producer-settings-dialog[data-state="open"]) { overflow: hidden; }
 .producer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--producer-border); }
 .producer .producer-settings-heading h2 { margin: 0; font-size: 18px; }
 .producer-settings-heading button { font-size: 24px; }
@@ -495,7 +495,7 @@ body:has(.producer-settings-dialog[open]) { overflow: hidden; }
 /* Project controls follow workspace, current song, then export. */
 .producer-project-dialog { width: min(1120px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 36px; border: 2px solid var(--producer-accent); border-radius: 26px; background: linear-gradient(135deg, #181a1c, #111214); color: var(--producer-text); overflow: auto; box-shadow: 0 24px 80px #0009; }
 .producer-project-dialog::backdrop { background: #000a; backdrop-filter: blur(5px); }
-body:has(.producer-project-dialog[open]) { overflow: hidden; }
+body:has(.producer-project-dialog[data-state="open"]) { overflow: hidden; }
 .project-icon { flex: 0 0 auto; }
 .producer-project-dialog .banger-button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 52px; padding: 12px 22px; border-radius: 12px; font-size: 16px; white-space: nowrap; }
 .producer-project-dialog .banger-button--primary { background: linear-gradient(#267aff, #0866ff); color: #ffffff; border: 1px solid #75b5ff; }
@@ -662,9 +662,8 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
 .producer-settings-dialog .elevenlabs-settings { border-top: 1px solid var(--producer-border); padding-top: 24px; margin-top: 24px; }
 .generation-key-hint { display: inline-flex; position: relative; max-width: 100%; }
 .generation-key-hint:has(> [disabled]) { cursor: not-allowed; }
-.generation-key-hint:has(> .generation-key-tooltip) > button:disabled { pointer-events: none; }
-.generation-key-tooltip { display: none; position: fixed; white-space: normal; bottom: calc(100% + 8px); right: 0; z-index: 60; width: max-content; max-width: min(280px, 80vw); padding: 8px 12px; border: 1px solid #666; border-radius: 8px; background: #18181b; color: #fafafa; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 16px #0006; }
-.generation-key-hint:hover > .generation-key-tooltip, .generation-key-hint:focus > .generation-key-tooltip { display: block; }
+.generation-key-hint > button:disabled { pointer-events: none; }
+.generation-key-tooltip { white-space: normal; z-index: 60; width: max-content; max-width: min(280px, 80vw); padding: 8px 12px; border: 1px solid #666; border-radius: 8px; background: #18181b; color: #fafafa; font: 13px/1.4 Arial, Helvetica, sans-serif; box-shadow: 0 4px 16px #0006; }
 .generation-key-hint:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 8px; }
 .producer .ai-chat-launcher-hint { position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 10; }
 .producer .ai-chat-launcher-hint .ai-chat-launcher { position: static; }
@@ -675,3 +674,11 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
 
 .producer-ai .ai-model-select { grid-template-columns: auto minmax(0, 1fr); align-items: center; margin: 0 24px 12px; flex-shrink: 0; }
 .producer-ai .ai-model-select p { grid-column: 1 / -1; }
+
+/* shadcn navigation retains the studio's compact tabs and mounted editors. */
+.producer-track-tabs { display: block; }
+.producer-tabs, .producer-editor-tabs { width: 100%; height: auto; padding: 0; justify-content: flex-start; background: transparent; }
+.producer-tabs [role="tab"] { flex: 0 0 auto; height: auto; border-radius: 0; }
+.producer-editor-tabs [role="tab"] { height: auto; border-radius: 0; }
+.producer-tabs [role="tab"]::after { display: none; }
+.producer-editor-tabs [aria-selected="true"] { color: #fff; }

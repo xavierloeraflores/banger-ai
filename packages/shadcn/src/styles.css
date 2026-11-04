@@ -222,3 +222,23 @@
     background: CanvasText;
   }
 }
+
+/* App-sized variants of the registry controls. */
+.banger-button { height: auto; white-space: normal; }
+.banger-panel { display: block; }
+.banger-input, .banger-select { height: auto; }
+.banger-textarea { box-sizing: border-box; width: 100%; min-height: 64px; padding: 0.625rem 0.75rem; border: 1px solid var(--banger-border); border-radius: var(--banger-radius); background: var(--banger-background); color: var(--banger-text); font: inherit; }
+.banger-modal { transition: none; animation: none; position: fixed; inset: 50% auto auto 50%; translate: -50% -50%; transform: none; z-index: 50; display: block; margin: 0; max-width: none; gap: 0; }
+.banger-modal.ai-chat-dialog, .banger-modal.performance-dialog { translate: none; }
+.banger-modal.ai-chat-dialog { inset: auto max(24px, env(safe-area-inset-right)) max(96px, calc(env(safe-area-inset-bottom) + 72px)) auto; }
+.banger-modal.performance-dialog { inset: 0; }
+[data-slot="dialog-overlay"] { backdrop-filter: blur(5px); }
+.banger-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+/* Registry sizing relies on border-box but the musical canvases are untouched. */
+[data-slot], [data-slot]::before, [data-slot]::after { box-sizing: border-box; }
+[data-slot="checkbox"] { width: 16px; height: 16px; padding: 0; vertical-align: middle; border-style: solid; cursor: pointer; }
+[data-slot="checkbox"][data-state="checked"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+
+@media (max-width: 600px) {
+  .banger-modal.ai-chat-dialog { right: max(16px, env(safe-area-inset-right)); bottom: max(88px, calc(env(safe-area-inset-bottom) + 72px)); }
+}

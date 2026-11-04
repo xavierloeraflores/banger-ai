@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@banger/shadcn/components/tooltip";
 import { aiSettingsBridge, hasLanguageModel } from "@/lib/ai-providers";
 
 export const LLM_KEY_HINT = "Add an AI model API key in Settings to generate beats and lyrics.";
@@ -27,17 +28,10 @@ export function useGenerationAccess() {
 
 // The wrapper receives hover and keyboard focus even when its button is disabled.
 export function KeyHint({ reason, children, className = "" }: { reason?: string; children: ReactNode; className?: string }) {
-  const id = useId();
-  const [position, setPosition] = useState<CSSProperties>({});
-  function place(element: HTMLElement) {
-    if (!reason) return;
-    const rect = element.getBoundingClientRect();
-    const width = Math.min(280, window.innerWidth - 32);
-    setPosition({ width, left: Math.max(16, Math.min(rect.right - width, window.innerWidth - width - 16)), right: "auto",
-      ...(rect.top > 100 ? { bottom: window.innerHeight - rect.top + 8, top: "auto" } : { top: rect.bottom + 8, bottom: "auto" }) });
-  }
-  return <span className={`generation-key-hint ${className}`} onMouseEnter={event => place(event.currentTarget)} onFocus={event => place(event.currentTarget)} tabIndex={reason ? 0 : undefined} aria-describedby={reason ? id : undefined}>
-    {children}
-    {reason && <span id={id} role="tooltip" style={position} className="generation-key-tooltip">{reason}</span>}
-  </span>;
+  const trigger = <span className={`generation-key-hint ${className}`} tabIndex={reason ? 0 : undefined}>{children}</span>;
+  if (!reason) return trigger;
+  return <TooltipProvider delayDuration={150}><Tooltip>
+    <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+    <TooltipContent className="generation-key-tooltip" side="top" sideOffset={8} collisionPadding={16}>{reason}</TooltipContent>
+  </Tooltip></TooltipProvider>;
 }

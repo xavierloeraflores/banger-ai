@@ -12,7 +12,7 @@ app.setPath('userData', profile);
 app.on('window-all-closed', () => {});
 const timeout = setTimeout(() => { console.error('Sequencer smoke timed out'); app.exit(1); }, 120000);
 async function run(window) {
-  await enterStudio(window);
+  const projectFolder = await enterStudio(window);
   window.webContents.setBackgroundThrottling(false);
   const directory = await mkdtemp(join(tmpdir(), 'banger-sequencer-'));
   const evaluate = code => window.webContents.executeJavaScript(code, true);
@@ -153,18 +153,20 @@ async function run(window) {
     assert.equal((await program()).tracks[0].modular, null);
     await set('kick saved patch', 'Native bell', 'HTMLSelectElement');
     assert.equal((await program()).tracks[0].modular.name, 'Native bell');
-    const saved = await source(), projectPath = join(directory, 'performance.banger');
+    const saved = await source(), projectPath = join(projectFolder, 'night-drive.banger');
     dialog.showSaveDialog = async () => ({ canceled:false, filePath:projectPath }); await text('Project'); await text('Save .banger');
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')", 'native save');
     assert.equal(await readFile(projectPath, 'utf8'), saved);
     await text('Close', "document.querySelector('#project-controls')");
-    dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[projectPath] }); await text('Project'); await text('Open');
+    dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[projectFolder] }); await text('Project'); await text('Open Project', "document.querySelector('#project-controls')");
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Opened ')", 'native reopen');
     assert.equal(await source(), saved);
     assert.deepEqual(compileMusic(saved), await program());
-    await text('Close', "document.querySelector('#project-controls')");
-    await evaluate("document.querySelector('.studio-export').open = true");
-    const mix = await download('Export WAV'), stem = await download('Export stem');
+    await text('Project');
+    await evaluate("document.querySelector('.studio-export [aria-haspopup=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
+    await waitFor("Boolean(document.querySelector('.studio-export-options [role=menuitem]'))", 'export menu');
+    const mix = await download('Export and download'), stem = await download('Export stem');
+    await click('Close project controls');
     for (const output of [mix, stem]) {
       assert.equal(output.bytes.toString('ascii',0,4), 'RIFF');
       let peak = 0; for (let i=44; i<output.bytes.length; i+=2) peak = Math.max(peak, Math.abs(output.bytes.readInt16LE(i)));

@@ -29,8 +29,11 @@ try {
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), await readFile(new URL('../../../examples/night-drive.banger', import.meta.url), 'utf8'));
   assert.equal(await evaluate("document.querySelector('#source-title').textContent"), 'night-drive.banger');
   assert.equal(await evaluate("document.querySelector('#producer-tempo').value"), '112');
+  console.log("Web startup ready");
   await smokePiano(window);
+  console.log("Web piano passed");
   const source = await smokeFocusedEditor(window);
+  console.log("Web focused editor passed");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Project').click()");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Save .banger').click()");
   await evaluate(`new Promise((resolve, reject) => { const end = Date.now() + 5000; const poll = () => {
@@ -45,7 +48,7 @@ try {
     if (document.querySelector('.producer-footer [role=status]').textContent.startsWith('Opened ')) resolve();
     else if (Date.now() > end) reject(new Error('Browser reopen timed out')); else setTimeout(poll, 25);
   }; poll(); })`);
-  await evaluate("document.querySelector('#project-controls').close()");
+  await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
   assert.deepEqual(compileMusic(await evaluate("document.querySelector('#producer-source').value")), compileMusic(source));
   for (const [index, track] of compileMusic(source).tracks.entries()) {

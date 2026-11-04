@@ -12,7 +12,11 @@ async function wait(window, expression) {
   }
   throw new Error(`Startup UI timed out: ${expression}`);
 }
-const click = (window, label) => window.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)}).click()`, true);
+const click = (window, label) => window.webContents.executeJavaScript(`(() => {
+  const focusedDialog = document.activeElement?.closest('[role="dialog"][data-state="open"]');
+  const matches = root => [...root.querySelectorAll('button')].find(button => button.getBoundingClientRect().width > 0 && button.textContent.trim() === ${JSON.stringify(label)});
+  (focusedDialog && matches(focusedDialog) || matches(document)).click();
+})()`, true);
 
 export async function enterStudio(window) {
   let projectFolder;
@@ -43,15 +47,15 @@ export async function enterStudio(window) {
     finally { dialog.showSaveDialog = original; }
   }
   await wait(window, "document.querySelector('#producer-source')");
-  await window.webContents.executeJavaScript("document.querySelector('#project-controls')?.close()");
+  await window.webContents.executeJavaScript("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
   return projectFolder;
 }
 
 export async function smokeStartup(window, directory) {
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = code => window.webContents.executeJavaScript(code, true).catch(error => { throw new Error(`Startup action failed: ${code}`, { cause: error }); });
   const reload = async () => { await window.loadURL('banger://app/'); await wait(window, "document.querySelector('.producer-start')"); };
   const idle = () => wait(window, "document.querySelector('.producer-start-card')?.getAttribute('aria-busy') === 'false'");
-  const input = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(field.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  const input = async (selector, value) => { await wait(window, `document.querySelector(${JSON.stringify(selector)}) && !document.querySelector(${JSON.stringify(selector)}).disabled`); return evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(field.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`); };
   await wait(window, "document.querySelector('.producer-start')");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Open Library']);
   dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
@@ -68,28 +72,29 @@ export async function smokeStartup(window, directory) {
   assert.equal(await readFile(join(sampleFolder, 'night-drive.banger'), 'utf8'), sample);
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), sample);
   assert.match(await evaluate("document.querySelector('.producer-project').textContent"), /sample-project.*night-drive/);
+  await click(window, 'Project');
   await wait(window, "document.querySelector('#workspace-file')");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('#project-controls > section')].map(s => s.querySelector('h2')?.textContent)"), ['Project Workspace', 'night-drive.banger', 'Export Controls']);
-  await click(window, 'Project');
-  await wait(window, "document.querySelector('#project-controls').open");
+  await wait(window, "(document.querySelector('#project-controls')?.getAttribute('data-state') === 'open')");
   await click(window, 'Create Song');
-  await wait(window, "document.querySelector('.create-song-dialog')?.open");
+  await wait(window, "(document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open')");
   assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), 'New song name');
   await delay(150);
   await writeFile('/tmp/banger-create-song-modal.png', (await window.webContents.capturePage()).toPNG());
   await input('[aria-label="New song name"]', 'verse');
   await click(window, 'Create New Song');
   await wait(window, "document.querySelector('#workspace-file').value === 'verse.banger'");
-  assert.equal(await evaluate("document.querySelector('.create-song-dialog').open"), false);
+  await wait(window, "document.querySelector('.create-song-dialog')?.getAttribute('data-state') !== 'open'");
   const blank = await readFile(join(sampleFolder, 'verse.banger'), 'utf8');
   assert.notEqual(blank, sample);
   await click(window, 'Create Song');
-  await wait(window, "document.querySelector('.create-song-dialog')?.open");
+  await wait(window, "(document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open')");
   assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), 'New song name');
   await input('[aria-label="New song name"]', 'verse'); await click(window, 'Create New Song');
   await wait(window, "document.querySelector('.project-workspace-notice')?.textContent.includes('changed')");
   assert.equal(await readFile(join(sampleFolder, 'verse.banger'), 'utf8'), blank);
   await click(window, 'Cancel');
+  await wait(window, "document.querySelector('.create-song-dialog')?.getAttribute('data-state') !== 'open'");
   await evaluate("(() => { const s = document.querySelector('#workspace-file'); s.value = 'night-drive.banger'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
   await wait(window, "document.querySelector('#producer-source').value === " + JSON.stringify(sample));
   await input('#producer-source', sample + '\n// unsaved');
@@ -106,6 +111,9 @@ export async function smokeStartup(window, directory) {
   assert.match(await readFile(join(sampleFolder, 'night-drive.banger'), 'utf8'), /unsaved/);
   assert.equal(await evaluate("document.querySelector('#workspace-source, #workspace-prompt, .project-song-advanced')"), null);
   await click(window, 'Close');
+  await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-startup-key')");
+  await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
+  await wait(window, "!document.querySelector('[aria-label=\"Open AI chat\"]').disabled");
   await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
   await input('#ai-chat-prompt', 'Keep this task draft');
   await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
@@ -123,12 +131,12 @@ export async function smokeStartup(window, directory) {
   const newFolder = join(directory, 'new-project');
   dialog.showSaveDialog = async () => ({ canceled: false, filePath: newFolder });
   await click(window, 'Create New Project');
-  await wait(window, "document.querySelector('.first-song-dialog')?.open");
+  await wait(window, "(document.querySelector('.first-song-dialog')?.getAttribute('data-state') === 'open')");
   assert.deepEqual(await readdir(newFolder), []);
   await input('#first-song-name', 'New tune');
   await click(window, 'Create Song');
-  await wait(window, "document.querySelector('#workspace-file')?.value === 'New tune.banger'");
-  assert.equal(await evaluate("document.querySelector('#project-controls').open"), false);
+  await wait(window, "document.querySelector('.producer-project')?.textContent.includes('New tune.banger')");
+  await wait(window, "document.querySelector('#project-controls')?.getAttribute('data-state') !== 'open'");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), blank);
   assert.equal(await readFile(join(newFolder, 'New tune.banger'), 'utf8'), blank);
   assert.deepEqual((await readdir(newFolder)).filter(name => name.endsWith('.banger')), ['New tune.banger']);
@@ -139,7 +147,7 @@ export async function smokeStartup(window, directory) {
   const startFolder = join(directory, 'startup-created');
   dialog.showSaveDialog = async () => ({ canceled: false, filePath: startFolder });
   await click(window, 'Create New Project');
-  await wait(window, "document.querySelector('.first-song-dialog')?.open");
+  await wait(window, "(document.querySelector('.first-song-dialog')?.getAttribute('data-state') === 'open')");
   assert.equal(await evaluate("document.querySelector('#producer-source')"), null);
   assert.deepEqual(await readdir(startFolder), []);
   await writeFile('/tmp/banger-first-song-dialog.png', (await window.webContents.capturePage()).toPNG());
@@ -155,8 +163,8 @@ export async function smokeStartup(window, directory) {
   assert.equal(await readFile(join(startFolder, 'taken.banger'), 'utf8'), sample);
   await input('#first-song-name', 'First song.banger');
   await evaluate("document.querySelector('.first-song-dialog form').requestSubmit()");
-  await wait(window, "document.querySelector('#workspace-file')?.value === 'First song.banger'");
-  assert.equal(await evaluate("document.querySelector('#project-controls').open"), false);
+  await wait(window, "document.querySelector('.producer-project')?.textContent.includes('First song.banger')");
+  await wait(window, "document.querySelector('#project-controls')?.getAttribute('data-state') !== 'open'");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), blank);
   assert.equal(await readFile(join(startFolder, 'First song.banger'), 'utf8'), blank);
   assert.match(await evaluate("document.querySelector('.producer-project').textContent"), /First song.banger/);
@@ -164,17 +172,17 @@ export async function smokeStartup(window, directory) {
   const folder = join(directory, 'folder-project'); await mkdir(join(folder, 'songs'), { recursive: true });
   await writeFile(join(folder, 'songs/verse.banger'), blank);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-  await click(window, 'Open Project'); await wait(window, "document.querySelector('#workspace-file')?.value === 'songs/verse.banger'");
+  await click(window, 'Open Project'); await wait(window, "document.querySelector('.producer-project')?.textContent.includes('verse.banger')");
   await reload();
   await writeFile(join(folder, 'songs/verse.banger'), 'invalid music source');
   await click(window, 'Open Project'); await wait(window, "document.querySelector('#producer-source')?.getAttribute('aria-invalid') === 'true'");
   await reload();
   const empty = join(directory, 'empty-project'); await mkdir(empty);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [empty] });
-  await click(window, 'Open Project'); await wait(window, "document.querySelector('.first-song-dialog')?.open");
+  await click(window, 'Open Project'); await wait(window, "(document.querySelector('.first-song-dialog')?.getAttribute('data-state') === 'open')");
   assert.deepEqual(await readdir(empty), []);
   await input('#first-song-name', 'first'); await click(window, 'Create Song');
-  await wait(window, "document.querySelector('#workspace-file')?.value === 'first.banger'");
+  await wait(window, "document.querySelector('.producer-project')?.textContent.includes('first.banger')");
   assert.equal(await readFile(join(empty, 'first.banger'), 'utf8'), blank);
   assert.deepEqual((await readdir(empty)).filter(name => name.endsWith('.banger')), ['first.banger']);
   await reload();

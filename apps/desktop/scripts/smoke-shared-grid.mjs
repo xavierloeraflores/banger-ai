@@ -101,8 +101,9 @@ async function run(window) {
     await evaluate("document.activeElement.blur(); document.querySelector('.producer-step').focus()");
     await key('Down', ['shift']);
     assert.equal((await program()).tracks[0].steps[0].velocity, .95);
+    await wait("document.querySelector('[aria-label=\"Selected step velocity\"]') && !document.querySelector('[aria-label=\"Selected step velocity\"]').matches(':disabled')", 'inspector ready');
     await key('E');
-    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'), 'Selected step velocity');
+    await wait("document.activeElement.getAttribute('aria-label') === 'Selected step velocity'", 'keyboard focus enters inspector');
     await key('Escape');
     assert.match(await evaluate('document.activeElement.getAttribute("aria-label")'), /kick, step 1/);
     await input('[aria-label="Selected step velocity"]', 63);

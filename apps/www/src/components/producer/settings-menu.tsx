@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { IconButton } from "@banger/shadcn";
+import { IconButton, Modal, Select, type ModalHandle } from "@banger/shadcn";
 import { AIModelSelect } from "./ai-model-select";
 import { ElevenLabsSettings } from "./elevenlabs-settings";
 import { ByokSettings } from "./byok-menu";
@@ -9,7 +9,7 @@ import { HERO_DIFFICULTIES, setHeroDifficulty, useHeroDifficulty, type HeroDiffi
 
 export function SettingsMenu() {
   const trigger = useRef<HTMLButtonElement>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<ModalHandle>(null);
   const [open, setOpen] = useState(false);
   const difficulty = useHeroDifficulty();
 
@@ -21,8 +21,8 @@ export function SettingsMenu() {
         <circle cx="11.5" cy="12.5" r="3.5" />
       </svg>
     </IconButton>
-    <dialog ref={dialog} id="producer-settings-dialog" className="producer-settings-dialog" aria-labelledby="producer-settings-title"
-      onClose={() => { setOpen(false); trigger.current?.focus(); }} onClick={event => { if (event.target === event.currentTarget) dialog.current?.close(); }}>
+    <Modal dismissOnOutsideClick ref={dialog} id="producer-settings-dialog" className="producer-settings-dialog" aria-labelledby="producer-settings-title"
+      onClose={() => { setOpen(false); trigger.current?.focus(); }}>
       <div className="producer-settings-content">
         <div className="producer-settings-heading">
           <h2 id="producer-settings-title">Settings</h2>
@@ -31,13 +31,13 @@ export function SettingsMenu() {
         {open && <>
           <div className="muse-hero-settings">
             <label htmlFor="muse-hero-difficulty">Muse Hero difficulty</label>
-            <select id="muse-hero-difficulty" value={difficulty} onChange={event => setHeroDifficulty(event.target.value as HeroDifficulty)}>
+            <Select id="muse-hero-difficulty" value={difficulty} onChange={event => setHeroDifficulty(event.target.value as HeroDifficulty)}>
               {HERO_DIFFICULTIES.map(option => <option key={option.value} value={option.value}>{option.label} · {option.lanes} tracks</option>)}
-            </select>
+            </Select>
           </div>
           <AIModelSelect /><ByokSettings /><ElevenLabsSettings />
         </>}
       </div>
-    </dialog>
+    </Modal>
   </div>;
 }

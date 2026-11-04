@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import "../dist/main.js";
 import { smokeProducer } from "./smoke-producer.mjs";
 
-const timeout = setTimeout(() => { console.error("Desktop smoke test timed out."); app.exit(1); }, 45_000);
+const profile = await mkdtemp(join(tmpdir(), "banger-desktop-smoke-"));
+app.setPath("userData", profile);
+const timeout = setTimeout(() => { console.error("Desktop smoke test timed out."); app.exit(1); }, 120_000);
 // Keep the smoke process alive for assertions and cleanup after the final window closes.
 app.on("before-quit", (event) => event.preventDefault());
 app.on("browser-window-created", (_event, window) => {
@@ -69,6 +70,9 @@ async function run(window) {
   } finally {
     clearTimeout(timeout);
     await rm(directory, { recursive: true, force: true });
+    await rm(profile, { recursive: true, force: true });
     app.exit(process.exitCode ?? 0);
   }
 }
+
+await import("../dist/main.js");

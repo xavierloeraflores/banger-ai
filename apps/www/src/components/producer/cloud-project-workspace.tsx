@@ -1,13 +1,14 @@
 'use client';
+import { Progress } from "@banger/shadcn/components/progress";
 import {useEffect,useRef,useState} from 'react';
 import {KeyHint,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
 import {cloudVocalRequest} from '@/lib/elevenlabs';
 import {compileMusic} from '@banger/compiler';
-import {Button} from '@banger/shadcn';
+import { Button, Select, Textarea } from "@banger/shadcn";
 import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnection,type CloudJob,type CloudSnapshot} from '@/lib/cloud-projects';
 type Artifact={id:string;kind:string;revision:number;status:string};
 const message=(error:unknown)=>error instanceof Error ? error.message : 'The cloud operation failed.';
-export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding,projectName:string):boolean;onDisconnect():void;onOpenMusic?():void}) {
+export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusic,onDirtyChange}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding,projectName:string):boolean;onDisconnect():void;onOpenMusic?():void;onDirtyChange(dirty:boolean):void}) {
   const {vocals}=useGenerationAccess();
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
@@ -39,7 +40,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
         if(cancelled)return;setSignInEnabled(session.signInEnabled);setStorageReady(session.services.storage);
         if(session.authenticated){
           if(session.services.storage){const list=await cloudRequest<{projects:typeof projects}>({url:''},'/projects');if(cancelled)return;setProjects(list.projects);
-            if(list.projects[0]){const next=await cloudRequest<CloudSnapshot>({url:''},`/projects/${list.projects[0].id}`);if(!cancelled)adopt(next);}
+            if(!current.current.snapshot && list.projects[0]){const next=await cloudRequest<CloudSnapshot>({url:''},`/projects/${list.projects[0].id}`);if(!cancelled)adopt(next);}
           }else setNotice('Project storage is being configured. You can still use the local studio.');
           if(!cancelled)setConnection({url:''});
         }
@@ -50,11 +51,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
   const file=snapshot?.files.find(file=>file.path===path);
   const dirty=draftBase !== null;
   useEffect(()=>()=>{if(playing) URL.revokeObjectURL(playing);},[playing]);
-  useEffect(()=>{
-    if(!dirty) return;
-    const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};
-    window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
-  },[dirty]);
+  useEffect(()=>{onDirtyChange(dirty);},[dirty,onDirtyChange]);
   useEffect(()=>{
     if(!connection || !projectId) return;
     let cancelled=false;
@@ -105,21 +102,21 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
           adopt(await cloudRequest(connection,`/projects/${created.projectId}`));await refreshProjects(connection);
         });}}>Create project from studio</Button>
       </div>
-      <label>Project<select value={snapshot?.projectId ?? ''} disabled={busy} onChange={event=>{const project=event.target.value;if(project&&discard())void action(async()=>adopt(await cloudRequest(connection,`/projects/${project}`)));}}>
+      <label>Project<Select value={snapshot?.projectId ?? ''} disabled={busy} onChange={event=>{const project=event.target.value;if(project&&discard())void action(async()=>adopt(await cloudRequest(connection,`/projects/${project}`)));}}>
         <option value="">Choose project</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}
-      </select></label>
+      </Select></label>
       {snapshot && <>
         <Button disabled={busy||dirty||!path} onClick={()=>{
           compileMusic(source);
           if(onLoad({name:path.split('/').pop()!,source},{...connection,projectId:snapshot.projectId,revision:snapshot.revision,path,source},snapshot.name))onOpenMusic?.();
         }}>Open Vocal Studio</Button>
         <p>Saved revision {snapshot.revision}{dirty ? ` · Draft based on revision ${draftBase}` : ''}</p>
-        <label>Cloud music file<select aria-label="Cloud music file" disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
+        <label>Cloud music file<Select aria-label="Cloud music file" disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
           <option value="" disabled>Choose a file</option>{snapshot.files.map(file=><option key={file.path}>{file.path}</option>)}
-        </select></label>
+        </Select></label>
         {path && <>
           <label htmlFor="cloud-source">{path}{dirty ? ' · Unsaved draft' : ''}</label>
-          <textarea id="cloud-source" value={source} spellCheck={false} disabled={busy} onChange={event=>{generation.current++;setDraftBase(value=>value ?? snapshot.revision);setSource(event.target.value);}} />
+          <Textarea id="cloud-source" value={source} spellCheck={false} disabled={busy} onChange={event=>{generation.current++;setDraftBase(value=>value ?? snapshot.revision);setSource(event.target.value);}} />
           <div className="project-workspace-actions">
             <Button disabled={busy} onClick={()=>{if(discard()){setSource(studioFile.source);setDraftBase(snapshot.revision);}}}>Use studio edits in this file</Button>
             <Button disabled={!dirty || busy} onClick={()=>void action(async()=>{
@@ -133,11 +130,11 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
           {dirty && <details><summary>Compare saved source at revision {snapshot.revision}</summary><pre>{file?.source ?? "This file was deleted in the saved revision."}</pre></details>}
         </>}
         <form onSubmit={event=>{event.preventDefault();void action(async()=>{await cloudRequest(connection,`/projects/${snapshot.projectId}/jobs`,'POST',{kind:'agent',idempotencyKey:crypto.randomUUID(),input:{baseRevision:snapshot.revision,prompt,...(path?{activeFile:path}:{})}});setNotice('Agent task queued. You can leave this page and return to its progress.');});}}>
-          <label>Cloud agent task<textarea value={prompt} maxLength={16000} onChange={event=>setPrompt(event.target.value)} /></label>
+          <label>Cloud agent task<Textarea value={prompt} maxLength={16000} onChange={event=>setPrompt(event.target.value)} /></label>
           <Button type="submit" disabled={busy || dirty || !prompt.trim()}>Run cloud agent</Button>
         </form>
         <ul aria-label="Cloud jobs">{jobs.map(job=><li key={job.id}>
-          {job.kind === 'agent' ? 'Project agent' : 'ElevenLabs'}: {job.status === 'awaiting_provider' ? 'ElevenLabs configuration required' : job.stage} <progress max={100} value={job.progress} aria-label={`${job.kind} progress`} /> {job.progress}%
+          {job.kind === 'agent' ? 'Project agent' : 'ElevenLabs'}: {job.status === 'awaiting_provider' ? 'ElevenLabs configuration required' : job.stage} <Progress max={100} value={job.progress} aria-label={`${job.kind} progress`} /> {job.progress}%
           {job.error && <p>{job.error}</p>}
           {job.activity.length>0 && <details><summary>Agent activity</summary><ol>{job.activity.map((entry,index)=><li key={index}>{entry}</li>)}</ol></details>}
           {job.result?.candidateAvailable && <Button disabled={busy} onClick={()=>{if(!discard())return;void action(async()=>{

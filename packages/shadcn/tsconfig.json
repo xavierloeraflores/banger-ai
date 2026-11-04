@@ -8,7 +8,15 @@
       "ES2022",
       "DOM",
       "DOM.Iterable"
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@banger/shadcn/*": [
+        "./src/*"
+      ]
+    },
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
   },
   "include": [
     "src/**/*.ts",

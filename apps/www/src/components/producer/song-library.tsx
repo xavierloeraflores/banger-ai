@@ -1,4 +1,6 @@
 'use client';
+import { Button, Select } from "@banger/shadcn";
+
 
 import './audio-worklet';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
@@ -106,13 +108,13 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
     finally { if (generation.current === ticket) setPending(false); }
   }
   return <section className="song-library" data-sing-along={singAlong && !!selected} aria-labelledby={singAlong && selected ? "sing-along-title" : "library-title"}>
-    {(!singAlong || !selected) && <header className="library-heading"><div><p>Your collection</p><h1 id="library-title">Library</h1><span>{loading ? 'Loading songs…' : `${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`}</span></div><div><button disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div></header>}
+    {(!singAlong || !selected) && <header className="library-heading"><div><p>Your collection</p><h1 id="library-title">Library</h1><span>{loading ? 'Loading songs…' : `${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`}</span></div><div><Button disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div></header>}
     {error && <p className="library-error" role="alert">{error}</p>}
-    {singAlong && <div className="library-sing-controls"><button onClick={onCloseSingAlong}>← Collection</button><select aria-label="Sing-along song" value={selected?.id ?? ''} onChange={event => { const song = songs.find(item => item.id === event.target.value); if (song) void choose(song); }}><option value="" disabled>Choose a song</option>{songs.map(song => <option key={song.id} value={song.id}>{song.name}</option>)}</select></div>}
+    {singAlong && <div className="library-sing-controls"><Button onClick={onCloseSingAlong}>← Collection</Button><Select aria-label="Sing-along song" value={selected?.id ?? ''} onChange={event => { const song = songs.find(item => item.id === event.target.value); if (song) void choose(song); }}><option value="" disabled>Choose a song</option>{songs.map(song => <option key={song.id} value={song.id}>{song.name}</option>)}</Select></div>}
     {singAlong && selected && <SingAlong name={selected.name} data={lyricData} position={position} duration={duration} pending={pending} onSeek={seek} />}
     {singAlong && !selected && <p className="library-help">Choose a song to see its waveform and sing along.</p>}
     {(!singAlong || !selected) && <div className="library-grid" aria-label="Songs" aria-busy={loading}>
-      {songs.map((song, index) => <button key={song.id} className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
+      {songs.map((song, index) => <Button key={song.id} className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
         <span className={`library-art library-art-${index % 4}`}>
           <span className="library-art-fallback" aria-hidden="true">♫</span>
           {/* Covers are local data URLs; keep their original dimensions and avoid an image proxy. */}
@@ -120,13 +122,13 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
           {song.artwork && <img src={song.artwork} alt="" onError={event => { event.currentTarget.style.display = 'none'; }} />}
           <span className="library-card-play" aria-hidden="true">{selected?.id === song.id && pending ? '…' : selected?.id === song.id && playing ? 'Ⅱ' : '▶'}</span>
         </span><strong>{song.name}</strong><span className="library-card-detail"><span>{song.scope}</span><span className="library-song-tag" data-song-type={song.songType}>{song.songType === 'vocal' ? 'Vocal' : 'Instrumental'}</span></span>
-      </button>)}
+      </Button>)}
     </div>}
     {!loading && songs.length === 0 && <p className="library-help">No songs added yet. Choose Export and save to library in Beat Studio or Vocal Studio.</p>}
     <footer className="library-player" aria-label="Library player">
       <audio ref={player} aria-label="Library song preview" preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} onError={() => { setPending(false); setError('This song could not be played. Select it again to retry.'); onRecordingChange(null); if (url.current) URL.revokeObjectURL(url.current); url.current = ''; }} />
       <div className="library-now-playing"><strong>{selected?.name ?? 'Pick a song'}</strong><span>{pending ? 'Preparing audio…' : playing ? 'Now playing' : selected ? 'Paused' : 'Select a cover to play'}</span></div>
-      <button aria-label={playing ? 'Pause library song' : 'Play library song'} disabled={!selected || pending} onClick={() => { if (selected) void choose(selected); }}>{playing ? 'Ⅱ' : '▶'}</button>
+      <Button aria-label={playing ? 'Pause library song' : 'Play library song'} disabled={!selected || pending} onClick={() => { if (selected) void choose(selected); }}>{playing ? 'Ⅱ' : '▶'}</Button>
       <time>{clockTime(position)}</time><input type="range" aria-label="Seek library song" min={0} max={duration || 1} step={.1} value={Math.min(position, duration)} disabled={!duration || pending} onChange={event => seek(Number(event.target.value))} /><time>{clockTime(duration)}</time>
     </footer>
   </section>;

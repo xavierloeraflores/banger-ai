@@ -24,6 +24,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
   };
   const activate = async selector => {
     await wait(`(() => { const button = document.querySelector(${JSON.stringify(selector)}); return button && !button.disabled && button.getBoundingClientRect().width > 0; })()`, 'control ready');
+    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
     const point = await evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`);
     window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
     window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
@@ -43,17 +44,19 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await activate('[aria-label="Settings"]');
     await wait("document.querySelector('#muse-hero-difficulty')", 'difficulty setting');
     assert.equal(await evaluate("document.querySelector('#muse-hero-difficulty').value"), 'normal');
+    await wait("document.querySelector('.byok-form fieldset') && !document.querySelector('.byok-form fieldset').disabled", 'settings loaded');
     await activate('[aria-label="Close settings"]');
-    await wait("!document.querySelector('#producer-settings-dialog').open && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
+    await wait("!(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open') && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
     for (const [difficulty, count] of [['very-easy', 2], ['easy', 3], ['normal', 4], ['hard', 5]]) {
       await activate('[aria-label="Settings"]');
       await wait("document.querySelector('#muse-hero-difficulty')", 'difficulty setting');
       await evaluate(`(() => { const select = document.querySelector('#muse-hero-difficulty'); select.value = ${JSON.stringify(difficulty)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
       await wait(`document.querySelector('#muse-hero-difficulty').value === ${JSON.stringify(difficulty)}`, 'difficulty selected');
+      await wait("document.querySelector('.byok-form fieldset') && !document.querySelector('.byok-form fieldset').disabled", 'settings loaded');
       await activate('[aria-label="Close settings"]');
-      await wait("!document.querySelector('#producer-settings-dialog').open && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
+      await wait("!(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open') && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
       await click('Band stage');
-      await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'difficulty stage ready');
+      await wait("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open') && !document.querySelector('.performance-hero-trigger').disabled", 'difficulty stage ready');
       await activate('.performance-hero-trigger');
       await wait(`document.querySelectorAll('.muse-frets button').length === ${count}`, 'difficulty fret count');
       assert.equal(await evaluate("getComputedStyle(document.querySelector('.muse-frets')).gridTemplateColumns.split(' ').length"), count);
@@ -72,12 +75,13 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await enterStudio(window);
     await activate('[aria-label="Settings"]');
     await wait("document.querySelector('#muse-hero-difficulty')?.value === 'hard'", 'difficulty persisted after reload');
+    await wait("document.querySelector('.byok-form fieldset') && !document.querySelector('.byok-form fieldset').disabled", 'settings loaded');
     await activate('[aria-label="Close settings"]');
-    await wait("!document.querySelector('#producer-settings-dialog').open && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
+    await wait("!(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open') && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
     const sample = await evaluate("document.querySelector('#producer-source').value");
     await apply('tempo 120; track keys { instrument "synth/keys"; piano { note "C4" start 1 duration 1.5 velocity .7; note "C4" start 3 duration .5 velocity .7; } }');
     await click('Band stage');
-    await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'shared stage ready');
+    await wait("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open') && !document.querySelector('.performance-hero-trigger').disabled", 'shared stage ready');
     await evaluate("void (window.sharedStageCanvas = document.querySelector('.performance-viewport canvas'))");
     await activate('.performance-hero-trigger');
     await wait("document.querySelector('.muse-game')", 'click opens overlay');
@@ -114,7 +118,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'mouseUp', ...fret, button: 'left', clickCount: 1 });
     await wait(`+document.querySelector('.muse-game').dataset.score > ${beforeTouch}`, 'pointer hit scored');
     await wait("document.querySelector('.muse-game').dataset.phase === 'finished'", 'finite run completes');
-    assert.ok(Number(await evaluate("document.querySelector('.muse-game').dataset.time")) >= 8, 'manual run completes without losing window focus');
+    await wait("+document.querySelector('.muse-game').dataset.time >= 8", 'manual run completes without losing window focus');
     assert.ok(Number(await evaluate("document.querySelector('.muse-stats .miss b').textContent")) > 0);
     window.focus(); window.webContents.focus();
     await activate('.muse-autoplay input');
@@ -122,7 +126,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await activate('.muse-start');
     await wait("document.querySelector('.muse-game').dataset.phase === 'playing'", 'autoplay begins');
     await wait("document.querySelector('.muse-game').dataset.phase === 'finished'", 'autoplay ends');
-    assert.equal(await evaluate("document.querySelector('.muse-stats .perfect b').textContent"), '8');
+    await wait("document.querySelector('.muse-stats .perfect b').textContent === '8'", 'final autoplay score');
     assert.equal(await evaluate("document.querySelector('.muse-stats .miss b').textContent"), '0');
     assert.match(await evaluate("document.querySelector('.muse-menu p').textContent"), /100.0% accuracy.*4 holds/);
     await activate('[aria-label="Hide Muse Hero"]');
@@ -133,7 +137,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await activate('[aria-label="Close band stage"]');
     await wait("!document.querySelector('.performance-viewport canvas')", 'renderer disposal');
     await apply(sample); await click('Band stage');
-    await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'toggle ready');
+    await wait("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open') && !document.querySelector('.performance-hero-trigger').disabled", 'toggle ready');
     await activate('.performance-hero-trigger');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'full band rebuilt');
     await delay(1000);
@@ -144,11 +148,11 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.setContentSize(1440, 1000);
     key('keyDown', 'Escape'); key('keyUp', 'Escape');
     await wait("!document.querySelector('.muse-game')", 'Escape hides game');
-    assert.ok(await evaluate("document.querySelector('#performance-stage').open"));
+    assert.ok(await evaluate("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')"));
     key('keyDown', 'Escape'); key('keyUp', 'Escape');
-    await wait("!document.querySelector('#performance-stage').open && !document.querySelector('.performance-viewport canvas')", 'second Escape closes stage');
+    await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open') && !document.querySelector('.performance-viewport canvas')", 'second Escape closes stage');
     await click('Band stage');
-    await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'final toggle ready');
+    await wait("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open') && !document.querySelector('.performance-hero-trigger').disabled", 'final toggle ready');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'stage ready for keyboard');
     await evaluate("document.querySelector('.performance-hero-trigger').focus()");
     await wait("document.activeElement === document.querySelector('.performance-hero-trigger')", 'keyboard toggle focused');

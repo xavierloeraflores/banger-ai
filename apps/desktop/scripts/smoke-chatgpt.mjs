@@ -57,7 +57,7 @@ async function run(window) {
   const select = (id, value) => evaluate(`(() => { const input = document.getElementById(${JSON.stringify(id)}); input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   try {
     await wait("document.querySelector('#producer-source')?.value");
-    await evaluate("document.querySelector('#project-controls')?.close()");
+    await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await evaluate("document.querySelector('[aria-label=Settings]').click()");
     await wait("document.querySelectorAll('.byok-providers button').length === 7");
     await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'ChatGPT').click()");
@@ -92,7 +92,7 @@ async function run(window) {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [projectDir] });
     await click('Project');
     await click('Open Project');
-    await evaluate("document.querySelector('#project-controls').close()");
+    await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 101')");
     await evaluate(`(() => { const input = document.getElementById('ai-chat-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Slow this song to 88 BPM'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);

@@ -122,25 +122,27 @@ async function run(){
  }
  window.webContents.session.on('will-download',(_event,item)=>item.setSavePath(join(root,'extra-export.wav')));
  const evaluate=code=>window.webContents.executeJavaScript(code,true).catch(error=>{throw new Error(`${error.message} Script: ${code}`);});
- const wait=async expression=>{for(let i=0;i<400;i++){if(await evaluate(`Boolean(${expression})`))return;await delay(40);}throw new Error(`UI timeout: ${expression}; ${await evaluate("document.querySelector('.music-workshop')?.textContent")}`);};
+ const wait=async expression=>{for(let i=0;i<400;i++){if(await evaluate(`Boolean(${expression})`))return;await delay(40);}throw new Error(`UI timeout: ${expression}; ${await evaluate("JSON.stringify({active:document.activeElement?.outerHTML,dialogs:[...document.querySelectorAll('[role=dialog][data-state=open]')].map(e=>e.id),menus:[...document.querySelectorAll('[role=menu]')].map(e=>e.outerHTML)})")}`);};
  const click=async text=>{await wait(`[...document.querySelectorAll('button')].some(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled).click()`);};
  const exportSong=async()=>{
+  window.show();window.focus();window.webContents.focus();
+  const key=keyCode=>{window.webContents.sendInputEvent({type:'keyDown',keyCode});window.webContents.sendInputEvent({type:'keyUp',keyCode});};
   const trigger='.producer-header [aria-haspopup="menu"]';
   await wait(`document.querySelector('${trigger}') && !document.querySelector('${trigger}').disabled`);
   assert.equal(await evaluate("document.querySelectorAll('select[aria-label=\"Export song\"]').length"),0,'Export uses buttons in both studios');
   assert.ok(await evaluate(`(() => { const project=document.querySelector('[aria-controls="project-controls"]'), button=document.querySelector('${trigger}'); const a=project.getBoundingClientRect(), b=button.getBoundingClientRect(); return b.left>a.left && Math.abs(a.top-b.top)<2; })()`),'Export sits beside Project');
-  await evaluate(`document.querySelector('${trigger}').click()`);
+  await evaluate(`document.querySelector('${trigger}').focus()`);key('Down');
   await wait("document.activeElement?.textContent==='Export and download'");
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png',`-export-${await evaluate("document.querySelector('.producer').dataset.view")}.png`),(await window.webContents.capturePage()).toPNG());
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-header [role=menuitem]')].map(item=>item.textContent)"),['Export and download','Export and save to library']);
-  await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
-  assert.equal(await evaluate('document.activeElement.textContent'),'Export and save to library');
-  await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
-  await wait(`document.activeElement===document.querySelector('${trigger}') && !document.querySelector('.producer-header [role=menu]')`);
-  await evaluate(`document.querySelector('${trigger}').click()`);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.studio-export-options [role=menuitem]')].map(item=>item.textContent)"),['Export and download','Export and save to library']);
+  key('Down');
+  await wait("document.activeElement.textContent==='Export and save to library'");
+  key('Escape');
+  await wait(`document.activeElement===document.querySelector('${trigger}') && !document.querySelector('.studio-export-options[role=menu]')`);
+  await evaluate(`document.querySelector('${trigger}').focus()`);key('Down');
   const [width,height]=window.getContentSize();
   window.setContentSize(390,844);await delay(100);
-  assert.ok(await evaluate("(() => {const bounds=document.querySelector('.producer-header [role=menu]').getBoundingClientRect();return bounds.left>=16 && bounds.right<=document.documentElement.clientWidth-16;})()"),'Export menu fits a narrow viewport');
+  assert.ok(await evaluate("(() => {const bounds=document.querySelector('.studio-export-options[role=menu]').getBoundingClientRect();return bounds.left>=16 && bounds.right<=document.documentElement.clientWidth-16;})()"),'Export menu fits a narrow viewport');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-export-mobile.png'),(await window.webContents.capturePage()).toPNG());
   window.setContentSize(width,height);await delay(100);
   await click('Export and save to library');
@@ -160,7 +162,7 @@ async function run(){
        }
        return originalFetch(url,options);
      }; undefined;`);
-   await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
+   await click('Project');await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
    await wait("document.querySelector('details.project-workspace select')");await click('Open Vocal Studio');await fill('[aria-label="View"]','beat');
   }
   await click('Mixer');
@@ -179,8 +181,8 @@ async function run(){
   if(fullSendMode){
     const originalSource=await evaluate("document.querySelector('#producer-source').value");
     await click('Open AI chat');
-    assert.equal(await evaluate("document.querySelectorAll('.ai-chat-permissions input')[2].checked"),false);
-    await evaluate(`(() => { const wanted=[${fullSendMode!=='lyrics'},${fullSendMode!=='beat'},true]; [...document.querySelectorAll('.ai-chat-permissions input')].forEach((input,index)=>{if(input.checked!==wanted[index])input.click();}); })()`);
+    assert.equal(await evaluate("document.querySelectorAll('.ai-chat-permissions [role=checkbox]')[2].getAttribute('aria-checked') === 'true'"),false);
+    await evaluate(`(() => { const wanted=[${fullSendMode!=='lyrics'},${fullSendMode!=='beat'},true]; [...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].forEach((input,index)=>{if((input.getAttribute('aria-checked') === 'true')!==wanted[index])input.click();}); })()`);
     await fill('#ai-chat-prompt',fullSendMode==='lyrics'?'Write a hopeful morning song':'Change only the tempo to 111'+(fullSendMode==='both'?' and write a hopeful morning song':''));
     await click('Send');
     await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-footer').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-footer [role=alert]')");
@@ -209,7 +211,7 @@ async function run(){
     return;
   }
   if(process.argv.includes('--draft')){
-    await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions input')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if (input.checked !== checked) input.click(); } })()`);
+    await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);
     await fill('#ai-chat-prompt','Write a hopeful morning song');await click('Send');
     await wait("document.querySelector('.ai-chat-transcript').textContent.includes('.draft.json')");
     await click('Close AI chat');
@@ -237,8 +239,9 @@ async function run(){
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   const id=(await store.list())[0].id;const originalWav=Buffer.from((await store.audio(id,1)).bytes);assert.equal(originalWav.subarray(0,4).toString(),'RIFF');assert.ok((await store.get(id)).beat);assert.deepEqual((await store.get(id)).plan,fixturePlan);
   if(!cloud){
+   await click('Project');await wait("document.querySelector('#workspace-file')");
    const originalPath=await evaluate("document.querySelector('#workspace-file').value");
-   await click('Project');await click('Create Song');
+   await click('Create Song');
    await fill('[aria-label="New song name"]','second');await click('Create New Song');
    await wait("document.querySelector('#workspace-file').value==='second.banger'");
    await click('Close project controls');
@@ -287,7 +290,7 @@ async function run(){
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
-  await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions input')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if (input.checked !== checked) input.click(); } })()`);await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await click('Close AI chat');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+  await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await click('Close AI chat');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
   assert.equal(provider.calls.lyrics,0,'LLM lyrics must not call ElevenLabs');
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.saveElevenLabs('fake-vocal-key');else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));settings.elevenLabsKey='fake-vocal-key';sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("!document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
@@ -345,7 +348,7 @@ async function run(){
    await evaluate("document.querySelector('.performance-transport button').click()");
    await wait("document.querySelector('.performance-transport button').textContent==='Stop'");
    await click('Close band stage');
-   await wait("!document.querySelector('#performance-stage')?.open");
+   await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')");
    assert.ok((await evaluate("document.querySelector('#producer-source').value")).includes('tempo 140'),'Stage preserves the studio draft');
 
    if(!cloud){
@@ -382,7 +385,7 @@ async function run(){
    assert.match(await evaluate("document.querySelector('.performance-transport').textContent"),/87 BPM/,'Saved audio opens its companion beat');
    assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),false,'Library stage keeps the recording clock');
    await click('Close band stage');
-   await wait("!document.querySelector('#performance-stage')?.open");
+   await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')");
   }
   // Export the associated vocal after changing Beat Studio, then open that saved beat.
   await selectView('vocal');
@@ -401,7 +404,7 @@ async function run(){
   await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='2'");
   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('60 BPM')"),'Library vocal selection replaces the previous stage target');
   await click('Close band stage');
-  await wait("!document.querySelector('#performance-stage')?.open");
+  await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')");
   assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Library fits a narrow viewport.');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-library-mobile.png'),(await window.webContents.capturePage()).toPNG());
   window.setContentSize(1440,1080);await delay(100);
@@ -413,7 +416,7 @@ async function run(){
   await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='1'");
   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('140 BPM')"),'Beat Studio stage uses the current beat');
   await click('Close band stage');
-  await wait("!document.querySelector('#performance-stage')?.open");
+  await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')");
   await exportSong();
   await wait("document.querySelector('.producer-header').textContent.includes('Exported and saved to library.')");
   await selectView('library');await wait("document.querySelectorAll('.library-card').length>=1");
@@ -421,7 +424,7 @@ async function run(){
   assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),true,'Returning to the library requires a new selection');
   assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
   console.log(`${cloud?'Cloud browser':'Desktop'} music smoke passed: WAV upload, extracted chunks, lyric edits, AI lyrics, full and selective generation, decoded playback, original-version switching, historical chunk retries, download, and preserved conflicting draft.`);
- }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);console.error('Stage state:',await evaluate("JSON.stringify({stage:document.querySelector('#performance-stage')?.open,overlay:document.querySelector('.performance-overlay')?.textContent,canvases:[...document.querySelectorAll('.performance-viewport canvas')].map(c=>({...c.dataset})),description:document.querySelector('#performance-description')?.textContent,selected:document.querySelector('.library-card[aria-pressed=true]')?.textContent,visibility:document.visibilityState})"));console.error('Fixture state:',{uploaded:uploaded?.length,operations:await store.operations()});exitCode=1;}
+ }catch(error){if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());console.error(error);console.error('Stage state:',await evaluate("JSON.stringify({stage:(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open'),overlay:document.querySelector('.performance-overlay')?.textContent,canvases:[...document.querySelectorAll('.performance-viewport canvas')].map(c=>({...c.dataset})),description:document.querySelector('#performance-description')?.textContent,selected:document.querySelector('.library-card[aria-pressed=true]')?.textContent,visibility:document.visibilityState})"));console.error('Fixture state:',{uploaded:uploaded?.length,operations:await store.operations()});exitCode=1;}
  finally{clearTimeout(timer);window.destroy();api.close();web.close();await rm(root,{recursive:true,force:true});app.exit(exitCode);}
 }
 void app.whenReady().then(run);

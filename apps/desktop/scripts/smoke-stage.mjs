@@ -45,7 +45,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.setSize(1440, 1000); window.show(); window.focus();
     const trackCount = compileMusic(await evaluate("document.querySelector('#producer-source').value")).tracks.length;
     await click('Band stage');
-    await wait("document.querySelector('#performance-stage').open && document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'one character per track');
+    await wait("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open') && document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'one character per track');
     assert.equal(await evaluate("document.querySelectorAll('.performance-viewport canvas').length"), 1);
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.concert"), 'true');
     await wait("document.querySelector('.performance-viewport canvas').dataset.playing === 'true'", 'automatic playback when ready');
@@ -117,7 +117,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.outfits"), outfits, 'stopping preserves outfits');
     await evaluate("void (window.previousStage = document.querySelector('.performance-viewport canvas'))");
     if (!await evaluate("!!document.querySelector('.performance-options')")) await clickSelector('.performance-controls-trigger');
-    await clickSelector('.performance-options input');
+    await clickSelector('.performance-options [role=checkbox]');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "' && document.querySelector('.performance-viewport canvas') !== window.previousStage", 'still mode rebuild');
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.playing"), 'false', 'still mode does not restart stopped audio');
     const stillPosition = await cameraPosition();
@@ -125,7 +125,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.equal(await cameraPosition(), stillPosition, 'still mode freezes camera');
     await evaluate("void (window.previousStage = document.querySelector('.performance-viewport canvas'))");
     if (!await evaluate("!!document.querySelector('.performance-options')")) await clickSelector('.performance-controls-trigger');
-    await clickSelector('.performance-options input');
+    await clickSelector('.performance-options [role=checkbox]');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "' && document.querySelector('.performance-viewport canvas') !== window.previousStage", 'animation rebuild');
     for (let iteration = 0; iteration < 3; iteration++) {
       if (!await evaluate("!!document.querySelector('.performance-options')")) await clickSelector('.performance-controls-trigger');
@@ -154,10 +154,10 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
     await wait("!document.querySelector('.performance-options')", 'Escape collapses controls');
     assert.equal(await evaluate("document.activeElement === document.querySelector('.performance-controls-trigger')"), true, 'Escape restores controller focus');
-    assert.equal(await evaluate("document.querySelector('#performance-stage').open"), true);
+    assert.equal(await evaluate("(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')"), true);
     window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-    await wait("!document.querySelector('#performance-stage').open", 'Escape closes modal');
+    await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')", 'Escape closes modal');
     await click('Band stage');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'final stage ready');
     assert.deepEqual(graphicsErrors, [], 'No WebGL shader errors');
@@ -165,6 +165,6 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     clearTimeout(timeout);
     if (!keepOpen) app.exit(0);
     else { window.show(); window.focus(); console.log('Leaving band stage open for review.'); }
-  } catch (error) { console.error(await evaluate("JSON.stringify({ open: document.querySelector('#performance-stage')?.open, hero: !!document.querySelector('.muse-game'), canvases: document.querySelectorAll('.performance-viewport canvas').length })")); await writeFile('/tmp/banger-stage-failure.png', (await window.webContents.capturePage()).toPNG()); console.error(error); clearTimeout(timeout); app.exit(1); }
+  } catch (error) { console.error(await evaluate("JSON.stringify({ open: (document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open'), hero: !!document.querySelector('.muse-game'), canvases: document.querySelectorAll('.performance-viewport canvas').length })")); await writeFile('/tmp/banger-stage-failure.png', (await window.webContents.capturePage()).toPNG()); console.error(error); clearTimeout(timeout); app.exit(1); }
 }));
 await import('../dist/main.js');

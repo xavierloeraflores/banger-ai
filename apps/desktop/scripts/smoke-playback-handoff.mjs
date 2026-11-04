@@ -69,7 +69,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait(`${hero}.dataset.phase === 'finished'`, 'end run');
     await uninterrupted('ending a run leaves audio playing');
     await click('[aria-label="Close band stage"]');
-    await wait("!document.querySelector('#performance-stage').open", 'return to library');
+    await wait("!(document.querySelector('#performance-stage')?.getAttribute('data-state') === 'open')", 'return to library');
     await uninterrupted('band to library');
     assert.ok(await evaluate(`window.sharedAudio === ${audio}`), 'same audio element throughout');
     await click('[aria-label="Pause library song"]');

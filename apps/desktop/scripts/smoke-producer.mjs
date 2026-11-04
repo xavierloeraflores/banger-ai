@@ -82,6 +82,7 @@ export async function smokeProducer(window) {
     await clickText("Project");
     await evaluate("void (window.confirm = () => true)");
     await clickText("Create Song");
+    await waitFor("document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open' && !!document.querySelector('[aria-label=\"New song name\"]')", "new song dialog");
     await evaluate(`(() => { const field = document.querySelector('[aria-label="New song name"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, ${JSON.stringify(filename)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await clickText("Create New Song");
     await waitFor(`document.querySelector('#workspace-file').value === ${JSON.stringify(filename)}`, "new song");

@@ -13,7 +13,8 @@ import {
   type SoundName,
   type InstrumentName,
 } from "@banger/compiler";
-import { Button, IconButton, Input, Panel, Range, Select } from "@banger/shadcn";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@banger/shadcn/components/tabs";
+import { Button, IconButton, Input, Panel, Range, Select, Modal, type ModalHandle } from "@banger/shadcn";
 import { saveProject } from "@/lib/project-files";
 import { SongArrangement } from "./song-arrangement";
 import { StepInspector } from "./step-inspector";
@@ -99,7 +100,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
 }
 
 function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStudio, onRequireProject, children }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; initialStudio: "beat" | "vocal" | "library"; onRequireProject(studio: "beat" | "vocal"): void; children: ReactNode }) {
-  const projectDialog = useRef<HTMLDialogElement>(null);
+  const projectDialog = useRef<ModalHandle>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
   const [vocalExportTarget, setVocalExportTarget] = useState<HTMLDivElement | null>(null);
   const [projectEpoch, setProjectEpoch] = useState(0);
@@ -112,6 +113,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
   const checkFullSend=useCallback((vocals:boolean)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");lyricAgent.current.checkFullSend(vocals);},[]);
   const runLyrics=useCallback((prompt:string,signal:AbortSignal)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");return lyricAgent.current.run(prompt,signal);},[]);
   const [vocalEdits,setVocalEdits]=useState({dirty:false,busy:false});
+  const [cloudDraftDirty, setCloudDraftDirty] = useState(false);
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const cloudMusicContext=useMemo<CloudMusicContext|undefined>(()=>cloudBinding?{url:cloudBinding.url,token:cloudBinding.token,projectId:cloudBinding.projectId,revision:cloudBinding.revision}:undefined,[cloudBinding]);
   const [editorEpoch, setEditorEpoch] = useState(0);
@@ -207,11 +209,11 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
   }
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !cloudDraftDirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, cloudDraftDirty]);
 
   function writeSource(next: string) {
     sourceRef.current = next;
@@ -555,7 +557,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
         <SettingsMenu />
       </header>
 
-      {hasProject && <dialog ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
+      {hasProject && <Modal ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
         <div className="producer-project-dialog-heading">
           <div className="project-dialog-title"><span className="project-dialog-emblem"><ProjectIcon name="folder" /></span><div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div></div>
           <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
@@ -579,14 +581,14 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
             {notice && <p role="status">{notice}</p>}
           </>}
           cloudControls={<details className="project-cloud-controls"><summary>Cloud projects</summary>
-            <CloudProjectWorkspace onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
+            <CloudProjectWorkspace onDirtyChange={setCloudDraftDirty} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
               if (!canReplaceSong()) return false;
               loadOpenedFile(file); setWorkspaceFile(null); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close(); return true;
             }} />
           </details>}
         />
         <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy || workspaceBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
-      </dialog>}
+      </Modal>}
 
       <section hidden={!beatStudio} className="producer-transport" aria-label="Transport">
         <div className="producer-play-controls">
@@ -617,23 +619,12 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
         <span className="producer-mode-status" role="status">{previewSection ? `Previewing ${previewSection}` : songMode ? "Song arrangement" : `Pattern loop · ${program.activePattern || "Base"}`}</span>
       </section>
       {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
-      <div className="producer-workspace" id="studio">
-        <div className="producer-tabs" hidden={!beatStudio} role="tablist" aria-label="Studio views">
-          {studioViews.map((item, index) => <button key={item.id} type="button" role="tab"
-            id={`studio-tab-${item.id}`} aria-controls={`studio-panel-${item.id}`} aria-selected={view === item.id}
-            tabIndex={view === item.id ? 0 : -1} onClick={() => setView(item.id)}
-            onKeyDown={event => {
-              const nextIndex = event.key === "ArrowRight" ? (index + 1) % studioViews.length
-                : event.key === "ArrowLeft" ? (index + studioViews.length - 1) % studioViews.length
-                : event.key === "Home" ? 0 : event.key === "End" ? studioViews.length - 1 : null;
-              if (nextIndex === null) return;
-              event.preventDefault();
-              const next = studioViews[nextIndex]!;
-              setView(next.id);
-              document.getElementById(`studio-tab-${next.id}`)?.focus();
-            }}>{item.label}</button>)}
-        </div>
-        <div id="studio-panel-sequencer" role="tabpanel" aria-labelledby="studio-tab-sequencer" hidden={!beatStudio || view !== "sequencer"} tabIndex={0}>
+      <Tabs className="producer-workspace" id="studio" value={view} onValueChange={value => setView(value as StudioView)}>
+        <TabsList className="producer-tabs" variant="line" hidden={!beatStudio} aria-label="Studio views">
+          {studioViews.map(item => <TabsTrigger key={item.id} value={item.id} onClick={() => setView(item.id)}
+            id={`studio-tab-${item.id}`} aria-controls={`studio-panel-${item.id}`}>{item.label}</TabsTrigger>)}
+        </TabsList>
+        <TabsContent forceMount value="sequencer" id="studio-panel-sequencer" aria-labelledby="studio-tab-sequencer" hidden={!beatStudio || view !== "sequencer"} tabIndex={0}>
           <Panel className="producer-sequencer" aria-labelledby="sequence-title">
             <div className="producer-panel-heading">
               <div className="producer-rack-title"><h1 id="sequence-title">Sequencer</h1><span>{program.tracks.length} tracks</span></div>
@@ -676,14 +667,14 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
             <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button></div>
           </Panel>
 
-        </div>
-        <div id="studio-panel-mixer" role="tabpanel" aria-labelledby="studio-tab-mixer" hidden={!beatStudio || view !== "mixer"} tabIndex={0}>
+        </TabsContent>
+        <TabsContent forceMount value="mixer" id="studio-panel-mixer" aria-labelledby="studio-tab-mixer" hidden={!beatStudio || view !== "mixer"} tabIndex={0}>
           <Panel><MixerView program={program} disabled={draft || fileBusy} meters={playback.meters} onTrackChange={editTrack} onChange={edit} /></Panel>
-        </div>
-        <div id="studio-panel-song" role="tabpanel" aria-labelledby="studio-tab-song" hidden={!beatStudio || view !== "song"} tabIndex={0}>
+        </TabsContent>
+        <TabsContent forceMount value="song" id="studio-panel-song" aria-labelledby="studio-tab-song" hidden={!beatStudio || view !== "song"} tabIndex={0}>
           <Panel><SongArrangement program={program} disabled={draft || fileBusy} section={playback.state.section} preview={previewSection} onPreview={preview} onChange={edit} /></Panel>
-        </div>
-        <div id="studio-panel-source" role="tabpanel" aria-labelledby="studio-tab-source" hidden={!beatStudio || view !== "source"} tabIndex={0}>
+        </TabsContent>
+        <TabsContent forceMount value="source" id="studio-panel-source" aria-labelledby="studio-tab-source" hidden={!beatStudio || view !== "source"} tabIndex={0}>
           <Panel className="producer-editor" aria-labelledby="source-title">
             <div className="producer-editor-heading"><div><p className="producer-eyebrow">The source</p><h2 id="source-title">{fileName}</h2></div><span className={`producer-source-status${result.error ? " has-error" : ""}`}>{result.error ? "Check source" : draft ? "Unapplied" : "In sync"}</span></div>
             <label className="producer-sr-only" htmlFor="producer-source">Banger source code</label>
@@ -692,7 +683,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
             <div id="producer-diagnostics" className={result.error ? "producer-diagnostics has-error" : "producer-diagnostics"} role="status">{result.error ?? (draft ? "Source is valid. Apply it to update the sequence." : "Compiled. The source and sequence match.")}</div>
             <p id="producer-source-help" className="producer-source-help">The first compiler error is underlined in red. Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
           </Panel>
-        </div>
+        </TabsContent>
         <div id="vocal-studio" hidden={!vocalStudio}>
           {hasProject && <MusicWorkshop exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
@@ -708,7 +699,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
             loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
             setWorkspaceFile(file); setProjectName(folderName); setCloudBinding(null);
           }} />}
-      </div>
+      </Tabs>
       {children}
       <footer className="producer-footer"><span role="status">{notice}</span></footer>
     </main>

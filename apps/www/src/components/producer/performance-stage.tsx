@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react";
-import { Button } from "@banger/shadcn";
+import { Button, Modal, Checkbox, type ModalHandle } from "@banger/shadcn";
 import type { MusicProgram } from "@banger/compiler";
 import { MuseHero } from "./muse-hero";
 import type { PerformanceSnapshot, StageView } from "@banger/stage";
@@ -33,7 +33,7 @@ interface Props {
 export function PerformanceStage({ duration, onOpen, onClose, program, fileName, heroDisabled, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
   const singer = Boolean(readPerformance().vocals);
   const performers = tracks + (singer ? 1 : 0);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<ModalHandle>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const stage = useRef<StageView | null>(null);
@@ -116,7 +116,7 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
   }
   return <>
     <BandStageButton ref={trigger} onClick={show} />
-    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-label="Band stage" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else if (controlsOpen) { event.preventDefault(); setControlsOpen(false); controlsTrigger.current?.focus(); } else { setOpen(false); onClose?.(); } }} onClose={() => { if (dialog.current?.open) return; setHero(false); setControlsOpen(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
+    <Modal ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-label="Band stage" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else if (controlsOpen) { event.preventDefault(); setControlsOpen(false); controlsTrigger.current?.focus(); } else { setOpen(false); onClose?.(); } }} onClose={() => { if (dialog.current?.open) return; setHero(false); setControlsOpen(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
         <Button variant="secondary" onClick={close} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
       </header>
@@ -137,13 +137,13 @@ export function PerformanceStage({ duration, onOpen, onClose, program, fileName,
             <Button variant="secondary" disabled={status !== "ready"} aria-pressed={manualCamera} aria-describedby="performance-camera-help" onClick={toggleCamera}>{manualCamera ? "Auto camera" : "Take control"}</Button>
             {manualCamera && <><Button variant="secondary" aria-label="Zoom in" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(.85)}>+</Button><Button variant="secondary" aria-label="Zoom out" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(1 / .85)}>−</Button></>}
             <Button variant="secondary" disabled={status !== "ready"} onClick={() => stage.current?.resetCamera()}>Reset view</Button>
-          </div><label><input type="checkbox" checked={still} onChange={event => setStill(event.target.checked)} /> Still mode</label>
-            <label><input type="checkbox" checked={showLabels} onChange={event => toggleLabels(event.target.checked)} /> Show character labels</label>
+          </div><label><Checkbox checked={still} onCheckedChange={checked => setStill(checked === true)} /> Still mode</label>
+            <label><Checkbox checked={showLabels} onCheckedChange={checked => toggleLabels(checked === true)} /> Show character labels</label>
             <p id="performance-camera-help">{manualCamera ? "Drag to orbit · Right-drag to pan · Scroll or pinch to zoom" : still ? "Camera paused in still mode" : "Automatic camera"}</p>
           </div>}
         </div>
       </footer>
       {error && !hero && <p className="performance-error" role="alert">{error}</p>}
-    </dialog>
+    </Modal>
   </>;
 }

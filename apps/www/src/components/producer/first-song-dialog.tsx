@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createDefaultProgram, serializeMusic } from "@banger/compiler";
-import { Button } from "@banger/shadcn";
+import { Button, Modal, Input, type ModalHandle } from "@banger/shadcn";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder } from "@/lib/project-workspace";
 
 export function FirstSongDialog({ folder, onCreated }: { folder: ProjectFolder; onCreated(folder: ProjectFolder): void | Promise<void> }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<ModalHandle>(null);
   const pending = useRef(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,14 +32,14 @@ export function FirstSongDialog({ folder, onCreated }: { folder: ProjectFolder; 
     } finally { pending.current = false; setBusy(false); }
   }
 
-  return <dialog ref={dialog} className="producer-project-dialog first-song-dialog" aria-labelledby="first-song-title" aria-describedby="first-song-description" onCancel={event => event.preventDefault()}>
+  return <Modal ref={dialog} className="producer-project-dialog first-song-dialog" aria-labelledby="first-song-title" aria-describedby="first-song-description" onCancel={event => event.preventDefault()}>
     <form onSubmit={event => { event.preventDefault(); void create(); }} aria-busy={busy}>
       <h2 id="first-song-title">Name your first song</h2>
       <p id="first-song-description">{folder.name} has no songs yet. Create one to open it in the studio.</p>
       <label htmlFor="first-song-name">Song name</label>
-      <input id="first-song-name" autoFocus value={name} maxLength={80} disabled={busy} onChange={event => setName(event.target.value)} placeholder="My first song" aria-invalid={Boolean(error)} aria-describedby={error ? "first-song-error" : undefined} />
+      <Input id="first-song-name" data-autofocus autoFocus value={name} maxLength={80} disabled={busy} onChange={event => setName(event.target.value)} placeholder="My first song" aria-invalid={Boolean(error)} aria-describedby={error ? "first-song-error" : undefined} />
       {error && <p id="first-song-error" role="alert">{error}</p>}
       <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{busy ? "Creating song…" : "Create Song"}</Button>
     </form>
-  </dialog>;
+  </Modal>;
 }

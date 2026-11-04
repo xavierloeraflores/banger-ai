@@ -5,7 +5,7 @@ import { FirstSongDialog } from "./first-song-dialog";
 import { ProjectIcon } from "./project-icon";
 import { createDefaultProgram, serializeMusic } from "@banger/compiler";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
-import { Button } from "@banger/shadcn";
+import { Button, Select, Modal, Input, type ModalHandle } from "@banger/shadcn";
 
 import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspace";
 type Bridge = NonNullable<Window["bangerWorkspace"]>;
@@ -16,7 +16,7 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
   const [paths, setPaths] = useState<string[]>(initialFolder?.paths ?? []);
-  const songDialog = useRef<HTMLDialogElement>(null);
+  const songDialog = useRef<ModalHandle>(null);
   const [songName, setSongName] = useState("");
   const [working, setBusy] = useState(false);
   const busy = working || studioBusy;
@@ -28,12 +28,16 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
   useEffect(() => {
     const bridge = getProjectWorkspace();
     queueMicrotask(() => setAvailable(true));
-    return bridge.onEvent(event => {
+    // Refresh after a hidden dialog resumes, including edits made by the project agent.
+    let active = true;
+    void bridge.list().then(paths => { if (active) setPaths(paths); }).catch(() => { /* Folder actions report their own errors. */ });
+    const unsubscribe = bridge.onEvent(event => {
       if (event.type === "file-changed" && event.file) {
         const path = event.file.path;
         setPaths(previous => [...new Set([...previous, path])].sort());
       }
     });
+    return () => { active = false; unsubscribe(); };
   }, []);
   if (!available) return null;
   async function action(work: (bridge: Bridge) => Promise<void>) {
@@ -79,15 +83,15 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     <section className="project-file-card project-workspace" aria-label="Studio file">
       {songCard}
       {name && <div className="project-song-controls">
-        <label>Song in project<select id="workspace-file" value={savedFile?.path ?? ""} disabled={busy} onChange={event => {
+        <label>Song in project<Select id="workspace-file" value={savedFile?.path ?? ""} disabled={busy} onChange={event => {
           const path = event.target.value;
           if (path && canReplace()) void action(async bridge => { await bridge.activate(); await load(await bridge.read(path)); });
         }}>
           <option value="" disabled>Choose a song</option>{paths.map(path => <option key={path}>{path}</option>)}
-        </select></label>
+        </Select></label>
         <Button type="button" variant="secondary" disabled={busy} onClick={() => { setSongName(""); setNotice(""); songDialog.current?.showModal(); }}>Create Song</Button>
       </div>}
-    <dialog ref={songDialog} className="producer-project-dialog create-song-dialog" aria-labelledby="create-song-title" onCancel={event => { if (busy) event.preventDefault(); }}>
+    <Modal ref={songDialog} className="producer-project-dialog create-song-dialog" aria-labelledby="create-song-title" onCancel={event => { if (busy) event.preventDefault(); }}>
         <form aria-busy={busy} onSubmit={event => {
           event.preventDefault();
           if (!canReplace()) return;
@@ -99,12 +103,12 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
           });
         }}>
           <h2 id="create-song-title">Create new song</h2>
-          <label>New song name<input autoFocus aria-label="New song name" value={songName} maxLength={80} disabled={busy} onChange={event => setSongName(event.target.value)} placeholder="Untitled" /></label>
+          <label>New song name<Input data-autofocus autoFocus aria-label="New song name" value={songName} maxLength={80} disabled={busy} onChange={event => setSongName(event.target.value)} placeholder="Untitled" /></label>
           {notice && <p role="alert">{notice}</p>}
           <Button type="button" variant="secondary" disabled={busy} onClick={() => songDialog.current?.close()}>Cancel</Button>
           <Button type="submit" variant="secondary" disabled={busy || !songName.trim()}>Create New Song</Button>
         </form>
-    </dialog>
+    </Modal>
     {notice && <p className="project-workspace-notice" role="status">{notice}</p>}
   </section></>;
 }

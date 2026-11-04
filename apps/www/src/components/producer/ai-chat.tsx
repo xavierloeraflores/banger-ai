@@ -3,7 +3,7 @@
 import { AIModelSelect } from "./ai-model-select";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, IconButton, Panel } from "@banger/shadcn";
+import { Button, IconButton, Panel, Modal, Select, Checkbox, Textarea, type ModalHandle } from "@banger/shadcn";
 import type { BangerFile, ChatMessage, ChatReply } from "@banger/agent/protocol";
 import { KeyHint, LLM_KEY_HINT, useGenerationAccess } from "./generation-access";
 import { sendChat } from "@/lib/ai-chat";
@@ -37,9 +37,9 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
   const projectRequest = useRef(false);
   const resetProjectHistory = useRef(false);
   const projectMode = desktop && !!folderName;
-  const editsDialog = useRef<HTMLDialogElement>(null);
+  const editsDialog = useRef<ModalHandle>(null);
   const [open, setOpen] = useState(false);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<ModalHandle>(null);
   const launcher = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -240,13 +240,9 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
         <path d="M7 10h8M7 14h5" />
       </svg>
     </IconButton></KeyHint>
-    <dialog ref={dialog} id="ai-chat-dialog" className="ai-chat-dialog" aria-labelledby="ai-chat-title"
+    <Modal dismissOnOutsideClick ref={dialog} id="ai-chat-dialog" className="ai-chat-dialog" aria-labelledby="ai-chat-title"
       onClose={() => { setOpen(false); launcher.current?.focus(); }}
-      onClick={event => {
-        if (event.target !== event.currentTarget) return;
-        const bounds = event.currentTarget.getBoundingClientRect();
-        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.current?.close();
-      }}>
+      >
     <Panel className="producer-ai" aria-labelledby="ai-chat-title">
     <div className="producer-panel-heading">
       <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Banger AI</h2></div>
@@ -280,22 +276,22 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
       {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{progress || (!permissions.beat && !permissions.lyrics ? "Thinking…" : projectMode ? "Working on your project…" : "Composing and checking your files…")}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
     </div>
     {permissions.beat && (projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
-      <select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
+      <Select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
         <option value="">{fileName} · current editor</option>
         {availableFiles.map(file => <option key={file.name} value={file.name}>{file.name} · latest proposal</option>)}
-      </select>
+      </Select>
     </label>)}
     <fieldset className="ai-chat-permissions" disabled={busy}>
       <legend className="producer-sr-only">Allow AI edits</legend>
-      <label><input type="checkbox" checked={permissions.beat} onChange={event => setPermissions(previous => ({ ...previous, beat: event.target.checked }))} />Edit beat</label>
-      <label><input type="checkbox" checked={permissions.lyrics} onChange={event => setPermissions(previous => ({ ...previous, lyrics: event.target.checked }))} />Edit lyrics</label>
-      <label><input type="checkbox" checked={fullSend} onChange={event=>setFullSend(event.target.checked)} />Full Send</label>
+      <label><Checkbox  checked={permissions.beat} onCheckedChange={checked => setPermissions(previous => ({ ...previous, beat: checked === true }))} />Edit beat</label>
+      <label><Checkbox  checked={permissions.lyrics} onCheckedChange={checked => setPermissions(previous => ({ ...previous, lyrics: checked === true }))} />Edit lyrics</label>
+      <label><Checkbox  checked={fullSend} onCheckedChange={checked =>setFullSend(checked === true)} />Full Send</label>
       {fullSend && (permissions.beat || permissions.lyrics) && <span>{permissions.lyrics?"Generate vocals with ElevenLabs and add the song to your library.":"Render a WAV and add it to your library."}</span>}
       {!permissions.beat && !permissions.lyrics && <span>Reply only. No files will be edited.</span>}
     </fieldset>
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
       <label className="producer-sr-only" htmlFor="ai-chat-prompt">Message Banger AI</label>
-      <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={permissions.lyrics && !permissions.beat ? 4000 : projectMode ? 16000 : 4000} value={prompt} disabled={busy}
+      <Textarea data-autofocus id="ai-chat-prompt" ref={input} rows={2} maxLength={permissions.lyrics && !permissions.beat ? 4000 : projectMode ? 16000 : 4000} value={prompt} disabled={busy}
         placeholder={!permissions.beat && !permissions.lyrics ? "Ask about your song or project…" : permissions.lyrics && !permissions.beat?"Write lyrics, or describe changes to this song’s lyrics…":projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
@@ -307,8 +303,8 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
       {notice && <p role="status">{notice}</p>}
     </div>
     </Panel>
-    </dialog>
-    <dialog ref={editsDialog} className="producer-project-dialog ai-chat-edits-dialog" aria-labelledby="ai-chat-edits-title" aria-describedby="ai-chat-edits-description"
+    </Modal>
+    <Modal ref={editsDialog} className="producer-project-dialog ai-chat-edits-dialog" aria-labelledby="ai-chat-edits-title" aria-describedby="ai-chat-edits-description"
       onCancel={event => { if (busy) event.preventDefault(); }}
       onClose={() => input.current?.focus()}>
       <h2 id="ai-chat-edits-title">Unsaved changes</h2>
@@ -319,6 +315,6 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
         <Button disabled={busy} onClick={() => void send("discard")}>Discard and start</Button>
         <Button variant="primary" disabled={busy} onClick={() => void send("save")}>Save and start</Button>
       </div>
-    </dialog>
+    </Modal>
   </>;
 }

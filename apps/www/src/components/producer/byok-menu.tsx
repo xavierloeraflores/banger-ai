@@ -85,16 +85,16 @@ export function ByokSettings() {
       <p id="byok-description" className="byok-description">Configure your AI options here. Choose the active model from the AI model menu above.</p>
       <div className="byok-layout">
         <nav className="byok-providers" aria-label="AI providers">
-          {desktop && <button type="button" aria-pressed={provider === "chatgpt"} disabled={busy} onClick={() => select("chatgpt")}>
+          {desktop && <Button type="button" aria-pressed={provider === "chatgpt"} disabled={busy} onClick={() => select("chatgpt")}>
             <span>ChatGPT</span><small>{settings.chatgpt?.selected ? "Selected" : "Use your plan"}</small>
-          </button>}
-          {desktop && <button type="button" aria-pressed={provider === "local"} disabled={busy} onClick={() => select("local")}>
+          </Button>}
+          {desktop && <Button type="button" aria-pressed={provider === "local"} disabled={busy} onClick={() => select("local")}>
             <span>Local model</span><small>{settings.localSelected ? "Selected" : "Muse Glimmer · no key"}</small>
-          </button>}
-          {AI_PROVIDERS.map(item => <button key={item.id} type="button" aria-pressed={provider === item.id}
+          </Button>}
+          {AI_PROVIDERS.map(item => <Button key={item.id} type="button" aria-pressed={provider === item.id}
             disabled={busy || !loaded} onClick={() => select(item.id)}>
             <span>{item.name}</span><small>{!settings.localSelected && !settings.chatgpt?.selected && settings.activeProvider === item.id ? "Selected" : settings.settingsError ? "Locked" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
-          </button>)}
+          </Button>)}
         </nav>
         {provider === "chatgpt" ? <ChatGPTSettings /> : provider === "local" ? <LocalModelSettings /> : <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
           <h3>{selected.name}</h3>

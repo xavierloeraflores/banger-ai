@@ -77,7 +77,7 @@ async function run(window) {
     await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
     await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
-    await waitFor("document.querySelector('#ai-chat-dialog').matches(':modal')");
+    await waitFor("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open' && document.querySelector('#ai-chat-dialog')?.getAttribute('aria-modal') === 'true')");
     await input("Create one warm lo-fi loop at 85 BPM with kick, snare, hats and a C minor bass line. Use create_banger_file to produce a playable file.");
     await click("Send");
     await waitFor("document.querySelector('.ai-chat-file') || document.querySelector('.ai-chat-footer [role=alert]')", 650_000);

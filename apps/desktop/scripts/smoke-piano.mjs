@@ -34,6 +34,7 @@ export async function smokePiano(window) {
     await waitFor("document.querySelector('#producer-source').getAttribute('aria-invalid') === 'false'", 'valid source');
     await clickText('Apply source'); await clickText('Sequencer');
     await evaluate("document.querySelector('[aria-label=\"Edit keys\"]').click()");
+    await evaluate("document.querySelector('.producer-track-editor:not([hidden]) [role=tab]').click()");
     await waitFor("document.querySelector('.producer-source-status').textContent === 'In sync'", 'applied source');
   };
   const point = async (selector, fraction = .5) => {

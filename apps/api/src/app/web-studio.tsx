@@ -1,4 +1,5 @@
 'use client';
+import { Button, Input } from '@banger/shadcn';
 
 import { useEffect, useRef, useState } from 'react';
 import { Producer } from '@banger/www/studio';
@@ -64,7 +65,7 @@ export function WebStudio({ initialFile }: { initialFile: { name: string; source
   }
   if (checking) return <main className="web-auth"><p role="status">Opening your workspace…</p></main>;
   if (account) return <div className="web-hosted">
-    <div className="web-account"><span>{account.username}</span><button disabled={busy} onClick={() => void signOut()}>Sign out</button>{error && <p role="alert">{error}</p>}</div>
+    <div className="web-account"><span>{account.username}</span><Button disabled={busy} onClick={() => void signOut()}>Sign out</Button>{error && <p role="alert">{error}</p>}</div>
     <Producer key={account.id} initialFile={initialFile} />
     {choice && <WebProjectPicker choice={choice.value} onChoose={value => { choice.resolve(value); setChoice(null); }} />}
   </div>;
@@ -74,14 +75,14 @@ export function WebStudio({ initialFile }: { initialFile: { name: string; source
       <h1>{register ? 'Create your account' : 'Sign in to Banger'}</h1>
       <p>{register ? 'Choose a username and password to start making music.' : 'Your projects are waiting.'}</p>
       <label htmlFor="account-username">Username</label>
-      <input id="account-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} pattern="[a-zA-Z0-9_]+" required value={username} onChange={event => setUsername(event.target.value)} aria-describedby={register ? 'username-help' : undefined} />
+      <Input id="account-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} pattern="[a-zA-Z0-9_]+" required value={username} onChange={event => setUsername(event.target.value)} aria-describedby={register ? 'username-help' : undefined} />
       {register && <small id="username-help">3–32 letters, numbers or underscores. Usernames ignore case.</small>}
       <label htmlFor="account-password">Password</label>
-      <input id="account-password" name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={12} maxLength={128} required value={password} onChange={event => setPassword(event.target.value)} aria-describedby={register ? 'password-help' : undefined} />
+      <Input id="account-password" name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={12} maxLength={128} required value={password} onChange={event => setPassword(event.target.value)} aria-describedby={register ? 'password-help' : undefined} />
       {register && <small id="password-help">Use 12–128 characters.</small>}
       {error && <p role="alert">{error}</p>}
-      <button type="submit" disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}</button>
-      <button type="button" disabled={busy} onClick={() => { setRegister(!register); setError(''); setPassword(''); }}>{register ? 'Already have an account? Sign in' : 'New to Banger? Create an account'}</button>
+      <Button type="submit" disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}</Button>
+      <Button type="button" disabled={busy} onClick={() => { setRegister(!register); setError(''); setPassword(''); }}>{register ? 'Already have an account? Sign in' : 'New to Banger? Create an account'}</Button>
     </form>
   </main>;
 }

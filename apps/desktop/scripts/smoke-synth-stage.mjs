@@ -33,7 +33,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.setBackgroundThrottling(false);
     await enterStudio(window); window.setSize(1500, 1000);
     const program = compileMusic(`tempo 90; ${names.map((_, i) => `track part_${i} { instrument "synth/bass"; piano { note "C4" start 0 duration 3 velocity .8; note "E4" start 0 duration 1 velocity .6; note "G4" start 1 duration .25 velocity .7; } gain .3; }`).join('\n')}`);
-    names.forEach((name, i) => { program.tracks[i].synth = structuredClone(FACTORY_PATCHES.find(patch => patch.name === name).config); });
+    names.forEach((name, i) => { program.tracks[i].synth = globalThis.structuredClone(FACTORY_PATCHES.find(patch => patch.name === name).config); });
     // Cover unnamed synth data and a renamed modular patch overriding the source.
     program.tracks[1].modular = { name: 'My patch', config: program.tracks[1].synth };
     await apply(program); await click('Band stage');
@@ -59,7 +59,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
       await wait(`!${canvas}`);
     }
     const locked = compileMusic('tempo 90; track same_track { instrument "synth/bass"; notes "C4 C4 C4 C4"; gain .2; }');
-    locked.tracks[0].synth = structuredClone(FACTORY_PATCHES.find(patch => patch.name === 'Noise Riser').config);
+    locked.tracks[0].synth = globalThis.structuredClone(FACTORY_PATCHES.find(patch => patch.name === 'Noise Riser').config);
     locked.tracks[0].steps[1].locks = { attack: .001, noise: 0, tone: 1 };
     await apply(locked); await click('Band stage');
     // The editor update reaches audio at the next bar; wait for its locked note.

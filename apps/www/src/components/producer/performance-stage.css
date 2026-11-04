@@ -1,4 +1,4 @@
-body:has(.performance-dialog[open]) { overflow: hidden; }
+body:has(.performance-dialog[data-state="open"]) { overflow: hidden; }
 .performance-dialog { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; overflow: hidden; background: #080b16; color: #eeeaf5; }
 .performance-dialog::backdrop { background: #0c0a13b8; backdrop-filter: blur(8px); }
 .performance-heading { position: absolute; z-index: 3; top: 0; left: 0; right: 0; display: flex; justify-content: flex-end; padding: 25px 28px; pointer-events: none; }

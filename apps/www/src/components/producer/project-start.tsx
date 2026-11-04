@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FirstSongDialog } from "./first-song-dialog";
-import { Button } from "@banger/shadcn";
+import { Button, Modal, type ModalHandle } from "@banger/shadcn";
 import type { BangerFile } from "@banger/agent/protocol";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder } from "@/lib/project-workspace";
@@ -14,7 +14,7 @@ export function ProjectStart({ sample, onStart, onOpenLibrary, requiredStudio, o
   requiredStudio?: "beat" | "vocal";
   onCancel?(): void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<ModalHandle>(null);
   useEffect(() => {
     if (!requiredStudio) return;
     const trigger = document.activeElement;
@@ -70,9 +70,9 @@ export function ProjectStart({ sample, onStart, onOpenLibrary, requiredStudio, o
     {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={start} />}
   </>;
   return requiredStudio
-    ? <dialog ref={dialog} className="producer-project-dialog producer-project-required" aria-labelledby="project-start-title" aria-describedby="project-start-description" onCancel={event => {
+    ? <Modal ref={dialog} className="producer-project-dialog producer-project-required" aria-labelledby="project-start-title" aria-describedby="project-start-description" onCancel={event => {
       event.preventDefault();
       if (!busy && !emptyFolder) onCancel?.();
-    }}>{content}</dialog>
+    }}>{content}</Modal>
     : <main className="producer producer-start">{content}</main>;
 }

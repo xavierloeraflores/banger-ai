@@ -1,4 +1,6 @@
 "use client";
+import { Select, Button } from "@banger/shadcn";
+
 
 import { useEffect, useRef, useState } from "react";
 import { AI_PROVIDERS, aiSettingsBridge, type AIOptionId, type AISettings } from "@/lib/ai-providers";
@@ -61,17 +63,17 @@ export function AIModelSelect({ id = "active-ai", reasoningOnly = false }: { id?
   }
   return <div className="ai-model-select">
     {!reasoningOnly && <><label htmlFor={`${id}-model`}>AI model</label>
-    <select id={`${id}-model`} value={selected} disabled={busy || !options.length} onChange={event => void select(event.target.value)}>
+    <Select id={`${id}-model`} value={selected} disabled={busy || !options.length} onChange={event => void select(event.target.value)}>
       <option value="" disabled>{options.length ? "Choose a configured model" : "Configure a model in Settings → BYOK"}</option>
       {selected && !options.some(option => option.id === selected) && <option value={selected} disabled>Local model needs a download</option>}
       {options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-    </select></>}
+    </Select></>}
     <label htmlFor={`${id}-reasoning`}>Reasoning level</label>
-    <select id={`${id}-reasoning`} value={levels.includes(modelSettings?.reasoningLevel as ReasoningLevel) ? modelSettings?.reasoningLevel ?? "" : ""} disabled={busy || !levels.length} onChange={event => void selectReasoning(event.target.value)}>
+    <Select id={`${id}-reasoning`} value={levels.includes(modelSettings?.reasoningLevel as ReasoningLevel) ? modelSettings?.reasoningLevel ?? "" : ""} disabled={busy || !levels.length} onChange={event => void selectReasoning(event.target.value)}>
       <option value="">Provider default</option>
       {levels.map(level => <option key={level} value={level}>{level === "xhigh" ? "Extra high" : level[0]!.toUpperCase() + level.slice(1)}</option>)}
-    </select>
-    {!reasoningOnly && settings.chatgpt?.selected && <span className="chatgpt-usage">Using ChatGPT plan <button type="button" onClick={() => void window.bangerChatGPT?.usage().catch(() => setError("Could not open usage settings."))}>Manage usage</button></span>}
+    </Select>
+    {!reasoningOnly && settings.chatgpt?.selected && <span className="chatgpt-usage">Using ChatGPT plan <Button type="button" onClick={() => void window.bangerChatGPT?.usage().catch(() => setError("Could not open usage settings."))}>Manage usage</Button></span>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

@@ -65,20 +65,20 @@ async function run(window) {
   }
   const click = async label => {
     await wait(`[...document.querySelectorAll('button')].some(button => button.textContent === ${JSON.stringify(label)} && !button.disabled)`);
-    return evaluate(`(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Missing enabled button'); button.click(); })()`);
+    return evaluate(`(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Missing enabled button'); if (button.getAttribute('aria-haspopup') === 'menu') button.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true})); else button.click(); })()`);
   };
   const input = (id, text) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(text)}); field.dispatchEvent(new Event('input', { bubbles:true })); })()`);
   try {
+    await click("Project");
     await wait("window.bangerWorkspace && document.querySelector('.project-workspace')");
     await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-project-key')");
     await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
-    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
-    await wait("document.querySelector('#project-controls').open");
+    await wait("(document.querySelector('#project-controls')?.getAttribute('data-state') === 'open')");
     await click("Open Project");
     assert.equal(await evaluate("Boolean(document.querySelector('#workspace-source, #workspace-prompt, .project-song-advanced'))"), false);
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 120')");
     assert.equal(await evaluate("document.querySelector('#workspace-file').value"), "chorus.banger");
-    await evaluate("document.querySelector('#project-controls').close()");
+    await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await click("Raw .banger");
     await input("producer-source", source + "\n// unsaved");
     const openChat = () => evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
@@ -89,15 +89,15 @@ async function run(window) {
     assert.equal(await evaluate("[...document.querySelectorAll('.ai-chat-compose button')].find(b=>b.textContent==='Send').disabled"), false);
     // Enter and Send both ask how to handle edits before any provider request.
     await evaluate("document.querySelector('#ai-chat-prompt').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))");
-    await wait("document.querySelector('.ai-chat-edits-dialog').matches(':modal')");
+    await wait("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open' && document.querySelector('.ai-chat-edits-dialog')?.getAttribute('aria-modal') === 'true')");
     assert.equal(calls.length, 0);
     await evaluate("[...document.querySelectorAll('.ai-chat-edits-dialog button')].find(b => b.textContent === 'Cancel').click()");
-    await wait("!document.querySelector('.ai-chat-edits-dialog').open");
+    await wait("!(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open')");
     assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "fresh task");
     assert.match(await evaluate("document.querySelector('#producer-source').value"), /unsaved/);
     assert.equal(calls.length, 0);
     await click("Send");
-    await wait("document.querySelector('.ai-chat-edits-dialog').matches(':modal')");
+    await wait("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open' && document.querySelector('.ai-chat-edits-dialog')?.getAttribute('aria-modal') === 'true')");
     window.setMinimumSize(0, 0); window.setContentSize(390, 700);
     await delay(100);
     assert.equal(await evaluate("(() => { const b = document.querySelector('.ai-chat-edits-dialog').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight; })()"), true);
@@ -119,7 +119,7 @@ async function run(window) {
     await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === 'high'");
     await input("ai-chat-prompt", "Change both files");
     await click("Send");
-    await wait("document.querySelector('.ai-chat-edits-dialog').open");
+    await wait("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open')");
     await click("Save and start");
     await wait("document.querySelector('.ai-chat-edits-dialog [role=alert]')?.textContent.includes('changed')");
     assert.equal(calls.length, 1);
@@ -134,7 +134,7 @@ async function run(window) {
     assert.match(await evaluate("document.querySelector('#producer-source').value"), /gain 0.4/);
     assert.ok(await evaluate("document.querySelector('.ai-chat-activity').textContent.includes('Saved verse.banger')"));
     // An unchanged song starts immediately without another dialog.
-    assert.equal(await evaluate("document.querySelector('.ai-chat-edits-dialog').open"), false);
+    assert.equal(await evaluate("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open')"), false);
     assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"File to edit\"]'))"), false);
     assert.equal(calls.at(-1).providerOptions?.anthropic?.effort, "high");
     await evaluate("(() => { const s = document.querySelector('#chat-ai-reasoning'); s.value = ''; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
@@ -170,7 +170,7 @@ async function run(window) {
     await evaluate("void (window.confirm = () => true)");
     await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'chorus.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
     await wait("!document.querySelector('#producer-source').value.includes('newer studio draft')");
-    await evaluate("document.querySelector('#project-controls').close()");
+    await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await openChat();
     await click("New chat");
     await input("ai-chat-prompt", "fresh task");
@@ -180,7 +180,7 @@ async function run(window) {
     assert.equal(calls.at(-1).prompt.filter(message => message.role === "user").length, 1);
     await closeChat();
     await click("Project");
-    await evaluate("document.querySelector('#project-controls').close()");
+    await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').checkVisibility()"), true);
     await openChat();
@@ -199,13 +199,13 @@ async function run(window) {
     await wait("document.querySelector('#producer-source').value.includes('tempo 110')");
     await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#producer-source').disabled");
     // Exercise the real export menu after loading the workspace song.
-    await evaluate("document.querySelector('#project-controls').close()");
+    await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     window.webContents.session.on('will-download', event => event.preventDefault());
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
     for (let version = 1; version <= 2; version++) {
-      await evaluate("document.querySelector('.studio-export button[aria-haspopup=menu]').click()");
-      await wait("document.querySelector('.studio-export [role=menuitem]')");
-      await evaluate("document.querySelectorAll('.studio-export [role=menuitem]')[0].click()");
+      await evaluate("document.querySelector('.studio-export button[aria-haspopup=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
+      await wait("document.querySelector('.studio-export-options [role=menuitem]')");
+      await evaluate("document.querySelectorAll('.studio-export-options [role=menuitem]')[0].click()");
       await wait("document.querySelector('.studio-export-status')?.textContent.includes('Exported stereo WAV')");
       const saved = await readFile(join(directory, `.banger/history/verse/instrumentals/verse.instrumental-v00${version}.wav`));
       assert.equal(saved.toString('ascii', 0, 4), 'RIFF');

@@ -2,6 +2,17 @@
 
 import { forwardRef, type ComponentPropsWithoutRef, type CSSProperties, type ReactNode } from "react";
 
+import { Button as ShadcnButton } from "./components/button.js";
+import { Input as ShadcnInput } from "./components/input.js";
+import { NativeSelect } from "./components/native-select.js";
+import { Textarea as ShadcnTextarea } from "./components/textarea.js";
+import { Card } from "./components/card.js";
+import { Label } from "./components/label.js";
+
+export { Checkbox } from "./components/checkbox.js";
+export { Slider } from "./components/slider.js";
+export { Modal, type ModalHandle } from "./modal.js";
+
 function classes(...values: (string | undefined)[]) {
   return values.filter(Boolean).join(" ");
 }
@@ -13,7 +24,7 @@ export type ButtonProps = ComponentPropsWithoutRef<"button"> & {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = "secondary", type = "button", className, ...props }, ref,
 ) {
-  return <button {...props} ref={ref} type={type} className={classes("banger-button", `banger-button--${variant}`, className)} />;
+  return <ShadcnButton {...props} ref={ref} type={type} variant={variant === "primary" ? "default" : variant === "danger" ? "destructive" : variant} className={classes("banger-button", `banger-button--${variant}`, className)} />;
 });
 
 export type IconButtonProps = ButtonProps & { "aria-label": string };
@@ -29,7 +40,7 @@ export type PanelProps = ComponentPropsWithoutRef<"section">;
 export const Panel = forwardRef<HTMLElement, PanelProps>(function Panel(
   { className, ...props }, ref,
 ) {
-  return <section {...props} ref={ref} className={classes("banger-panel", className)} />;
+  return <Card asChild className={classes("banger-panel", className)}><section {...props} ref={ref} /></Card>;
 });
 
 export type InputProps = ComponentPropsWithoutRef<"input">;
@@ -37,15 +48,15 @@ export type InputProps = ComponentPropsWithoutRef<"input">;
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { className, ...props }, ref,
 ) {
-  return <input {...props} ref={ref} className={classes("banger-input", className)} />;
+  return <ShadcnInput {...props} ref={ref} className={classes("banger-input", className)} />;
 });
 
-export type SelectProps = ComponentPropsWithoutRef<"select">;
+export type SelectProps = Omit<ComponentPropsWithoutRef<"select">, "size">;
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
   { className, ...props }, ref,
 ) {
-  return <select {...props} ref={ref} className={classes("banger-select", className)} />;
+  return <NativeSelect nativeAppearance {...props} ref={ref} className={classes("banger-select", className)} />;
 });
 
 export type StepButtonProps = ComponentPropsWithoutRef<"button"> & {
@@ -89,9 +100,13 @@ export type FieldProps = {
 
 export function Field({ label, htmlFor, children }: FieldProps) {
   return (
-    <label className="banger-field" htmlFor={htmlFor}>
+    <Label className="banger-field" htmlFor={htmlFor}>
       <span className="banger-field__label">{label}</span>
       {children}
-    </label>
+    </Label>
   );
 }
+
+export const Textarea = forwardRef<HTMLTextAreaElement, ComponentPropsWithoutRef<"textarea">>(function Textarea({ className, ...props }, ref) {
+  return <ShadcnTextarea {...props} ref={ref} className={classes("banger-textarea", className)} />;
+});
