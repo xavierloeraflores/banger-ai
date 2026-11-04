@@ -38,13 +38,13 @@ await writeFile(join(folder, `${name}.lyric.json`), JSON.stringify(lyrics));
 await writeFile(join(folder, 'Audio only.wav'), wav());
 const timeout = setTimeout(() => { console.error('Sing-along smoke timed out'); app.exit(1); }, 120000);
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', async () => {
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = code => window.webContents.executeJavaScript(code, true).catch(error => { throw new Error(`Failed: ${code}`, { cause: error }); });
   const wait = async (code, label) => {
     for (let attempt = 0; attempt < 300; attempt++) { if (await evaluate(`Boolean(${code})`)) return; await delay(30); }
     throw new Error(`Timed out: ${label}`);
   };
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  const chooseView = value => evaluate(`(() => { const field = document.querySelector('[aria-label="View"]'); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const chooseView = value => evaluate(`document.querySelector('.app-sidebar-nav button[aria-label="${value === 'library' ? 'Library' : 'Beat Studio'}"]').click()`);
   const seek = seconds => evaluate(`(() => { const audio = document.querySelector('.library-player audio'); audio.currentTime = ${seconds}; audio.dispatchEvent(new Event('timeupdate')); })()`);
   try {
     await enterStudio(window);
@@ -57,10 +57,11 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.equal(await evaluate("document.querySelector('[aria-label=\"Play Browser recording\"] .library-song-tag').textContent"), 'Vocal');
     assert.equal(await evaluate(`document.querySelector('[aria-label="Play ${name}"] .library-song-tag').textContent`), 'Vocal');
     await writeFile('/tmp/banger-library-tags.png', (await window.webContents.capturePage()).toPNG());
-    assert.equal(await evaluate("document.querySelector('.performance-stage-trigger').nextElementSibling.textContent.trim()"), 'Sing along', 'action sits beside Band stage');
-    await click('[aria-controls="library-sing-along"]');
-    await wait("document.querySelector('.library-help')?.textContent.includes('Choose a song')", 'empty selection guidance');
+    assert.equal(await evaluate("document.querySelector('.performance-stage-trigger').nextElementSibling.textContent.trim()"), 'Lyrics', 'action sits beside Band stage');
+    assert.equal(await evaluate("document.querySelector('[aria-controls=\"library-sing-along\"]').disabled"), true);
     await click(`[aria-label="Play ${name}"]`);
+    await wait("!document.querySelector('[aria-controls=\"library-sing-along\"]').disabled", 'lyrics available');
+    await click('[aria-controls="library-sing-along"]');
     await wait("document.querySelector('.sing-along-lines button') && document.querySelector('.library-player audio').duration > 0", 'timed lyrics');
     await wait("document.querySelector('[aria-label=" + JSON.stringify('Pause library song') + "]')", 'audio playing');
     await wait("!document.querySelector('[aria-label=\"Pause library song\"]').disabled", 'player ready');
@@ -82,8 +83,8 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.ok(Math.abs(await evaluate("document.querySelector('.library-player audio').currentTime") - first.startMs / 1000) < .1);
     await seek(0);
     await wait("!document.querySelector('.sing-along-lines [aria-current=true]')", 'intro has no active phrase');
-    await evaluate("document.querySelector('[aria-label=\"Seek sing-along waveform\"]').scrollIntoView({ block: 'center' })");
-    const rect = await evaluate("(() => { const r = document.querySelector('[aria-label=\"Seek sing-along waveform\"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width * .6), y: Math.round(r.y + r.height / 2) }; })()");
+    await evaluate("document.querySelector('[aria-label=\"Seek lyrics waveform\"]').scrollIntoView({ block: 'center' })");
+    const rect = await evaluate("(() => { const r = document.querySelector('[aria-label=\"Seek lyrics waveform\"]').getBoundingClientRect(); return { x: Math.round(r.x + r.width * .6), y: Math.round(r.y + r.height / 2) }; })()");
     window.webContents.sendInputEvent({ type: 'mouseDown', ...rect, button: 'left', clickCount: 1 });
     window.webContents.sendInputEvent({ type: 'mouseUp', ...rect, button: 'left', clickCount: 1 });
     await wait("document.querySelector('.library-player audio').currentTime > document.querySelector('.library-player audio').duration * .5", 'waveform seek');
@@ -105,11 +106,14 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await click('[aria-label="Play Browser recording"]');
     await click('[aria-controls="library-sing-along"]');
     await wait("document.querySelector('.sing-along-lines')?.textContent.includes('Carry me home')", 'browser bundle metadata');
+    assert.equal(await evaluate("document.querySelector('.sing-along-title .library-song-tag')"), null, 'vocal title has no tag');
+    await evaluate(`(() => { const field = document.querySelector('[aria-label="Lyrics song"]'); field.value = [...field.options].find(option => option.text === 'Audio only').value; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await wait("document.querySelector('.sing-along-title .library-song-tag')?.textContent === 'Instrumental'", 'instrumental title tag');
     await click('.library-sing-controls button');
-    await click('[aria-label="Play Audio only"]');
+
+    await wait("document.querySelector('[aria-controls=\"library-sing-along\"]').disabled", 'audio-only lyrics disabled');
     await click('[aria-controls="library-sing-along"]');
-    await wait("document.querySelector('.sing-along-next')?.textContent.includes('no saved word timings')", 'audio-only fallback');
-    assert.equal(await evaluate("document.querySelectorAll('.sing-along-lines button').length"), 0, 'switching songs clears old lyrics');
+    assert.equal(await evaluate("document.querySelector('.sing-along')"), null);
     await chooseView('beat');
     assert.equal(await evaluate("document.querySelector('.library-player audio')"), null, 'leaving library disposes player');
     console.log('Sing-along smoke passed: native and browser metadata, button placement, word sync, silence, phrase seek, waveform seek, pause/resume, collection return, mobile layout, missing metadata, song changes and cleanup.');

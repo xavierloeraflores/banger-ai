@@ -145,3 +145,5 @@
   .music-lyric-line { grid-template-columns: 24px 18px minmax(80px, 1fr) auto; }
   .music-lyric-actions { grid-column: 3 / -1; }
 }
+
+.music-song-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }

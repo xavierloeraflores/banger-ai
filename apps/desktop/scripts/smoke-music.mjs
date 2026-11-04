@@ -190,6 +190,7 @@ async function run(){
   assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),false);
   await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===1");
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
+  assert.equal(await evaluate("document.querySelector('.music-song-title .library-song-tag')?.textContent"),'Instrumental');
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
   if(fullSendMode){

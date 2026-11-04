@@ -111,7 +111,7 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
     {(!singAlong || !selected) && <header className="library-heading"><div><p>Your collection</p><h1 id="library-title">Library</h1><span>{loading ? 'Loading songs…' : `${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`}</span></div><div><Button disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div></header>}
     {error && <p className="library-error" role="alert">{error}</p>}
     {singAlong && <div className="library-sing-controls"><Button onClick={onCloseSingAlong}>← Collection</Button><Select aria-label="Lyrics song" value={selected?.id ?? ''} onChange={event => { const song = songs.find(item => item.id === event.target.value); if (song) void choose(song); }}><option value="" disabled>Choose a song</option>{songs.map(song => <option key={song.id} value={song.id}>{song.name}</option>)}</Select></div>}
-    {singAlong && selected && <SingAlong name={selected.name} data={lyricData} position={position} duration={duration} pending={pending} onSeek={seek} />}
+    {singAlong && selected && <SingAlong instrumental={selected.songType === 'instrumental'} name={selected.name} data={lyricData} position={position} duration={duration} pending={pending} onSeek={seek} />}
     {singAlong && !selected && <p className="library-help">Choose a song to see its waveform and lyrics.</p>}
     {(!singAlong || !selected) && <div className="library-grid" aria-label="Songs" aria-busy={loading}>
       {songs.map((song, index) => <Button key={song.id} className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>

@@ -7,7 +7,7 @@ import { currentLyricLine, type SingAlongData } from '@/lib/sing-along';
 import { clockTime } from './music-audio';
 import './sing-along.css';
 
-type Props = { name: string; data: SingAlongData; position: number; duration: number; pending: boolean; onSeek(seconds: number): void };
+type Props = { name: string; instrumental: boolean; data: SingAlongData; position: number; duration: number; pending: boolean; onSeek(seconds: number): void };
 
 function Waveform({ samples, start, end, position, detail = false }: { samples: number[]; start: number; end: number; position: number; detail?: boolean }) {
   const peak = useMemo(() => samples.reduce((max, value) => Math.max(max, Math.abs(value)), 1), [samples]);
@@ -28,7 +28,7 @@ function Waveform({ samples, start, end, position, detail = false }: { samples: 
   </svg>;
 }
 
-export function SingAlong({ name, data, position, duration, pending, onSeek }: Props) {
+export function SingAlong({ name, instrumental, data, position, duration, pending, onSeek }: Props) {
   const active = currentLyricLine(data.lines, position * 1000);
   const next = data.lines.findIndex(line => line.startMs > position * 1000);
   const focused = active >= 0 ? active : next;
@@ -41,7 +41,7 @@ export function SingAlong({ name, data, position, duration, pending, onSeek }: P
   const windowStart = Math.max(0, Math.min(position - 4, duration - 8));
   const windowEnd = Math.min(duration || 8, windowStart + 8);
   return <section className="sing-along" id="library-sing-along" aria-label={`Lyrics for ${name}`} aria-busy={pending}>
-    <div className="sing-along-title"><h2 id="sing-along-title">{name}</h2></div>
+    <div className="sing-along-title"><h2 id="sing-along-title">{name}</h2>{instrumental && <span className="library-song-tag" data-song-type="instrumental">Instrumental</span>}</div>
     <div className="sing-along-body">
       <div className="sing-along-performance">
         <div className="sing-along-current" aria-label="Current lyric">

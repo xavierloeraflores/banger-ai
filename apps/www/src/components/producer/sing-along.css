@@ -1,6 +1,6 @@
 .song-library[data-sing-along="true"] { gap: 16px; padding-top: 16px; }
 .sing-along { --sing-muted: #9aa9bc; overflow: hidden; border: 1px solid #ffffff18; border-radius: 20px; background: radial-gradient(ellipse at 28% 10%, #2b3843 0, transparent 55%), #111921; color: #f4f6f8; }
-.sing-along-title { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 30px; border-bottom: 1px solid #ffffff10; }
+.sing-along-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 26px 30px; border-bottom: 1px solid #ffffff10; }
 .producer .sing-along-title h2 { margin: 0; font-size: clamp(22px, 3vw, 34px); letter-spacing: -1px; overflow-wrap: anywhere; }
 .sing-along-body { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
 .sing-along-performance { padding: 26px 30px 20px; min-width: 0; }

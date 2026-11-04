@@ -300,7 +300,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
     {active&&exportTarget&&createPortal(<ExportMenu disabled={!song||blocked||dirty} onExport={library=>{void action(()=>exportSong(library));}}/>,exportTarget)}
     {!hasProject&&backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&vocals&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');await importComposition(await backend.upload(file));});}}/>}
     <header className="music-heading">
-      <div><h1>{studioFile.name.replace(/\.banger$/i,'')}</h1></div>
+      <div className="music-song-title"><h1>{studioFile.name.replace(/\.banger$/i,'')}</h1>{!(song ? lyrics.some(text=>text.replace(/\[[^\]]*\]|\{[^}]*\}/g,'').trim()) : draftText.replace(/\[[^\]]*\]|\{[^}]*\}/g,'').trim())&&<span className="library-song-tag" data-song-type="instrumental">Instrumental</span>}</div>
       <div className="music-file-tools">
         {songs.length>0&&<Select aria-label="Vocal take" value={song?.id??''} disabled={blocked} onChange={event=>{const id=event.target.value;if(discard())void action(()=>load(id));}}>{songs.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
       </div>
