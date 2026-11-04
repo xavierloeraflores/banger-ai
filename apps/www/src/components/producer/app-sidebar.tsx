@@ -5,6 +5,7 @@ import "./app-sidebar.css";
 import { useRecentProjects } from "./recent-projects";
 import type { ProjectChat } from "@/lib/chat-sessions";
 import { SettingsMenu } from "./settings-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@banger/shadcn/components/tooltip";
 
 export type AppDestination = "beat" | "vocal" | "library";
 
@@ -32,7 +33,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
   const navigationId = useId();
   const toggleLabel = expanded ? "Collapse sidebar" : "Expand sidebar";
 
-  return <div className="app-shell" data-sidebar-expanded={expanded}>
+  return <TooltipProvider delayDuration={150}><div className="app-shell" data-sidebar-expanded={expanded}>
     <aside className="app-sidebar" aria-label="App sidebar">
       <div className="app-sidebar-heading">
         <button className="app-sidebar-toggle" type="button" aria-label={toggleLabel} title={toggleLabel} aria-expanded={expanded} aria-controls={navigationId} onClick={onToggle}>
@@ -50,20 +51,26 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
       </nav>
       <section className="app-sidebar-chats" aria-label="Chats">
         <div className="app-sidebar-section-heading"><span hidden={!expanded}>Chats</span><button type="button" aria-label="New chat" title="New chat" disabled={!onNewChat} onClick={onNewChat}>+</button></div>
-        {chats.map(chat => <button key={chat.id} type="button" className="app-sidebar-chat" aria-current={chat.id === activeChat ? "page" : undefined} aria-label={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} title={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} onClick={() => onChat?.(chat.id)}>
+        {chats.map(chat => <Tooltip key={chat.id}><TooltipTrigger asChild><button type="button" className="app-sidebar-chat" aria-current={chat.id === activeChat ? "page" : undefined} aria-label={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} title={expanded ? `${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}` : undefined} onClick={() => onChat?.(chat.id)}>
           <span className="app-chat-indicator" data-status={chat.status} aria-hidden="true">{chat.status === "running" ? "◌" : chat.status === "error" ? "!" : chat.status === "done" ? "✓" : "◇"}</span>
           <span hidden={!expanded} className="app-chat-label"><span>{chat.title}</span><small>{chat.snapshot.folder?.name ?? chat.snapshot.fileName}</small></span>
-        </button>)}
+        </button></TooltipTrigger>
+          {!expanded && <TooltipContent className="app-sidebar-tooltip" side="right" sideOffset={12} collisionPadding={12}>
+            <span>{chat.title}</span><small>{chat.snapshot.folder?.name ?? chat.snapshot.fileName}</small>
+          </TooltipContent>}
+        </Tooltip>)}
         {!chats.length && expanded && <p>Chats appear when you open a project.</p>}
       </section>
       <section className="app-sidebar-recents" aria-label="Projects">
         <div className="app-sidebar-section-heading"><span hidden={!expanded}>Projects</span><button type="button" aria-label="Add project" title="Add project" aria-haspopup="dialog" disabled={!onAddProject} onClick={event => onAddProject?.(event.currentTarget)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button></div>
-        {recent.map(project => <button key={project.id} type="button" aria-label={`Open project ${project.name}`} title={project.name} onClick={() => onOpenRecent?.(project.id)} disabled={!onOpenRecent}>
+        {recent.map(project => <Tooltip key={project.id}><TooltipTrigger asChild><button type="button" aria-label={`Open project ${project.name}`} title={expanded ? project.name : undefined} onClick={() => onOpenRecent?.(project.id)} disabled={!onOpenRecent}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3z" /></svg><span hidden={!expanded} className="app-chat-label">{project.name}</span>
-        </button>)}
+        </button></TooltipTrigger>
+          {!expanded && <TooltipContent className="app-sidebar-tooltip" side="right" sideOffset={12} collisionPadding={12}>{project.name}</TooltipContent>}
+        </Tooltip>)}
       </section>
       <div className="app-sidebar-footer" ref={setSettingsTarget} />
     </aside>
     <div className="app-shell-content">{children}<div className="producer app-settings-host"><SettingsMenu triggerContainer={settingsTarget} expanded={expanded} /></div></div>
-  </div>;
+  </div></TooltipProvider>;
 }

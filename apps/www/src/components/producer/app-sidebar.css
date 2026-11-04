@@ -39,3 +39,11 @@
 .app-chat-indicator[data-status="done"] { color: #70ceab; }
 .app-chat-indicator[data-status="error"] { color: #ffac8d; }
 .app-sidebar button:disabled { cursor: default; opacity: .45; }
+
+.app-shell[data-sidebar-expanded="false"] .app-sidebar button { width: 100%; justify-content: center; gap: 0; padding-inline: 0; }
+.app-shell[data-sidebar-expanded="false"] .app-sidebar-toggle { flex: 0 0 auto; }
+.app-shell[data-sidebar-expanded="false"] .app-sidebar-chat { height: 44px; }
+.app-sidebar-tooltip { z-index: 100; max-width: min(280px, calc(100vw - 24px)); padding: 8px 12px; border: 1px solid #3b424c; border-radius: 8px; background: #252a31; color: #e5e9ee; font: 13px/1.5 Arial, Helvetica, sans-serif; overflow-wrap: anywhere; }
+.app-sidebar-tooltip > span, .app-sidebar-tooltip > small { display: block; }
+.app-sidebar-tooltip > small { color: #b2bac5; font-size: 11px; }
+.app-sidebar-tooltip svg { fill: #252a31; background: #252a31; }
