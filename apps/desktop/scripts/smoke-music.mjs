@@ -363,6 +363,8 @@ async function run(){
   const selectView = value => fill('[aria-label="View"]',value);
   await selectView('library');
   await wait("document.querySelectorAll('.library-card').length>=1");
+  assert.ok(await evaluate("[...document.querySelectorAll('.library-song-tag')].some(tag=>tag.textContent==='Vocal')"),'Generated vocals are tagged vocal');
+  const instrumentalsBefore = await evaluate("document.querySelectorAll('.library-song-tag[data-song-type=instrumental]').length");
   assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]')?.disabled"),true,'Band stage stays disabled before library selection');
   await evaluate("document.querySelector('[aria-controls=performance-stage]').click()");
   assert.equal(await evaluate("!!document.querySelector('#performance-stage[open]')"),false,'Disabled library button cannot open a stale stage');
@@ -393,6 +395,7 @@ async function run(){
   if (!cloud) await evaluate(`(async()=>{ const songs=await window.bangerLibrary.list(); for(let index=0;index<songs.length;index++){const saved=await window.bangerLibrary.read(songs[index].id);if(saved.lyrics?.beat?.source===${JSON.stringify(source.replace('tempo 120','tempo 60'))}){document.querySelectorAll('.library-card')[index].click();return;}}throw new Error('Exported vocal take missing from library');})()`);
   else await evaluate(`(async()=>{const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('banger-library',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});try{const songs=await new Promise((resolve,reject)=>{const request=db.transaction('songs').objectStore('songs').getAll();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});const index=songs.findIndex(song=>song.beat?.source===${JSON.stringify(source.replace('tempo 120','tempo 60'))});if(index<0)throw new Error('Exported vocal take missing from library');document.querySelectorAll('.library-card')[index].click();}finally{db.close();}})()`);
   await wait("document.querySelector('.library-player audio').currentTime>0 && !document.querySelector('.library-player button').disabled");
+  assert.equal(await evaluate("document.querySelector('.library-card[aria-pressed=true] .library-song-tag').textContent"),'Vocal','Vocal export keeps its saved tag');
   assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),false,'Selecting a library song enables Band stage');
   await click('Band stage');
   await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='2'");
@@ -414,6 +417,7 @@ async function run(){
   await exportSong();
   await wait("document.querySelector('.producer-header').textContent.includes('Exported and saved to library.')");
   await selectView('library');await wait("document.querySelectorAll('.library-card').length>=1");
+  assert.equal(await evaluate("document.querySelectorAll('.library-song-tag[data-song-type=instrumental]').length"),instrumentalsBefore+1,'Beat export adds an instrumental tag despite saved lyrics');
   assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),true,'Returning to the library requires a new selection');
   assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
   console.log(`${cloud?'Cloud browser':'Desktop'} music smoke passed: WAV upload, extracted chunks, lyric edits, AI lyrics, full and selective generation, decoded playback, original-version switching, historical chunk retries, download, and preserved conflicting draft.`);

@@ -1,9 +1,10 @@
+import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 import { lstat, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { songStorage } from '@banger/harness';
 
-type Entry = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; artwork?: string };
+type Entry = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; artwork?: string };
 type File = { root: string; path: string; kind: Entry['kind'] };
 const absent = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 async function safeRead(root: string, path: string) {
@@ -50,7 +51,16 @@ export function createSongLibrary(userData: string) {
             const type = cover.endsWith('.png') ? 'png' : cover.endsWith('.webp') ? 'webp' : 'jpeg';
             artwork = `data:image/${type};base64,${bytes.toString('base64')}`; break;
           }
-          next.set(id, { root, path, kind }); entries.push({ id, name, kind, scope, artwork });
+          async function optionalJson(suffix: string): Promise<unknown> {
+            const sidecar = join(folder, `${name}.${suffix}.json`);
+            if (!names.has(`${name}.${suffix}.json`) || (await lstat(sidecar)).size > 5 * 1024 * 1024) return undefined;
+            const bytes = await safeRead(root, sidecar);
+            try { return JSON.parse(bytes.toString('utf8')); } catch { return undefined; }
+          }
+          const metadata = await optionalJson('library') as { songType?: unknown } | undefined;
+          const songType = kind === 'beat' ? 'instrumental' : metadata?.songType === 'vocal' || metadata?.songType === 'instrumental'
+            ? metadata.songType : librarySongType(await optionalJson('lyric') ?? await optionalJson('lyrics'));
+          next.set(id, { root, path, kind }); entries.push({ id, name, kind, scope, artwork, songType });
           if (entries.length > 1000) throw new Error('The library has more than 1,000 songs. Open a smaller project.');
         }
       }

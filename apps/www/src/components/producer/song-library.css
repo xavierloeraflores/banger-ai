@@ -40,3 +40,7 @@
 @media (max-width: 600px) {
   .producer[data-view="library"] .ai-chat-launcher { bottom: 126px; }
 }
+
+.library-card-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.library-song-tag { display: inline-block; padding: 3px 7px; border: 1px solid var(--producer-border); border-radius: 999px; font-size: 10px; line-height: 1.3; color: var(--producer-text); background: var(--producer-surface, #252822); }
+.library-song-tag[data-song-type="vocal"] { color: var(--producer-lime); }

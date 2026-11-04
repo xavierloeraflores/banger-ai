@@ -35,7 +35,7 @@ test('root files, concurrent immutable numbering, selected library copies, and c
   for (const scope of ['global', 'project']) {
     await storage.copyToLibrary(song, scope, selection);
     const destination = join(scope === 'global' ? root : join(project, '.banger'), 'library/midnight');
-    assert.deepEqual((await readdir(destination)).sort(), ['midnight.banger', 'midnight.instrumental.wav', 'midnight.lyric.json', 'midnight.wav']);
+    assert.deepEqual((await readdir(destination)).sort(), ['midnight.banger', 'midnight.instrumental.wav', 'midnight.library.json', 'midnight.lyric.json', 'midnight.wav']);
     assert.deepEqual(await readFile(join(destination, 'midnight.wav')), wav());
     assert.deepEqual(JSON.parse(await readFile(join(destination, 'midnight.lyric.json'))), document('First lyric'));
     await assert.rejects(storage.copyToLibrary(song, scope, selection), { code: 'EEXIST' });
@@ -47,7 +47,7 @@ test('root files, concurrent immutable numbering, selected library copies, and c
   const instrumental = await storage.prepare(project, 'dawn.banger', 'tempo 90;');
   await storage.saveAudio(instrumental, 'instrumentals', wav());
   await storage.copyToLibrary(instrumental, 'project', { audio: 'instrumentals/dawn.instrumental-v001.wav' });
-  assert.deepEqual((await readdir(join(project, '.banger/library/dawn'))).sort(), ['dawn.banger', 'dawn.wav']);
+  assert.deepEqual((await readdir(join(project, '.banger/library/dawn'))).sort(), ['dawn.banger', 'dawn.library.json', 'dawn.wav']);
 });
 test('rejects traversal, symlinked storage and invalid WAV without replacing originals', async t => {
   const { root, project, storage, song } = await fixture(t);
@@ -167,9 +167,10 @@ test('explicit library snapshot preserves current source, lyrics and audio histo
   assert.equal((await readdir(join(target, '.history', 'vocals'))).length, 1);
   assert.equal((await readdir(join(target, '.history', 'lyrics'))).length, 1);
   const { createSongLibrary } = await import('../dist/song-library.js');
-  assert.equal((await createSongLibrary(root).list()).length, 1);
+  assert.equal((await createSongLibrary(root).list())[0].songType, 'vocal');
   await storage.addToLibrary(song, wav(), 'tempo 100;');
   assert.equal((await readdir(join(root, 'library'))).length, 2);
+  assert.ok((await createSongLibrary(root).list()).every(entry => entry.songType === 'vocal'));
   assert.equal(await readFile(join(song.root, 'midnight.banger'), 'utf8'), 'tempo 120;');
 });
 
@@ -196,4 +197,16 @@ test('library export retains the selected recording words and waveform with its 
   const folder = (await readdir(join(root, 'library'))).find(name => name.startsWith('midnight-'));
   const stored = JSON.parse(await readFile(join(root, 'library', folder, 'midnight.lyric.json'), 'utf8'));
   assert.deepEqual(stored, selected);
+});
+
+test('beat exports stay instrumental despite project lyrics, and selected revisions retain their type', async t => {
+  const { root, storage, song } = await fixture(t);
+  await storage.saveLyrics(song, document('Unsung draft'));
+  await storage.addToLibrary(song, wav(), 'tempo 120;', undefined, 'instrumental');
+  const { createSongLibrary } = await import('../dist/song-library.js');
+  const library = createSongLibrary(root);
+  assert.equal((await library.list())[0].songType, 'instrumental');
+  await storage.saveAudio(song, 'vocals', wav());
+  await storage.copyToLibrary(song, 'global', { audio: 'vocals/midnight.vocals-v001.wav', instrumental: await storage.saveAudio(song, 'instrumentals', wav()) });
+  assert.deepEqual((await library.list()).map(entry => entry.songType).sort(), ['instrumental', 'vocal']);
 });

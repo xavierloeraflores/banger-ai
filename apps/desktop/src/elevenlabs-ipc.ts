@@ -1,3 +1,4 @@
+import { librarySongType } from '@banger/elevenlabs/protocol';
 import { songStorage } from '@banger/harness';
 import { app, dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { open, writeFile } from 'node:fs/promises';
@@ -62,7 +63,9 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
     const location = await store.location(id) ?? await storage.prepare(window, selected.name);
     await store.bind(id, location);
     const audio = await store.audio(id, version);
-    return storage.storage.addToLibrary(location, await toWav(audio.bytes), selected.beat?.source, selected);
+    const recordingHistory = selected.audioVersion === selected.version ? history : await store.versions(id, selected.audioVersion + 1);
+    const recording = recordingHistory.versions.find(item => item.version === selected.audioVersion) ?? recordingHistory.original;
+    return storage.storage.addToLibrary(location, await toWav(audio.bytes), selected.beat?.source, selected, librarySongType(recording));
   });
   ipcMain.handle('banger:music-save',async(event,id:string,version?:number)=>{
     const window=senderWindow(event);if(dialogs.has(window.id))throw new Error('A music file dialog is already open.');dialogs.add(window.id);

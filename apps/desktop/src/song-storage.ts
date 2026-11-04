@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { songStorage as storage } from '@banger/harness';
 import { validateWav } from '@banger/elevenlabs';
+import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 import { validateSource } from './project-files.js';
 
 export type SongLocation = { root: string; name: string };
@@ -20,7 +21,7 @@ export function createSongStorage(userData: string) {
     return task;
   }
   return {
-    async addToLibrary(song: SongLocation, audio: Uint8Array, source?: string, lyrics?: unknown) {
+    async addToLibrary(song: SongLocation, audio: Uint8Array, source?: string, lyrics?: unknown, songType?: LibrarySongType) {
       validateWav(audio, false);
       if (source !== undefined) validateSource(source);
       const name = songName(song.name);
@@ -32,6 +33,7 @@ export function createSongStorage(userData: string) {
         const savedSource = source ?? await readRegular(join(await directory(song.root), `${name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
         if (savedSource !== undefined) await writeFile(join(staging, `${name}.banger`), savedSource);
         const savedLyrics = lyrics === undefined ? await storage.readCurrentLyrics(song) ?? undefined : JSON.stringify(lyrics, null, 2);
+        await writeFile(join(staging, `${name}.library.json`), JSON.stringify({ songType: songType ?? librarySongType(savedLyrics?.toString()) }));
         if (savedLyrics !== undefined) await writeFile(join(staging, `${name}.lyric.json`), savedLyrics);
         for (const kind of ['instrumentals', 'vocals', 'lyrics'] as const) {
           const folder = await history(song, kind);
@@ -98,6 +100,7 @@ export function createSongStorage(userData: string) {
         await mkdir(target);
         try {
           await writeFile(join(target, `${song.name}.wav`), audio, { flag: 'wx' });
+          await writeFile(join(target, `${song.name}.library.json`), JSON.stringify({ songType: selection.audio.startsWith('vocals/') ? 'vocal' : 'instrumental' }), { flag: 'wx' });
           if (instrumental) await writeFile(join(target, `${song.name}.instrumental.wav`), instrumental, { flag: 'wx' });
           if (source) await writeFile(join(target, `${song.name}.banger`), source, { flag: 'wx' });
           if (lyrics) await writeFile(join(target, `${song.name}.lyric.json`), lyrics, { flag: 'wx' });

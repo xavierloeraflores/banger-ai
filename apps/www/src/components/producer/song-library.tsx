@@ -1,6 +1,7 @@
 'use client';
 
 import './audio-worklet';
+import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 import './song-library.css';
 import { browserLibrarySongs } from '@/lib/browser-library';
 import { readSingAlong, type SingAlongData } from '@/lib/sing-along';
@@ -14,7 +15,7 @@ import { renderWav } from '@banger/engine';
 
 import { clockTime } from './music-audio';
 
-type SavedSong = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; artwork?: string };
+type SavedSong = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; artwork?: string };
 type Beat = { name: string; source: string };
 type LoadedSong = { url: string; beat?: Beat; lyrics?: unknown };
 type Song = SavedSong & { load(): Promise<LoadedSong> };
@@ -51,7 +52,7 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
           return { url: audioUrl(file.bytes, file.contentType), beat: file.beat, lyrics: file.lyrics };
         } }))));
       }
-      sources.push(browserLibrarySongs().then(items => items.map(item => ({ id: item.id, name: item.name, kind: 'audio' as const, scope: 'Library', load: async () => ({ url: audioUrl(item.wav), beat: item.beat, lyrics: item.files['lyrics.json'] }) }))));
+      sources.push(browserLibrarySongs().then(items => items.map(item => ({ id: item.id, name: item.name, kind: 'audio' as const, scope: 'Library', songType: item.songType ?? librarySongType(item.files['lyrics.json']), load: async () => ({ url: audioUrl(item.wav), beat: item.beat, lyrics: item.files['lyrics.json'] }) }))));
       const results = await Promise.allSettled(sources);
       if (cancelled) return;
       const items = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
@@ -118,7 +119,7 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {song.artwork && <img src={song.artwork} alt="" onError={event => { event.currentTarget.style.display = 'none'; }} />}
           <span className="library-card-play" aria-hidden="true">{selected?.id === song.id && pending ? '…' : selected?.id === song.id && playing ? 'Ⅱ' : '▶'}</span>
-        </span><strong>{song.name}</strong><span className="library-card-detail">{song.scope}</span>
+        </span><strong>{song.name}</strong><span className="library-card-detail"><span>{song.scope}</span><span className="library-song-tag" data-song-type={song.songType}>{song.songType === 'vocal' ? 'Vocal' : 'Instrumental'}</span></span>
       </button>)}
     </div>}
     {!loading && songs.length === 0 && <p className="library-help">No songs added yet. Choose Export and save to library in Beat Studio or Vocal Studio.</p>}

@@ -53,6 +53,10 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await evaluate(`new Promise((resolve, reject) => { const request = indexedDB.open('banger-library', 1); request.onupgradeneeded = () => request.result.createObjectStore('songs', { keyPath: 'id' }); request.onsuccess = () => { const db = request.result; const tx = db.transaction('songs', 'readwrite'); tx.objectStore('songs').put({ id: 'browser-fixture', name: 'Browser recording', wav: Uint8Array.from(atob(${JSON.stringify(wav().toString('base64'))}), c => c.charCodeAt(0)).buffer, files: { 'lyrics.json': ${JSON.stringify(JSON.stringify(fixture))} } }); tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => reject(tx.error); }; })`);
     await chooseView('library');
     await wait("document.querySelectorAll('.library-card').length === 3", 'native and browser songs');
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Play Audio only\"] .library-song-tag').textContent"), 'Instrumental');
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Play Browser recording\"] .library-song-tag').textContent"), 'Vocal');
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Play ${name}"] .library-song-tag').textContent`), 'Vocal');
+    await writeFile('/tmp/banger-library-tags.png', (await window.webContents.capturePage()).toPNG());
     assert.equal(await evaluate("document.querySelector('.performance-stage-trigger').nextElementSibling.textContent.trim()"), 'Sing along', 'action sits beside Band stage');
     await click('[aria-controls="library-sing-along"]');
     await wait("document.querySelector('.library-help')?.textContent.includes('Choose a song')", 'empty selection guidance');

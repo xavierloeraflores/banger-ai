@@ -45,6 +45,21 @@ export type MusicVersion = {
   audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number; audioMetadata?: AudioMetadata;
   createdAt: string; parentVersion?: number; operation: 'analyze' | 'edit' | 'lyrics' | 'generate';
 };
+export type LibrarySongType = 'instrumental' | 'vocal';
+/** Classify a saved recording, preferring measured words over editable lyrics. */
+export function librarySongType(document: unknown): LibrarySongType {
+  if (typeof document === 'string') {
+    try { document = JSON.parse(document); } catch { return 'instrumental'; }
+  }
+  if (!document || typeof document !== 'object') return 'instrumental';
+  const record = document as Record<string, unknown>;
+  const metadata = audioMetadataSchema.safeParse(record.audioMetadata);
+  if (metadata.success && Array.isArray(metadata.data.wordsTimestamps)) {
+    return metadata.data.wordsTimestamps.some(word => word.word.trim() && word.endMs > word.startMs) ? 'vocal' : 'instrumental';
+  }
+  const plan = z.object({ chunks: z.array(z.object({ text: z.string() })) }).safeParse(record.plan);
+  return plan.success && plan.data.chunks.some(chunk => chunk.text.replace(/\[[^\]]*\]|\{[^}]*\}/g, '').trim()) ? 'vocal' : 'instrumental';
+}
 export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: lyricTextSchema }).strict();
 export const musicActionSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('edit'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), edits: z.array(lyricEditSchema).min(1).max(30) }).strict(),

@@ -60,3 +60,15 @@ test('library reads the saved recording metadata and tolerates missing or damage
   await symlink(join(root, 'library', 'Dawn', 'Dawn.banger'), sidecar);
   await assert.rejects(library.read(entry.id), /symbolic|regular/i);
 });
+
+test('existing library entries infer tags from lyric sidecars and honor saved recording tags', async t => {
+  const { root, library } = await fixture(t);
+  const folder = join(root, 'library', 'Dawn');
+  assert.equal((await library.list())[0].songType, 'instrumental');
+  await writeFile(join(folder, 'Dawn.lyrics.json'), JSON.stringify({ plan: { chunks: [{ text: '[Verse]\nSung words' }] } }));
+  assert.equal((await library.list())[0].songType, 'vocal');
+  await writeFile(join(folder, 'Dawn.library.json'), JSON.stringify({ songType: 'instrumental' }));
+  assert.equal((await library.list())[0].songType, 'instrumental');
+  await writeFile(join(folder, 'Dawn.library.json'), '{broken');
+  assert.equal((await library.list())[0].songType, 'vocal');
+});

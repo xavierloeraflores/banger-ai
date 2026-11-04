@@ -48,7 +48,7 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
     const window = senderWindow(event);
     if (typeof source !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('Invalid song.');
     const song = await storage.prepare(roots.get(window.id), name, source);
-    return storage.addToLibrary(song, bytes, source);
+    return storage.addToLibrary(song, bytes, source, undefined, 'instrumental');
   });
   ipcMain.handle('banger:storage-draft-read', (event, token: string) => songStorage.readDraft(resolve(senderWindow(event), token)));
   ipcMain.handle('banger:storage-draft-save', (event, token: string, draft: unknown, expected: songStorage.LyricDraft | null) => songStorage.saveDraft(resolve(senderWindow(event), token), draft, expected));

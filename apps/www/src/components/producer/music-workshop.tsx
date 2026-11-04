@@ -14,7 +14,7 @@ import {cloudRequest,type CloudSnapshot} from '@/lib/cloud-projects';
 import {saveLibraryBundle} from '@/lib/browser-library';
 import {renderWav,encodeWav} from '@banger/engine';
 import {compileMusic} from '@banger/compiler';
-import {chunkName,lyricsOf,lyricEditError,MAX_CHUNK_TEXT_CHARACTERS,MAX_CHUNK_TEXT_LINES,MAX_CHUNK_LINE_CHARACTERS,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
+import {librarySongType,chunkName,lyricsOf,lyricEditError,MAX_CHUNK_TEXT_CHARACTERS,MAX_CHUNK_TEXT_LINES,MAX_CHUNK_LINE_CHARACTERS,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
 import {cloudMusic,desktopMusic,type MusicBackend,type CloudMusicContext} from '@/lib/elevenlabs';
 import {clockTime,Waveform,useMusicAudio} from './music-audio';
 const message=(error:unknown)=>error instanceof Error?error.message:'The music operation failed.';
@@ -190,7 +190,8 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
         files['lyrics.json']=JSON.stringify(song);
         if(song.beat)files[song.beat.name]=song.beat.source;
         if(!selected)throw new Error('Selected audio is unavailable.');
-        await saveLibraryBundle(song.name,selected,files,song.beat);
+        const recording = versions.find(version => version.version === song.audioVersion) ?? song;
+        await saveLibraryBundle(song.name,selected,files,song.beat,librarySongType(recording));
       }
     }
     if(download)await backend.save(song);
