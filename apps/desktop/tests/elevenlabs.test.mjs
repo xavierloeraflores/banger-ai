@@ -101,3 +101,21 @@ test('project agent lyric edits refresh into a saved composition without changin
   assert.equal(provider.calls.generate,0);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('style-only saves and agent file edits survive restart without provider requests',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'banger-style-'));const provider=fixtureProvider();let current;
+ const hooks={imported:async()=>{},saved:async(_song,version)=>{current=structuredClone(version);},current:async()=>current};
+ try{
+  let store=createMusicStore(root,()=>provider,hooks);
+  const job=await store.importWav(wav(),'song.wav',randomUUID(),{root,name:'song'});await done(store,job.id);
+  const saved=await store.act(job.musicId,{operation:'edit',baseVersion:1,edits:[{index:0,vocalStyle:'Warm alto'}]},randomUUID());await done(store,saved.id);
+  store=createMusicStore(root,()=>{throw new Error('No provider for saves');},hooks);
+  assert.equal((await store.get(job.musicId)).plan.chunks[0].vocalStyle,'Warm alto');
+  current.plan.chunks[1].vocalStyle='Bright tenor';
+  let refreshed=await store.refresh(job.musicId);
+  assert.equal(refreshed.version,3);assert.equal(refreshed.plan.chunks[0].vocalStyle,'Warm alto');assert.equal(refreshed.plan.chunks[1].vocalStyle,'Bright tenor');
+  current.plan.chunks[0].vocalStyle='';refreshed=await store.refresh(job.musicId);
+  assert.equal(refreshed.plan.chunks[0].vocalStyle,undefined);assert.equal(refreshed.audioVersion,1);
+  assert.deepEqual(provider.calls,{analyze:1,lyrics:0,generate:0});
+ }finally{await rm(root,{recursive:true,force:true});}
+});

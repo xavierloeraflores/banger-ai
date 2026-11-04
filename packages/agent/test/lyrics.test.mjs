@@ -37,3 +37,12 @@ test('a targeted lyric edit retains untouched chunks and sends explicit scope in
  assert.match(system,/preserve all other lyrics exactly/);
  assert.match(system,/Return unchanged lyrics for untouched supplied indices/);
 });
+
+test('lyric agent can describe vocals without putting descriptions in sung lyrics',async()=>{
+ const edits=[{index:2,lyrics:'Old words',vocalStyle:'Warm alto'}];
+ const model=modelFor(edits);
+ assert.deepEqual(await generateLyrics({...request,prompt:'Keep lyrics, use a warm alto',chunks:[{...request.chunks[0],vocalStyle:'Bright tenor'}]},{model}),edits);
+ assert.match(JSON.stringify(model.doGenerateCalls[0].prompt),/Bright tenor/);
+ assert.match(JSON.stringify(model.doGenerateCalls[0].prompt),/never in sung lyrics/);
+ await assert.rejects(generateLyrics(request,{model:modelFor([{...edits[0],vocalStyle:'x'.repeat(1001)}])}));
+});

@@ -97,7 +97,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       const edited=await storage.current(location);
       if(!edited||edited.id!==current.id||edited.version!==current.version)return current;
       if(edited.plan.chunks.length!==current.plan.chunks.length)throw new Error('Lyric edits must preserve the composition chunks.');
-      const edits=edited.plan.chunks.flatMap((chunk,index)=>chunk.text===current.plan.chunks[index]!.text?[]:[{index,lyrics:lyricsOf(chunk.text)}]);
+      const edits=edited.plan.chunks.flatMap((chunk,index)=>chunk.text===current.plan.chunks[index]!.text && (chunk.vocalStyle??current.plan.chunks[index]!.vocalStyle??'')===(current.plan.chunks[index]!.vocalStyle??'')?[]:[{index,lyrics:lyricsOf(chunk.text),...(chunk.vocalStyle!==undefined?{vocalStyle:chunk.vocalStyle}:{})}]);
       if(!edits.length)return current;
       const result=await performMusicAction(provider,current,musicActionSchema.parse({operation:'edit',baseVersion:current.version,edits}),randomUUID());
       await publish(result.version,current.version);

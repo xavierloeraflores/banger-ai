@@ -17,10 +17,12 @@ export const chunkTextSchema = z.string().superRefine((text, ctx) => {
   if (section !== undefined && (characterCount(section) < 1 || characterCount(section) > 100)) ctx.addIssue({ code: 'custom', message: 'Section names must have between 1 and 100 characters.' });
 });
 const lyricTextSchema = chunkTextSchema.refine(text => !/[[\]{}]/.test(text), 'Enter lyrics without section labels or production directions. Those remain part of the composition.');
+export const vocalStyleSchema = z.string().trim().max(1000);
 const styles = z.array(z.string().max(1000)).max(50);
 const range = z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() }).passthrough().refine(value => value.endMs - value.startMs >= 50, 'Audio ranges must be at least 50 milliseconds.');
 export const audioReferenceSchema = z.object({ songId: z.string().min(1).max(200), range }).passthrough();
 export const generationChunkSchema = z.object({
+  vocalStyle: vocalStyleSchema.optional(),
   text: chunkTextSchema, durationMs: z.number().int().min(3000).max(120000), positiveStyles: styles,
   negativeStyles: styles.optional(), contextAdherence: z.enum(['low','medium','high']).optional(),
   conditioningRef: audioReferenceSchema.nullish(), conditionStrength: z.enum(['low','medium','high','xhigh']).nullish(),
@@ -60,7 +62,7 @@ export function librarySongType(document: unknown): LibrarySongType {
   const plan = z.object({ chunks: z.array(z.object({ text: z.string() })) }).safeParse(record.plan);
   return plan.success && plan.data.chunks.some(chunk => chunk.text.replace(/\[[^\]]*\]|\{[^}]*\}/g, '').trim()) ? 'vocal' : 'instrumental';
 }
-export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: lyricTextSchema }).strict();
+export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: lyricTextSchema.optional(), vocalStyle: vocalStyleSchema.optional() }).strict().refine(edit => edit.lyrics !== undefined || edit.vocalStyle !== undefined, 'Supply lyrics or a vocal style.');
 export const musicActionSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('edit'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), edits: z.array(lyricEditSchema).min(1).max(30) }).strict(),
   z.object({ operation: z.literal('lyrics'), baseVersion: z.number().int().positive(), sourceVersion: z.number().int().positive().optional(), prompt: z.string().trim().min(1).max(2000), indices: z.array(z.number().int().min(0).max(29)).min(1).max(30) }).strict(),
@@ -91,7 +93,12 @@ export function applyLyrics(plan: CompositionPlan, edits: z.infer<typeof lyricEd
     lyricEditSchema.parse(edit);
     const chunk = result.chunks[edit.index];
     if (!chunk) throw new Error('The selected chunk no longer exists.');
-    chunk.text = textWithLyrics(chunk.text, edit.lyrics);
+    if (edit.lyrics !== undefined && edit.lyrics !== lyricsOf(chunk.text)) chunk.text = textWithLyrics(chunk.text, edit.lyrics);
+    if (edit.vocalStyle !== undefined) {
+      const style = vocalStyleSchema.parse(edit.vocalStyle);
+      if (style && chunk.positiveStyles.length >= 50 && !chunk.positiveStyles.includes(style)) throw new Error('This chunk already has 50 musical styles. There is no room for a vocal style.');
+      if (style) chunk.vocalStyle = style; else delete chunk.vocalStyle;
+    }
   }
   return planSchema.parse(result);
 }
@@ -106,7 +113,7 @@ export function inpaintingPlan(version: MusicVersion, indices: number[]): Provid
     const range = { startMs, endMs: startMs + chunk.durationMs }; startMs = range.endMs;
     if (!indices.includes(index)) return { songId: version.songId, range };
     return {
-      ...structuredClone(chunk),
+      ...providerChunk(chunk),
       conditioningRef: {
         songId: version.originalSongId ?? version.songId,
         // ElevenLabs permits at most 30 seconds of reference audio per chunk.
@@ -132,3 +139,26 @@ export function musicActionBase(current:MusicVersion, source:MusicVersion, actio
   return base;
 }
 export type MusicHistory={versions:MusicVersion[];original:MusicVersion;nextBefore?:number};
+
+/** Descriptions live outside musical styles; only provider requests combine them. */
+export function providerChunk(chunk: CompositionPlan['chunks'][number]) {
+  const { vocalStyle, ...result } = structuredClone(chunk);
+  if (vocalStyle && !result.positiveStyles.includes(vocalStyle)) result.positiveStyles.push(vocalStyle);
+  return result;
+}
+export function vocalStyleEdits(previous: CompositionPlan, next: CompositionPlan) {
+  // Reanalysis can split or merge sections. Use the largest overlap in song time.
+  let start = 0;
+  const ranges = previous.chunks.map(chunk => {
+    const range = { start, end: start + chunk.durationMs, style: chunk.vocalStyle ?? '' };
+    start = range.end; return range;
+  });
+  start = 0;
+  return next.chunks.map((chunk, index) => {
+    const end = start + chunk.durationMs;
+    const match = ranges.map(range => ({ ...range, overlap: Math.max(0, Math.min(end, range.end) - Math.max(start, range.start)) })).sort((a, b) => b.overlap - a.overlap)[0];
+    start = end;
+    const uniform = ranges.every(range => range.style === ranges[0]?.style);
+    return { index, vocalStyle: uniform ? ranges[0]?.style ?? '' : match && match.overlap > 0 ? match.style : '' };
+  });
+}

@@ -19,11 +19,11 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  const beat={name:'song.banger',source};
  const analyze=await run({artifactId:artifact,beat,studioPath:"song.banger"});let song=(await getMusic(user,analyze.id)).current_version!;assert.deepEqual(song.plan,plan);assert.deepEqual(song.audioMetadata,originalMetadata);
  await setMember(user,project.projectId,viewer,'viewer');assert.equal((await getMusic(viewer,song.id)).revision,1);await assert.rejects(enqueue(viewer,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:1,indices:[0]}}),/denied/);
- const edit=await run({musicId:song.id,action:{operation:'edit',baseVersion:1,edits:[{index:0,lyrics:'Manual lyrics'}]}});song=(await getMusic(user,song.id)).current_version!;assert.equal(song.version,2);assert.equal(song.audioVersion,1);assert.deepEqual(song.audioMetadata,originalMetadata);assert.equal(calls,1);
+ const edit=await run({musicId:song.id,action:{operation:'edit',baseVersion:1,edits:[{index:0,lyrics:'Manual lyrics',vocalStyle:'Warm alto'}]}});song=(await getMusic(user,song.id)).current_version!;assert.equal(song.version,2);assert.equal(song.audioVersion,1);assert.deepEqual(song.audioMetadata,originalMetadata);assert.equal(calls,1);assert.equal(song.plan.chunks[0]!.vocalStyle,'Warm alto');
  await assert.rejects(enqueue(user,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:1,indices:[0]}}),/changed/);
  await run({musicId:song.id,action:{operation:'lyrics',baseVersion:2,indices:[1],prompt:'hope'}});
  const generated=await run({musicId:song.id,action:{operation:'generate',baseVersion:3,indices:[0,1]}});song=(await getMusic(user,song.id)).current_version!;
- assert.equal(song.version,4);assert.deepEqual(song.audioMetadata,generatedMetadata);assert.equal(song.audioId,generated.id);assert.equal((await db().query('SELECT status FROM artifacts WHERE id=$1',[generated.id])).rows[0].status,'ready');
+ assert.equal(song.version,4);assert.equal(song.plan.chunks[0]!.vocalStyle,'Warm alto');assert.deepEqual(song.audioMetadata,generatedMetadata);assert.equal(song.audioId,generated.id);assert.equal((await db().query('SELECT status FROM artifacts WHERE id=$1',[generated.id])).rows[0].status,'ready');
  // Legacy saved versions must also anchor retries to the first upload.
  await db().query("UPDATE music_sessions SET current_version=current_version-'originalSongId' WHERE id=$1",[song.id]);
  // A completed provider receipt survives a database publication outage; no second paid call.

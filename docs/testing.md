@@ -105,3 +105,8 @@ repeat with `--web`. These checks follow the automatic render, analysis, lyric
 save, vocal generation, and library flow without paid provider calls. The
 lyrics-only check also revises one chunk of an existing song and verifies that
 the other chunk and beat remain unchanged.
+
+Vocal style checks use `smoke-music.mjs --vocal-style`, repeated with `--web`.
+They cover applying to all or selected chunks, clearing, free saves, reloads,
+reanalysis and generation. The lyrics-only Full Send smoke also verifies that
+saved vocal descriptions survive subsequent lyric edits and fresh analysis.
