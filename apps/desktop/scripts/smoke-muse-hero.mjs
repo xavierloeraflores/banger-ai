@@ -16,7 +16,7 @@ app.on('web-contents-created', (_event, contents) => contents.on('console-messag
 }));
 const timeout = setTimeout(() => { console.error('Muse Hero smoke timed out'); app.exit(1); }, 120000);
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', async () => {
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = code => window.webContents.executeJavaScript(code, true).catch(error => { throw new Error(`Renderer evaluation failed: ${code}`, { cause: error }); });
   const wait = async (code, name) => {
     for (let i = 0; i < 1600; i++) { if (await evaluate(`Boolean(${code})`)) return; await delay(10); }
     await writeFile("/tmp/muse-hero-failure.png", (await window.webContents.capturePage()).toPNG());
@@ -40,15 +40,47 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
   try {
     await enterStudio(window);
     window.setContentSize(1440, 1000); window.setAlwaysOnTop(true); window.show(); window.focus(); window.webContents.focus();
+    await activate('[aria-label="Settings"]');
+    await wait("document.querySelector('#muse-hero-difficulty')", 'difficulty setting');
+    assert.equal(await evaluate("document.querySelector('#muse-hero-difficulty').value"), 'normal');
+    await activate('[aria-label="Close settings"]');
+    await wait("!document.querySelector('#producer-settings-dialog').open && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
+    for (const [difficulty, count] of [['very-easy', 2], ['easy', 3], ['normal', 4], ['hard', 5]]) {
+      await activate('[aria-label="Settings"]');
+      await wait("document.querySelector('#muse-hero-difficulty')", 'difficulty setting');
+      await evaluate(`(() => { const select = document.querySelector('#muse-hero-difficulty'); select.value = ${JSON.stringify(difficulty)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await wait(`document.querySelector('#muse-hero-difficulty').value === ${JSON.stringify(difficulty)}`, 'difficulty selected');
+      await activate('[aria-label="Close settings"]');
+      await wait("!document.querySelector('#producer-settings-dialog').open && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
+      await click('Band stage');
+      await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'difficulty stage ready');
+      await activate('.performance-hero-trigger');
+      await wait(`document.querySelectorAll('.muse-frets button').length === ${count}`, 'difficulty fret count');
+      assert.equal(await evaluate("getComputedStyle(document.querySelector('.muse-frets')).gridTemplateColumns.split(' ').length"), count);
+      assert.match(await evaluate("document.querySelector('.muse-highway').getAttribute('aria-label')"), new RegExp(`^${count} fret lanes`));
+      if (count < 5) assert.equal(await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', cancelable: true }))"), true, 'hidden fret keys are ignored');
+      assert.equal(await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', cancelable: true }))"), false, 'visible fret keys are handled');
+      await writeFile(`/tmp/muse-hero-${difficulty}.png`, (await window.webContents.capturePage()).toPNG());
+      await activate('[aria-label="Hide Muse Hero"]');
+      await activate('[aria-label="Close band stage"]');
+      await wait("!document.querySelector('.performance-viewport canvas')", 'difficulty stage closed');
+    }
+    // Reload the application to verify this is a saved preference, not component state.
+    const reloaded = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+    window.webContents.reload();
+    await reloaded;
+    await enterStudio(window);
+    await activate('[aria-label="Settings"]');
+    await wait("document.querySelector('#muse-hero-difficulty')?.value === 'hard'", 'difficulty persisted after reload');
+    await activate('[aria-label="Close settings"]');
+    await wait("!document.querySelector('#producer-settings-dialog').open && document.querySelector('[aria-label=\"Settings\"]').getAttribute('aria-expanded') === 'false'", 'settings closed');
     const sample = await evaluate("document.querySelector('#producer-source').value");
     await apply('tempo 120; track keys { instrument "synth/keys"; piano { note "C4" start 1 duration 1.5 velocity .7; note "C4" start 3 duration .5 velocity .7; } }');
     await click('Band stage');
     await wait("document.querySelector('#performance-stage').open && !document.querySelector('.performance-hero-trigger').disabled", 'shared stage ready');
     await evaluate("void (window.sharedStageCanvas = document.querySelector('.performance-viewport canvas'))");
-    const toggle = await evaluate("(() => { const r = document.querySelector('.performance-hero-trigger').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()");
-    window.webContents.sendInputEvent({ type: 'mouseMove', x: 700, y: 300 });
-    window.webContents.sendInputEvent({ type: 'mouseMove', ...toggle });
-    await wait("document.querySelector('.muse-game')", 'hover opens overlay');
+    await activate('.performance-hero-trigger');
+    await wait("document.querySelector('.muse-game')", 'click opens overlay');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '1'", 'band ready');
     assert.equal(await evaluate("getComputedStyle(document.querySelector('#muse-hero')).backgroundColor"), 'rgba(0, 0, 0, 0)');
     assert.equal(await evaluate("getComputedStyle(document.body).overflow"), 'hidden');
@@ -116,7 +148,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'final open');
     assert.deepEqual(graphicsErrors, []);
     clearTimeout(timeout);
-    console.log('Muse Hero smoke passed: transparent fullscreen overlay, live Three.js band, keyboard and pointer hits, early hold release, misses, finite run, autoplay with holds, restart, mobile, cleanup and Escape.');
+    console.log('Muse Hero smoke passed: all four difficulty settings and persistence, transparent fullscreen overlay, live Three.js band, keyboard and pointer hits, early hold release, misses, finite run, autoplay with holds, restart, mobile, cleanup and Escape.');
     if (!keepOpen) app.exit(0);
     else { window.show(); window.focus(); console.log('Leaving Muse Hero open.'); }
   } catch (error) { console.error(await evaluate("document.querySelector('.muse-game')?.dataset.time + ' / ' + document.querySelector('.muse-menu')?.textContent")); await writeFile('/tmp/muse-hero-failure.png', (await window.webContents.capturePage()).toPNG()); console.error(error); clearTimeout(timeout); app.exit(1); }

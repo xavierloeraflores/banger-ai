@@ -6,7 +6,11 @@ overlay. Tap or keyboard activation also opens it. The game fills
 the window and renders a transparent note highway and translucent HUD over the live Three.js band.
 
 Choose the full band or a single track for the chart. The full song still plays
-when a single track is selected. Tap **A S D F G**, or the five on-screen frets,
+when a single track is selected. In **Settings → Muse Hero difficulty**, choose
+**Very easy** for 2 lanes, **Easy** for 3, **Normal** for 4, or **Hard** for 5.
+Normal is the default, and the app remembers your selection. The chart maps all
+audible tracks into the selected number of lanes. Tap the displayed keys from
+**A S D F G**, or the matching on-screen frets,
 when a note reaches the hit line. Hold sustained notes until the tail ends.
 There is no separate strum key. A three-second countdown precedes playback.
 

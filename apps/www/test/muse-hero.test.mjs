@@ -40,6 +40,23 @@ test('chart preserves groove and probability decisions on each repeated pass', (
   assert.deepEqual(Array.from(chart.notes, n => n.time), expected);
 });
 
+test('difficulty maps pitched notes and percussion into every available lane', () => {
+  const pitched = compiler.compileMusic('tempo 120; track keys { instrument "synth/keys"; notes "C4 D4 E4 F4 G4 A4 B4 C5"; }');
+  const drums = compiler.compileMusic(Array.from({ length: 5 }, (_, i) => `track drum${i} { sound "drums/kick"; rhythm "x . . ."; }`).join(' '));
+  for (const laneCount of [2, 3, 4, 5]) {
+    for (const program of [pitched, drums]) {
+      const chart = createHeroChart(program, '', laneCount);
+      assert.deepEqual([...new Set(chart.notes.map(note => note.lane))].sort(), Array.from({ length: laneCount }, (_, i) => i));
+      assert.ok(chart.notes.every(note => note.lane >= 0 && note.lane < laneCount));
+      const run = new HeroRun(chart);
+      run.advance(chart.duration + 1, true);
+      assert.equal(run.stats.miss, 0);
+      assert.equal(run.stats.perfect, chart.notes.length);
+    }
+  }
+  assert.equal(Math.max(...createHeroChart(pitched).notes.map(note => note.lane)), 3, 'Normal defaults to four lanes');
+});
+
 test('hit windows, misses, combo multiplier, duplicate hits and holds', () => {
   const notes = Array.from({ length: 12 }, (_, id) => ({ id, lane: id % 5, time: id, end: id }));
   notes.push({ id: 12, lane: 2, time: 12, end: 14 });

@@ -5,11 +5,13 @@ import { IconButton } from "@banger/shadcn";
 import { AIModelSelect } from "./ai-model-select";
 import { ElevenLabsSettings } from "./elevenlabs-settings";
 import { ByokSettings } from "./byok-menu";
+import { HERO_DIFFICULTIES, setHeroDifficulty, useHeroDifficulty, type HeroDifficulty } from "@/lib/muse-hero-settings";
 
 export function SettingsMenu() {
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
+  const difficulty = useHeroDifficulty();
 
   return <div className="producer-settings">
     <IconButton ref={trigger} aria-label="Settings" title="Settings" variant="ghost" aria-haspopup="dialog" aria-expanded={open} aria-controls="producer-settings-dialog"
@@ -26,7 +28,15 @@ export function SettingsMenu() {
           <h2 id="producer-settings-title">Settings</h2>
           <IconButton aria-label="Close settings" variant="ghost" onClick={() => dialog.current?.close()}><span aria-hidden="true">×</span></IconButton>
         </div>
-        {open && <><AIModelSelect /><ByokSettings /><ElevenLabsSettings /></>}
+        {open && <>
+          <div className="muse-hero-settings">
+            <label htmlFor="muse-hero-difficulty">Muse Hero difficulty</label>
+            <select id="muse-hero-difficulty" value={difficulty} onChange={event => setHeroDifficulty(event.target.value as HeroDifficulty)}>
+              {HERO_DIFFICULTIES.map(option => <option key={option.value} value={option.value}>{option.label} · {option.lanes} tracks</option>)}
+            </select>
+          </div>
+          <AIModelSelect /><ByokSettings /><ElevenLabsSettings />
+        </>}
       </div>
     </dialog>
   </div>;

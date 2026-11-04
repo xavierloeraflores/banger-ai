@@ -40,7 +40,7 @@
 .muse-start { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 12px 15px; border-radius: 7px; background: linear-gradient(110deg, #bc95ffdd, #e0b7ffdd); color: #23113b !important; font-size: 12px !important; border: 1px solid #dfbaff; font-weight: 700 !important; box-shadow: 0 0 22px #b56eff22; }
 .muse-start:disabled { opacity: .45; cursor: default; }
 .muse-start span { font-size: 17px; }
-.muse-frets { position: absolute; top: 82%; left: 11.5%; width: 77%; height: 11%; display: grid; grid-template-columns: repeat(5, 1fr); }
+.muse-frets { position: absolute; top: 82%; left: 11.5%; width: 77%; height: 11%; display: grid; grid-template-columns: repeat(var(--lane-count), 1fr); }
 .muse-frets button { border: 0; background: transparent; display: flex; justify-content: center; align-items: flex-end; touch-action: none; user-select: none; padding: 0 0 2px; }
 .muse-frets kbd { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid color-mix(in srgb, var(--fret), transparent 55%); border-radius: 7px; color: var(--fret); background: #100d1b88; font-size: 12px; box-shadow: 0 0 18px color-mix(in srgb, var(--fret), transparent 90%); pointer-events: none; }
 .muse-countdown { position: absolute; top: 40%; left: 45%; width: 10%; text-align: center; pointer-events: none; }

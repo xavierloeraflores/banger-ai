@@ -10,7 +10,7 @@ export interface HeroChart { notes: HeroNote[]; duration: number }
 export interface HeroStats { score: number; combo: number; best: number; perfect: number; great: number; good: number; miss: number; held: number }
 
 /** Use the same arrangement, groove and conditional events as the audio engine. */
-export function createHeroChart(program: MusicProgram, trackName = ''): HeroChart {
+export function createHeroChart(program: MusicProgram, trackName = '', laneCount: 2 | 3 | 4 | 5 = 4): HeroChart {
   const beats = programDurationBeats(program);
   const cycles = Math.max(1, Math.ceil(16 / beats));
   const seconds = 60 / program.tempo;
@@ -24,8 +24,8 @@ export function createHeroChart(program: MusicProgram, trackName = ''): HeroChar
   const lastByLane = new Map<number, HeroNote>();
   for (const { event, time } of events) {
     const lane = event.step.kind === 'note'
-      ? Math.min(4, Math.floor(pitches.indexOf(event.step.midi) * 5 / Math.max(1, pitches.length)))
-      : program.tracks.indexOf(event.track) % 5;
+      ? Math.min(laneCount - 1, Math.floor(pitches.indexOf(event.step.midi) * laneCount / Math.max(1, pitches.length)))
+      : program.tracks.indexOf(event.track) % laneCount;
     const end = event.sustained && event.duration >= .35 ? Math.min(duration, time + event.duration) : time;
     const previous = lastByLane.get(lane);
     // Layered instruments can share a fret. Merge close onsets and trim overlapping holds.

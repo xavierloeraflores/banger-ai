@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { MusicProgram } from '@banger/compiler';
 import type { PerformanceSnapshot } from '@banger/stage';
 import { createHeroChart, HERO_COLORS, HERO_KEYS, HeroRun } from '@/lib/muse-hero';
+import { HERO_DIFFICULTIES, useHeroDifficulty } from '@/lib/muse-hero-settings';
 import { drawHighway } from './muse-highway';
 import './muse-hero.css';
 
@@ -23,14 +24,21 @@ interface Props {
 }
 
 /** Game overlay for the existing stage and audio transport. */
-export function MuseHero({ program, fileName, readPerformance, play, stop, starting, error, onPrepare, onClose }: Props) {
+export function MuseHero(props: Props) {
+  const difficulty = useHeroDifficulty();
+  const laneCount = HERO_DIFFICULTIES.find(option => option.value === difficulty)!.lanes;
+  return <MuseHeroGame key={difficulty} {...props} laneCount={laneCount} />;
+}
+
+function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting, error, onPrepare, onClose, laneCount }: Props & { laneCount: 2 | 3 | 4 | 5 }) {
+  const keys = HERO_KEYS.slice(0, laneCount);
   const backButton = useRef<HTMLButtonElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [track, setTrack] = useState('');
   const [autoplay, setAutoplay] = useState(false);
   const [phase, setPhase] = useState<Phase>('ready');
   const [display, setDisplay] = useState({ score: 0, combo: 0, best: 0, perfect: 0, great: 0, good: 0, miss: 0, held: 0, accuracy: 100, multiplier: 1, time: -3, judgment: '', countdown: 3 });
-  const chart = useMemo(() => createHeroChart(program, track), [program, track]);
+  const chart = useMemo(() => createHeroChart(program, track, laneCount), [program, track, laneCount]);
   const run = useRef(new HeroRun(chart));
   const mode = useRef<Phase>('ready');
   const pressed = useRef(new Set<number>());
@@ -75,7 +83,7 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
         if (time >= run.current.chart.duration + .2) { stop(); pressed.current.clear(); setMode('finished'); }
       }
       currentTime.current = time;
-      if (canvas.current) drawHighway(canvas.current, run.current, time, pressed.current, program.tempo);
+      if (canvas.current) drawHighway(canvas.current, run.current, time, pressed.current, program.tempo, laneCount);
       if (now - lastDisplay > 40) {
         lastDisplay = now;
         const game = run.current;
@@ -85,7 +93,7 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
     }
     frame = requestAnimationFrame(tick);
     return () => { cancelled = true; cancelAnimationFrame(frame); };
-  }, [play, readPerformance, stop, program.tempo, setMode]);
+  }, [play, readPerformance, stop, program.tempo, setMode, laneCount]);
 
   const inputTime = useCallback(() => {
     const state = readPerformance().state;
@@ -104,14 +112,14 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
     const down = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.matches('input, select, textarea')) return;
       const lane = HERO_KEYS.indexOf(event.code);
-      if (lane >= 0) { event.preventDefault(); if (!event.repeat) press(lane); }
+      if (lane >= 0 && lane < laneCount) { event.preventDefault(); if (!event.repeat) press(lane); }
     };
-    const up = (event: KeyboardEvent) => { const lane = HERO_KEYS.indexOf(event.code); if (lane >= 0) release(lane); };
+    const up = (event: KeyboardEvent) => { const lane = HERO_KEYS.indexOf(event.code); if (lane >= 0 && lane < laneCount) release(lane); };
     const blur = () => { if (mode.current === 'playing' || mode.current === 'countdown') end(); };
     const hidden = () => { if (document.hidden) blur(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur); document.addEventListener('visibilitychange', hidden);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', hidden); };
-  }, [press, release, end]);
+  }, [press, release, end, laneCount]);
 
   function start() {
     request.current++; onPrepare(); run.current = new HeroRun(chart); pressed.current.clear();
@@ -122,7 +130,7 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
   const title = fileName.replace(/\.banger$/i, '').replaceAll('-', ' ');
   return <div id="muse-hero" className="muse-game" role="region" aria-label="Muse Hero rhythm game" data-phase={phase} data-score={display.score} data-time={display.time.toFixed(3)}>
     <div className="muse-vignette" />
-    <canvas ref={canvas} className="muse-highway" aria-label="Five fret lanes. Press A, S, D, F or G as notes reach the glowing line. Hold long notes until their tails finish." />
+    <canvas ref={canvas} className="muse-highway" aria-label={`${laneCount} fret lanes. Press ${keys.map(key => key.slice(-1)).join(', ')} as notes reach the glowing line. Hold long notes until their tails finish.`} />
     <header className="muse-heading">
       {active && <div className="muse-song"><span>{autoplay ? 'PRACTICE AUTOPLAY' : 'ON STAGE'}</span><strong>{title}</strong><small>{program.tempo} BPM <i /> {program.tracks.length} tracks <i /> {clockLabel(chart.duration)}</small></div>}
       <button ref={backButton} className="muse-exit" onClick={onClose} aria-label="Hide Muse Hero">Back to band <kbd>esc</kbd></button>
@@ -141,7 +149,7 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
       <button className="muse-start" onClick={start} disabled={!chart.notes.length || starting}>{starting ? 'Starting audio…' : phase === 'finished' ? 'Play again' : 'Take the stage'} <span>↗</span></button>
       {!chart.notes.length && <p role="status">No audible notes in this chart. Choose another track or unmute tracks in the studio.</p>}
     </section>}
-    <div className="muse-frets" aria-label="Fret controls">{HERO_KEYS.map((key, lane) => <button key={key} style={{ '--fret': HERO_COLORS[lane] } as CSSProperties} aria-label={`Fret ${lane + 1}, ${key.slice(-1)}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!event.repeat) press(lane); } }} onKeyUp={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); release(lane); } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); press(lane); }} onPointerUp={() => release(lane)} onPointerCancel={() => release(lane)} onLostPointerCapture={() => release(lane)}><kbd>{key.slice(-1)}</kbd></button>)}</div>
+    <div className="muse-frets" style={{ '--lane-count': laneCount } as CSSProperties} aria-label="Fret controls">{keys.map((key, lane) => <button key={key} style={{ '--fret': HERO_COLORS[lane] } as CSSProperties} aria-label={`Fret ${lane + 1}, ${key.slice(-1)}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!event.repeat) press(lane); } }} onKeyUp={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); release(lane); } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); press(lane); }} onPointerUp={() => release(lane)} onPointerCancel={() => release(lane)} onLostPointerCapture={() => release(lane)}><kbd>{key.slice(-1)}</kbd></button>)}</div>
     {active && <footer className="muse-footer"><button onClick={end}>End run</button></footer>}
     <aside className="muse-stats muse-glass" aria-label="Performance"><span>PERFORMANCE <b>{display.accuracy.toFixed(1)}%</b></span>{(['perfect', 'great', 'good', 'miss'] as const).map(label => <div key={label} className={label}><span>{label}</span><b>{display[label]}</b></div>)}</aside>
     {error && <p className="muse-error" role="alert">{error}</p>}

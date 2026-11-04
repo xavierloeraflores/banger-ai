@@ -1,7 +1,7 @@
 import { HERO_COLORS, type HeroRun } from '@/lib/muse-hero';
 
 /** A clear canvas keeps the highway compositable over any Three.js scene. */
-export function drawHighway(canvas: HTMLCanvasElement, run: HeroRun, time: number, pressed: Set<number>, tempo: number) {
+export function drawHighway(canvas: HTMLCanvasElement, run: HeroRun, time: number, pressed: Set<number>, tempo: number, laneCount: number) {
   const rect = canvas.getBoundingClientRect();
   const ratio = Math.min(devicePixelRatio, 2);
   const width = Math.round(rect.width * ratio), height = Math.round(rect.height * ratio);
@@ -13,27 +13,27 @@ export function drawHighway(canvas: HTMLCanvasElement, run: HeroRun, time: numbe
   const horizon = 300, target = 860, travel = 3;
   const point = (lane: number, progress: number) => {
     const depth = Math.max(0, progress) ** 1.65;
-    return { x: 500 + (lane - 2) * (30 + 124 * depth), y: horizon + (target - horizon) * depth, scale: .22 + .78 * depth };
+    return { x: 500 + (lane - (laneCount - 1) / 2) * (150 + 620 * depth) / laneCount, y: horizon + (target - horizon) * depth, scale: .22 + .78 * depth };
   };
   ctx.beginPath(); ctx.moveTo(425, horizon); ctx.lineTo(575, horizon); ctx.lineTo(940, 1000); ctx.lineTo(60, 1000); ctx.closePath();
   const floor = ctx.createLinearGradient(0, horizon, 0, 1000); floor.addColorStop(0, '#110f2810'); floor.addColorStop(1, '#110f2877');
   ctx.fillStyle = floor; ctx.fill();
-  for (let lane = -.5; lane <= 4.5; lane++) {
+  for (let lane = -.5; lane <= laneCount - .5; lane++) {
     const a = point(lane, 0), b = point(lane, 1.13);
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = lane === -.5 || lane === 4.5 ? '#d9a0ffbb' : '#d5bdff35';
-    ctx.lineWidth = lane === -.5 || lane === 4.5 ? 2 : .8;
+    ctx.strokeStyle = lane === -.5 || lane === laneCount - .5 ? '#d9a0ffbb' : '#d5bdff35';
+    ctx.lineWidth = lane === -.5 || lane === laneCount - .5 ? 2 : .8;
     ctx.shadowColor = '#bc6dff'; ctx.shadowBlur = 10; ctx.stroke();
   }
   ctx.shadowBlur = 0;
   const beatSeconds = 60 / tempo;
   for (let beat = Math.ceil(time / beatSeconds); beat * beatSeconds < time + travel; beat++) {
     const progress = 1 - (beat * beatSeconds - time) / travel;
-    const a = point(-.5, progress), b = point(4.5, progress);
+    const a = point(-.5, progress), b = point(laneCount - .5, progress);
     ctx.strokeStyle = beat % 4 === 0 ? '#e4caff50' : '#e4caff18'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
-  const left = point(-.5, 1), right = point(4.5, 1);
+  const left = point(-.5, 1), right = point(laneCount - .5, 1);
   ctx.strokeStyle = '#e8d7ff'; ctx.lineWidth = 2; ctx.shadowColor = '#b188ff'; ctx.shadowBlur = 15;
   ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(right.x, right.y); ctx.stroke();
   const gem = (lane: number, progress: number, receptor = false, active = false) => {
@@ -45,7 +45,7 @@ export function drawHighway(canvas: HTMLCanvasElement, run: HeroRun, time: numbe
     ctx.beginPath(); ctx.ellipse(p.x, p.y - 3 * p.scale, (receptor ? 44 : 30) * p.scale, (receptor ? 12 : 7) * p.scale, 0, Math.PI, Math.PI * 2);
     ctx.strokeStyle = '#ffffffcc'; ctx.lineWidth = 1.5; ctx.stroke();
   }
-  for (let lane = 0; lane < 5; lane++) {
+  for (let lane = 0; lane < laneCount; lane++) {
     const flash = time - (run.flashes.get(lane) ?? -Infinity);
     const active = pressed.has(lane) || run.holds.has(lane) || flash >= 0 && flash < .18;
     gem(lane, 1, true, active);
