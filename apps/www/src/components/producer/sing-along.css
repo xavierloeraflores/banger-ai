@@ -10,7 +10,9 @@
 .sing-along-art img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
 @keyframes sing-along-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .sing-along-art { animation: none; } }
-.sing-along-lines [data-state="singing"] { color: #b9d9ff; text-shadow: 0 0 20px #75b5ff66; }
+.sing-along-lines [data-state="upcoming"] { color: #8291a4; }
+.sing-along-lines [data-state="singing"] { color: #75b5ff; text-shadow: 0 0 30px #75b5ff44; }
+.sing-along-lines [data-state="sung"] { color: #f4f6f8; }
 .sing-along-overview > div:not(.sing-along-seek) { display: flex; justify-content: space-between; gap: 10px; color: var(--sing-muted); font-size: 10px; }
 .sing-along svg { display: block; width: 100%; height: 80px; margin: 8px 0; overflow: hidden; }
 .sing-along time { font: 10px ui-monospace, monospace; }
@@ -18,10 +20,11 @@
 .sing-along-transcript h3 { margin: 0 12px 20px 0; display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 500; }
 .sing-along-transcript h3 span { font-size: 10px; color: var(--sing-muted); font-weight: 400; }
 .sing-along-lines { position: relative; max-height: 398px; overflow: auto; scrollbar-width: thin; scrollbar-color: #455467 transparent; }
-.sing-along-lines button { justify-content: flex-start; display: flex; width: 100%; align-items: baseline; gap: 14px; border: 1px solid transparent; border-radius: 10px; text-align: left; padding: 15px 10px; background: transparent; color: #a2b0c2; font-size: 17px; line-height: 1.5; }
-.sing-along-lines time { color: #8495aa; flex-shrink: 0; }
+.producer .sing-along-lines button { justify-content: flex-start; display: flex; width: 100%; height: auto; align-items: baseline; gap: 14px; border: 1px solid transparent; border-radius: 10px; text-align: left; padding: 18px 10px; background: transparent; color: #a2b0c2; font-size: clamp(28px, 3.5vw, 42px); font-weight: 650; line-height: 1.2; letter-spacing: -1px; white-space: normal; }
+.sing-along-lines button > span { min-width: 0; overflow-wrap: anywhere; }
+.sing-along-lines time { color: #8495aa; flex-shrink: 0; letter-spacing: normal; }
 .sing-along-lines button:hover { background: #ffffff08; color: #fff; }
-.sing-along-lines button[aria-current="true"] { background: #75b5ff0c; border-color: #75b5ff22; color: #75b5ff; }
+.sing-along-lines button[aria-current="true"] { background: #75b5ff0c; border-color: #75b5ff22; }
 .sing-along button:focus-visible, .sing-along-lines:focus-visible { outline: 2px solid #75b5ff; outline-offset: -2px; }
 .sing-along-overview { padding: 20px 30px; border-top: 1px solid #ffffff10; }
 .sing-along-seek { position: relative; border-radius: 8px; }
