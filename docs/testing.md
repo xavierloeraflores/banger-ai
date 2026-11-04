@@ -149,3 +149,11 @@ This checks project-wide and song-specific defaults, keyboard selection,
 permissions during a task, blocked writes to unchecked songs, saved selections,
 and narrow layouts. Also run `smoke:chat`, `smoke:workspace`, and
 `smoke-project-chats.mjs` when changing these controls.
+
+Agent editing locks use
+`pnpm --filter @banger/desktop exec electron scripts/smoke-agent-edit-lock.mjs`.
+This holds a fixture agent request open while checking disabled editing controls,
+source keyboard protection, track and mixer inspection, arrangement previews,
+live saves across chats, uninterrupted playback, and unlocking on completion,
+cancellation, and provider failure. Desktop saves refresh the score as they arrive;
+hosted saves refresh after the server publishes the task's changes.

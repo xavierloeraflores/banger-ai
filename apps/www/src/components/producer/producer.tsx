@@ -51,6 +51,7 @@ import { PerformanceStage } from "./performance-stage";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder, WorkspaceFile } from "@/lib/project-workspace";
 import type { BangerFile } from "@banger/agent/protocol";
+import { isSongAgentEditing } from "@/lib/song-editing";
 import "./producer.css";
 import "./mixer-song.css";
 
@@ -242,6 +243,11 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     return () => { persist(); window.removeEventListener("pagehide", persist); };
   }, []);
   const projectRunning = chats.some(chat => chat.status === "running" && chat.snapshot.folder?.id === currentFolder?.id);
+  function songAgentEditing() {
+    return isSongAgentEditing(chatsRef.current, snapshotRef.current, activeChatRef.current);
+  }
+  const agentEditing = isSongAgentEditing(chats, snapshot, activeChat);
+  const editingDisabled = draft || fileBusy || agentEditing;
   function canSwitchChat() {
     if (filePending.current || switchingChat.current) return false;
     if (chatsRef.current.some(chat => chat.blocksSwitch) || vocalEdits.busy || vocalEdits.dirty) {
@@ -372,7 +378,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   }
 
   function edit(next: MusicProgram) {
-    if (draft || fileBusy) return;
+    if (draft || fileBusy || songAgentEditing()) return false;
     try {
       if (next.timeline?.length === 0) { next = { ...next }; delete next.timeline; }
       const text = serializeMusic(next);
@@ -397,6 +403,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   }
 
   function apply() {
+    if (fileBusy || songAgentEditing()) return;
     if (!result.program) { editor.current?.focus(); return; }
     setProgram(result.program);
     setTempoDraft(String(result.program.tempo));
@@ -475,8 +482,33 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     return () => { active = false; };
   }, [startingChat]);
 
+  const receiveAgentFile = useEffectEvent((file: WorkspaceFile, projectId?: string, threadId?: string) => {
+    const owner = chatsRef.current.find(chat => chat.status === "running" && (!threadId || chat.id === threadId)
+      && chat.snapshot.folder?.id === projectId);
+    if (!owner) return;
+    let checked: MusicProgram;
+    try { checked = compileMusic(file.source); } catch { return; }
+    const matches = (next: ChatSnapshot) => next.folder?.id === projectId && next.workspaceFile?.path === file.path && next.source === next.savedSource;
+    const current = snapshotRef.current;
+    const visible = matches(current) && current.source !== file.source;
+    if (visible) {
+      // Keep playback and inspection in place; usePlayer queues the new score.
+      writeSource(file.source);
+      setProgram(checked); setAppliedSource(file.source); setSavedSource(file.source);
+      setWorkspaceFile(file); setTempoDraft(String(checked.tempo));
+      if (previewSection && !checked.sections?.some(section => section.name === previewSection)) setPreviewSection(undefined);
+      snapshotRef.current = { ...current, revision: revision.current, source: file.source, appliedSource: file.source, savedSource: file.source, workspaceFile: file };
+    }
+    updateChats(previous => previous.map(chat => matches(chat.snapshot)
+      ? { ...chat, snapshot: chat.id === activeChatRef.current && visible ? snapshotRef.current : { ...chat.snapshot, source: file.source, appliedSource: file.source, savedSource: file.source, workspaceFile: file } }
+      : chat));
+  });
+  useEffect(() => getProjectWorkspace().onEvent(event => {
+    if (event.type === "file-changed" && event.file?.path.endsWith(".banger")) receiveAgentFile(event.file, event.projectId, event.threadId);
+  }), []);
+
   async function save() {
-    if (filePending.current || workspaceBusy || projectRunning) return;
+    if (filePending.current || workspaceBusy || projectRunning || songAgentEditing()) return;
     filePending.current = true;
     setFileBusy(true);
     const snapshot = sourceRef.current;
@@ -530,7 +562,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   }
 
   function loadGeneratedFile(file: BangerFile, generatedRevision: number, automatic=false) {
-    if (filePending.current || workspaceBusy || (!automatic && !canReplaceSong())) return;
+    if (filePending.current || workspaceBusy || (!automatic && (songAgentEditing() || !canReplaceSong()))) return;
     if (revision.current !== generatedRevision && !window.confirm("Your project changed after this request. Load the generated file and replace the current editor?")) return;
     try {
       const next = compileMusic(file.source);
@@ -624,7 +656,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         </svg>
         <span>{phraseTrack.pianoRoll.length} notes · {phrase.bars ?? 1} {(phrase.bars ?? 1) === 1 ? "bar" : "bars"}</span>
       </button> : <div className="producer-step-grid" style={{ "--track-steps": phraseTrack.steps.length } as CSSProperties} role="group" aria-label={`${track.name} steps`}>
-        {phraseTrack.steps.map((step, stepIndex) => <SequencerStep key={stepIndex} step={step} index={stepIndex} name={track.name}
+        {phraseTrack.steps.map((step, stepIndex) => <SequencerStep readOnly={agentEditing} key={stepIndex} step={step} index={stepIndex} name={track.name}
           selected={hasSelectedStep && selectedStep?.track === index && selectedStep.index === stepIndex}
           onSelect={() => setSelectedStep({ track: index, index: stepIndex, pattern: selectedPattern, epoch: editorEpoch })}
           current={phrasePlaying && Math.floor(phase * phraseTrack.steps.length) === stepIndex}
@@ -633,10 +665,10 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
       </div>}
         </div>
       </div>
-      <div className="producer-track-mix">
+      <fieldset disabled={editingDisabled} className="producer-track-mix producer-edit-fields">
         <Button className="producer-track-mute" variant={!!track.muted ? "primary" : "ghost"} aria-pressed={!!track.muted} aria-label={`Mute ${track.name}`} title={!!track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`} onClick={() => editTrack(index, { ...track, muted: !track.muted })}>M</Button>
         <Button variant={!!track.solo ? "primary" : "ghost"} aria-pressed={!!track.solo} aria-label={`Solo ${track.name}`} title={`Solo ${track.name}`} onClick={() => editTrack(index, { ...track, solo: !track.solo })}>S</Button>
-      </div>
+      </fieldset>
     </div>;
     const editor = <div key={index} className="producer-track-editor" id={`track-editor-${index}`} hidden={expandedTrack !== index}>
         <div className="producer-focused-heading">
@@ -646,17 +678,17 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         <label className="producer-focused-pattern">Pattern <Select aria-label={`${track.name} pattern`} value={selectedPattern ?? ""} onChange={event => setPatterns({ ...patterns, [index]: event.target.value })}><option value="">Base pattern</option>{track.patterns?.map(pattern => <option key={pattern.name}>{pattern.name}</option>)}</Select></label>
         <TrackEditorTabs id={`track-${index}`} name={track.name} active={editorTab} onSelect={setEditorTab} panels={{
           notes: <>
-            {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={draft || fileBusy} visible={beatStudio && view === "sequencer" && expandedTrack === index && editorTab === "notes"} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
+            {track.source.kind === "instrument" && <PianoRoll key={`${editorEpoch}-${track.name}-${selectedPattern ?? "base"}`} track={phraseTrack} beats={(phrase.bars ?? 1) * 4} disabled={editingDisabled} visible={beatStudio && view === "sequencer" && expandedTrack === index && editorTab === "notes"} playing={phrasePlaying} phase={phase} onChange={editPhrase} />}
             {track.source.kind === "sound" && <p className="producer-empty">Edit this pattern with the steps in the track list.</p>}
             <details className="producer-pattern-settings"><summary>Pattern settings</summary>
-              <PatternControls hidePicker track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })}
+              <PatternControls disabled={editingDisabled} hidePicker track={track} selected={selectedPattern ?? ""} onSelect={name => setPatterns({ ...patterns, [index]: name })}
                 onRename={(oldName, name) => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.map(pattern => pattern.name === oldName ? { ...pattern, name } : pattern) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === oldName ? { ...binding, pattern: name } : binding) })) })}
                 onRemove={name => edit({ ...program, tracks: program.tracks.map((item,i) => i === index ? { ...track, patterns: track.patterns!.filter(pattern => pattern.name !== name) } : item), sections: program.sections?.map(section => ({ ...section, tracks: section.tracks.map(binding => binding.track === track.name && binding.pattern === name ? { track: track.name } : binding) })) })}
                 onChange={next => editTrack(index, next)} />
             </details>
           </>,
           sound: <>
-            <div className="producer-track-editor-heading">
+            <fieldset disabled={editingDisabled} className="producer-track-editor-heading producer-edit-fields">
               <div className="producer-track-identity">
                 <span className="producer-track-number">{String(index + 1).padStart(2, "0")}</span>
                 <div className="producer-track-fields">
@@ -680,18 +712,18 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
                 {Array.from({ length: 49 }, (_, i) => i + 24).map(midi => <option key={midi} value={midi}>{noteName(midi)}</option>)}
               </Select>}
               <Button variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>Remove track</Button>
-            </div>
-            <SoundDesign key={track.source.name} track={track} phrase={phraseTrack} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
+            </fieldset>
+            <SoundDesign key={track.source.name} track={track} phrase={phraseTrack} disabled={editingDisabled} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
           </>,
           effects: <>
-            <TrackEffects open track={track} tracks={program.tracks.map(item => item.name)} disabled={draft || fileBusy} onChange={next => editTrack(index, { ...track, ...next })} />
+            <TrackEffects open track={track} tracks={program.tracks.map(item => item.name)} disabled={editingDisabled} onChange={next => editTrack(index, { ...track, ...next })} />
           </>,
           routing: <>
             <LevelMeter name={track.name} level={playback.meters.tracks[track.name]?.peak} />
-            <TrackRouting program={program} index={index} onChange={edit} />
+            <fieldset disabled={editingDisabled} className="producer-edit-fields"><TrackRouting program={program} index={index} onChange={edit} /></fieldset>
           </>,
           automation: <>
-            <AutomationEditor name={track.name} curves={track.automation} effects={track.effects} beats={(phrase.bars ?? 1) * 4} onChange={automation => editTrack(index, { ...track, automation })} />
+            <fieldset disabled={editingDisabled} className="producer-edit-fields"><AutomationEditor name={track.name} curves={track.automation} effects={track.effects} beats={(phrase.bars ?? 1) * 4} onChange={automation => editTrack(index, { ...track, automation })} /></fieldset>
           </>,
         }} />
       </div>;
@@ -760,6 +792,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         />
       </Modal>}
 
+      {agentEditing && !chatView && studio !== "library" && <div className="producer-agent-banner" role="status">Agent editing this song. Editing is temporarily disabled. You can play and explore; saved changes appear automatically.</div>}
       <section hidden={chatView || !beatStudio} className="producer-transport" aria-label="Transport">
         <div className="producer-play-controls">
           <Button variant="primary" onClick={() => void playback.play()} disabled={playback.starting || playback.state.playing} className="producer-play">
@@ -768,10 +801,10 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
           <IconButton aria-label="Stop playback" variant="secondary" onClick={stopPlayback} disabled={!playback.state.playing && !playback.starting}><span aria-hidden="true">■</span></IconButton>
         </div>
         <div className="producer-playback-mode" role="group" aria-label="Playback mode">
-          <Button variant={songMode ? "primary" : "secondary"} aria-pressed={songMode} disabled={draft || fileBusy || !program.timeline?.length} title={program.timeline?.length ? "Play the song arrangement" : "Add a song timeline to enable Song mode"} onClick={() => setTransportMode(true)}>Song</Button>
-          <Button variant={!songMode ? "primary" : "secondary"} aria-pressed={!songMode} disabled={draft || fileBusy} onClick={() => setTransportMode(false)}>Pattern</Button>
+          <Button variant={songMode ? "primary" : "secondary"} aria-pressed={songMode} disabled={editingDisabled || !program.timeline?.length} title={program.timeline?.length ? "Play the song arrangement" : "Add a song timeline to enable Song mode"} onClick={() => setTransportMode(true)}>Song</Button>
+          <Button variant={!songMode ? "primary" : "secondary"} aria-pressed={!songMode} disabled={editingDisabled} onClick={() => setTransportMode(false)}>Pattern</Button>
         </div>
-        <label className="producer-launch-pattern">Launch <Select aria-label="Launch pattern" value={program.activePattern ?? ""} disabled={draft || fileBusy} onChange={event => launchPattern(event.target.value)}>
+        <label className="producer-launch-pattern">Launch <Select aria-label="Launch pattern" value={program.activePattern ?? ""} disabled={editingDisabled} onChange={event => launchPattern(event.target.value)}>
           <option value="">Base</option>{patternNames.map(name => <option key={name} value={name}>{name}</option>)}
         </Select></label>
         <div className="producer-transport-summary">
@@ -783,7 +816,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
           </div>
           {playback.state.hasPendingUpdate && <span className="producer-transport-state" role="status">Changes next bar</span>}
         </div>
-        <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill} fill={playback.fill}
+        <TransportControls program={program} disabled={editingDisabled} onChange={edit} onFill={playback.setFill} fill={playback.fill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
           onLaunch={launchPattern} />
         <span className="producer-mode-status" role="status">{previewSection ? `Previewing ${previewSection}` : songMode ? "Song arrangement" : `Pattern loop · ${program.activePattern || "Base"}`}</span>
@@ -808,7 +841,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
               </div>
               <div className="producer-sequence-controls">
                 <label className="producer-tempo" htmlFor="producer-tempo">
-                  <Input id="producer-tempo" type="number" inputMode="numeric" min={20} max={300} step={1} value={tempoDraft} disabled={draft || fileBusy}
+                  <Input id="producer-tempo" type="number" inputMode="numeric" min={20} max={300} step={1} value={tempoDraft} disabled={editingDisabled}
                     onChange={event => setTempoDraft(event.target.value)}
                     onBlur={() => {
                       const tempo = Number(tempoDraft);
@@ -832,7 +865,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
               </fieldset>
             </div>
             <StepInspector name={hasSelectedStep ? inspectedTrack!.name : undefined} index={selectedStep?.index} pattern={selectedStep?.pattern}
-              step={hasSelectedStep ? inspectedPhrase!.steps[selectedStep!.index] : undefined} disabled={draft || fileBusy}
+              step={hasSelectedStep ? inspectedPhrase!.steps[selectedStep!.index] : undefined} disabled={editingDisabled}
               newStep={inspectedTrack?.source.kind === "sound" ? { kind: "hit" } : { kind: "note", midi: pitch[selectedStep?.track ?? 0] ?? 36 }}
               onChange={step => {
                 if (!hasSelectedStep || !selectedStep || !inspectedTrack || !inspectedPhrase) return;
@@ -842,28 +875,28 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
                   : { ...inspectedTrack, steps });
               }} />
             {program.tracks.length === 0 && <p className="producer-empty">No tracks yet. Add a track and tap a few steps.</p>}
-            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={draft || fileBusy || program.tracks.length >= 16}>+ Add track</Button></div>
+            <div className="producer-sequence-footer"><Button variant="secondary" onClick={addTrack} disabled={editingDisabled || program.tracks.length >= 16}>+ Add track</Button></div>
           </Panel>
 
         </TabsContent>
         <TabsContent forceMount value="mixer" id="studio-panel-mixer" aria-labelledby="studio-tab-mixer" hidden={!beatStudio || view !== "mixer"} tabIndex={0}>
-          <Panel><MixerView program={program} disabled={draft || fileBusy} meters={playback.meters} onTrackChange={editTrack} onChange={edit} /></Panel>
+          <Panel><MixerView program={program} disabled={editingDisabled} meters={playback.meters} onTrackChange={editTrack} onChange={edit} /></Panel>
         </TabsContent>
         <TabsContent forceMount value="song" id="studio-panel-song" aria-labelledby="studio-tab-song" hidden={!beatStudio || view !== "song"} tabIndex={0}>
-          <Panel><SongArrangement program={program} disabled={draft || fileBusy} section={playback.state.section} preview={previewSection} onPreview={preview} onChange={edit} /></Panel>
+          <Panel><SongArrangement program={program} disabled={editingDisabled} section={playback.state.section} preview={previewSection} onPreview={preview} onChange={edit} /></Panel>
         </TabsContent>
         <TabsContent forceMount value="source" id="studio-panel-source" aria-labelledby="studio-tab-source" hidden={!beatStudio || view !== "source"} tabIndex={0}>
           <Panel className="producer-editor" aria-labelledby="source-title">
             <div className="producer-editor-heading"><div><p className="producer-eyebrow">The source</p><h2 id="source-title">{fileName}</h2></div><span className={`producer-source-status${result.error ? " has-error" : ""}`}>{result.error ? "Check source" : draft ? "Unapplied" : "In sync"}</span></div>
             <label className="producer-sr-only" htmlFor="producer-source">Banger source code</label>
-            <SourceEditor source={source} error={result.error} errorOffset={result.errorOffset} disabled={fileBusy} editor={editor} onChange={writeSource} onApply={apply} />
-            <div className="producer-editor-actions"><Button variant="primary" disabled={!draft || !result.program || fileBusy} onClick={apply}>Apply source</Button><Button variant="ghost" disabled={!draft || fileBusy} onClick={() => { writeSource(appliedSource); setNotice("Draft reverted to the current sequence."); }}>Revert draft</Button><span>⌘ / Ctrl + Enter</span></div>
+            <SourceEditor source={source} error={result.error} errorOffset={result.errorOffset} disabled={fileBusy} readOnly={agentEditing} editor={editor} onChange={next => { if (!songAgentEditing()) writeSource(next); }} onApply={apply} />
+            <div className="producer-editor-actions"><Button variant="primary" disabled={!draft || !result.program || fileBusy || agentEditing} onClick={apply}>Apply source</Button><Button variant="ghost" disabled={!draft || fileBusy || agentEditing} onClick={() => { if (songAgentEditing()) return; writeSource(appliedSource); setNotice("Draft reverted to the current sequence."); }}>Revert draft</Button><span>⌘ / Ctrl + Enter</span></div>
             <div id="producer-diagnostics" className={result.error ? "producer-diagnostics has-error" : "producer-diagnostics"} role="status">{result.error ?? (draft ? "Source is valid. Apply it to update the sequence." : "Compiled. The source and sequence match.")}</div>
             <p id="producer-source-help" className="producer-source-help">The first compiler error is underlined in red. Edits stay in this tab until saved. Invalid drafts keep the last applied sequence playing. Save also preserves unapplied drafts.</p>
           </Panel>
         </TabsContent>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          {hasProject && <MusicWorkshop exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !chatView} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
+          {hasProject && <MusicWorkshop editingDisabled={agentEditing} exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !chatView} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
         {studio === "library" && <SongLibrary onOpenProject={id => void openRecent(id)} actionsTarget={libraryActionsTarget} onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
       </Tabs>
@@ -880,6 +913,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
               const current = chatsRef.current.find(item => item.id === chat.id);
               if (!current) return;
               const latest = activeChatRef.current === chat.id ? snapshotRef.current : current.snapshot;
+              if (latest.source === file.source) return;
               if ((latest.source !== bound.source && latest.revision !== requestRevision) || latest.workspaceFile?.path !== file.path) {
                 if (activeChatRef.current === chat.id) setNotice("The agent saved project changes. Your newer studio edits are preserved. Reopen the saved song to review them.");
                 return;

@@ -27,7 +27,7 @@ const audioName=(version:MusicVersion)=>version.audioVersion===1?'Original WAV':
 type Pending={id:string;lyrics:string[];styles:string[];upload?:boolean};
 
 export type LyricAgent = { run(prompt:string,signal:AbortSignal):Promise<string>; fullSend:FullSend; checkFullSend(vocals:boolean):void };
-export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studioPath,hasProject=false,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{exportTarget?:HTMLDivElement|null;onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;hasProject?:boolean;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
+export function MusicWorkshop({editingDisabled=false,exportTarget,onLyricAgent,cloud,studioFile,studioPath,hasProject=false,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{editingDisabled?:boolean;exportTarget?:HTMLDivElement|null;onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;hasProject?:boolean;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
   const {languageModel,vocals}=useGenerationAccess();
   const lyricRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>lyricRequest.current?.abort(),[cloud]);
@@ -67,7 +67,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
   const dirty=draftDirty||chunkDirty;
   useEffect(()=>{onEditStateChange?.({dirty,busy});return()=>onEditStateChange?.({dirty:false,busy:false});},[dirty,busy,onEditStateChange]);
   const running=jobs.some(job=>['queued','running'].includes(job.status));
-  const blocked=busy||running;
+  const blocked=busy||running||editingDisabled;
   const {attach:attachAudio,...audio}=useMusicAudio(backend,song,active,history);
   useEffect(()=>{
     const data=readSingAlong(song),words=data.lines.flatMap(line=>line.words);

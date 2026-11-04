@@ -28,7 +28,7 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
       <Button variant="ghost" disabled={disabled || !timeline.length} onClick={() => { onPreview(); const next = { ...program, chainEnabled: false }; delete next.timeline; onChange(next); }}>Clear timeline</Button>
       {preview && <Button variant="secondary" onClick={() => onPreview()}>Stop preview</Button>}
     </div>
-    <fieldset disabled={disabled}>
+    <fieldset>
       {!sections.length && <p>Create a section below, then add it to the song.</p>}
       <ol className="studio-song-timeline" aria-label="Song timeline">{timeline.map((entry, index) => {
         const item = sections.find(item => item.name === entry.section)!;
@@ -46,12 +46,12 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
             return <span key={track.name} data-active={active} title={`${track.name}: ${active ? binding?.pattern ?? "base" : "silent"}`} />;
           })}</div>
           <span>{item.bars} {item.bars === 1 ? "bar" : "bars"}</span>
-          <label className="studio-song-repeats">Repeats <Input aria-label={`Timeline ${index + 1} repeats`} type="number" min={1} max={64} value={entry.repeats ?? 1} onChange={e => onChange({ ...program, timeline: timeline.map((item, i) => i === index ? { ...item, repeats: Number(e.target.value) } : item) })} /></label>
+          <label className="studio-song-repeats">Repeats <Input disabled={disabled} aria-label={`Timeline ${index + 1} repeats`} type="number" min={1} max={64} value={entry.repeats ?? 1} onChange={e => onChange({ ...program, timeline: timeline.map((item, i) => i === index ? { ...item, repeats: Number(e.target.value) } : item) })} /></label>
           <div className="studio-song-row-actions">
-            <Button variant="ghost" disabled={timeline.length >= MUSIC_LIMITS.timeline} aria-label={`Duplicate timeline ${index + 1}`} onClick={() => duplicate(index)}>⧉</Button>
-            <Button variant="ghost" aria-label={`Move timeline ${index + 1} earlier`} disabled={!index} onClick={() => move(index, index - 1)}>↑</Button>
-            <Button variant="ghost" aria-label={`Move timeline ${index + 1} later`} disabled={index === timeline.length - 1} onClick={() => move(index, index + 1)}>↓</Button>
-            <Button variant="ghost" aria-label={`Remove timeline ${index + 1}`} onClick={() => onChange({ ...program, timeline: timeline.filter((_, i) => i !== index) })}>×</Button>
+            <Button variant="ghost" disabled={disabled || timeline.length >= MUSIC_LIMITS.timeline} aria-label={`Duplicate timeline ${index + 1}`} onClick={() => duplicate(index)}>⧉</Button>
+            <Button variant="ghost" aria-label={`Move timeline ${index + 1} earlier`} disabled={disabled || !index} onClick={() => move(index, index - 1)}>↑</Button>
+            <Button variant="ghost" aria-label={`Move timeline ${index + 1} later`} disabled={disabled || index === timeline.length - 1} onClick={() => move(index, index + 1)}>↓</Button>
+            <Button disabled={disabled} variant="ghost" aria-label={`Remove timeline ${index + 1}`} onClick={() => onChange({ ...program, timeline: timeline.filter((_, i) => i !== index) })}>×</Button>
           </div>
         </li>;
       })}</ol>
@@ -69,7 +69,7 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
       </DropdownMenu>
       <p className="studio-song-help">Drag rows to reorder, or use the arrow buttons. Click a section badge to preview. Enable Chain to play the song in order.</p>
       <details className="studio-arrangement"><summary>Edit sections · {sections.length}</summary>
-        <div className="studio-sections">{sections.map((item, index) => <section key={item.name} className="studio-section">
+        <fieldset disabled={disabled} className="studio-sections producer-edit-fields">{sections.map((item, index) => <section key={item.name} className="studio-section">
           <Input aria-label={`${item.name} section name`} defaultValue={item.name} onBlur={event => {
             const name = event.target.value; if (name === item.name) return;
             if (!onChange({ ...program, sections: sections.map((section, i) => i === index ? { ...item, name } : section), ...(program.timeline ? { timeline: timeline.map(entry => entry.section === item.name ? { ...entry, section: name } : entry) } : {}) })) event.target.value = item.name;
@@ -82,9 +82,9 @@ export function SongArrangement({ program, disabled, section, preview, onPreview
             </Select></label>;
           })}
           <Button variant="ghost" onClick={() => { if (preview === item.name) onPreview(); onChange({ ...program, sections: sections.filter((_, i) => i !== index), timeline: timeline.filter(entry => entry.section !== item.name) }); }}>Remove {item.name}</Button>
-        </section>)}</div>
+        </section>)}</fieldset>
       </details>
-      <Button variant="secondary" disabled={sections.length >= MUSIC_LIMITS.sections} onClick={() => {
+      <Button variant="secondary" disabled={disabled || sections.length >= MUSIC_LIMITS.sections} onClick={() => {
         let number = sections.length + 1; while (sections.some(item => item.name === `section_${number}`)) number++;
         onChange({ ...program, sections: [...sections, { name: `section_${number}`, bars: 4, tracks: program.tracks.map(track => ({ track: track.name })) }] });
       }}>+ Add section</Button>
