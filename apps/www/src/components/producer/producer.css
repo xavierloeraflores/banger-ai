@@ -31,6 +31,11 @@ body { margin: 0; background: #141415; }
 .producer .producer-project-required h2 { font-size: 24px; line-height: 1.25; }
 .producer-start-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .producer-start-actions > button { flex: 1 1 100%; }
+.producer-start-recents { margin-top: 24px; }
+.producer-start-recents h3 { margin: 0 0 8px; font-size: 13px; font-weight: 500; color: var(--producer-dim); }
+.producer-start-recents ul { display: grid; gap: 8px; max-height: 192px; overflow-y: auto; list-style: none; margin: 0; padding: 4px; }
+.producer-start-recents li { min-width: 0; }
+.producer-start-card .producer-start-recents button { width: 100%; height: auto; min-height: 36px; justify-content: flex-start; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .producer-start-card [role="alert"] { color: #ffb4ab; }
 .producer-header { min-height: 68px; display: flex; align-items: center; gap: 32px; border-bottom: 1px solid var(--producer-border); }
 .producer-wordmark { color: var(--producer-text); font-size: 32px; font-weight: 800; text-decoration: none; letter-spacing: -2px; }
