@@ -15,7 +15,7 @@ const destinations = [
 ] as const;
 
 export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, children }: {
-  active: AppDestination;
+  active: AppDestination | "chat";
   expanded: boolean;
   onToggle(): void;
   onNavigate(destination: AppDestination): void;
@@ -49,7 +49,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
       </nav>
       <section className="app-sidebar-chats" aria-label="Chats">
         <div className="app-sidebar-section-heading"><span hidden={!expanded}>Chats</span><button type="button" aria-label="New chat" title="New chat" disabled={!onNewChat} onClick={onNewChat}>+</button></div>
-        {chats.map(chat => <button key={chat.id} type="button" className="app-sidebar-chat" aria-current={chat.id === activeChat ? "true" : undefined} aria-label={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} title={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} onClick={() => onChat?.(chat.id)}>
+        {chats.map(chat => <button key={chat.id} type="button" className="app-sidebar-chat" aria-current={chat.id === activeChat ? "page" : undefined} aria-label={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} title={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} onClick={() => onChat?.(chat.id)}>
           <span className="app-chat-indicator" data-status={chat.status} aria-hidden="true">{chat.status === "running" ? "◌" : chat.status === "error" ? "!" : chat.status === "done" ? "✓" : "◇"}</span>
           <span hidden={!expanded} className="app-chat-label"><span>{chat.title}</span><small>{chat.snapshot.folder?.name ?? chat.snapshot.fileName}</small></span>
         </button>)}

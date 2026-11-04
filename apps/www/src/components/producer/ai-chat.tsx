@@ -16,7 +16,7 @@ import type { ChatHistory, ChatTurn as Turn, ProjectChat } from "@/lib/chat-sess
 import type { WorkspaceFile } from "@/lib/project-workspace";
 
 type ProjectSnapshot = { source: string; revision: number; activeFile?: string };
-type Props = { chatId: string; projectId?: string; active: boolean; openToken: number; initialHistory?: ChatHistory;
+type Props = { chatId: string; projectId?: string; active: boolean; initialHistory?: ChatHistory;
   onUpdate(id: string, update: Partial<ProjectChat>): void; onNewChat(): void; onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
   folderName: string; projectEpoch: number; activeFile?: string; projectDirty: boolean;
   onResolveEdits(action: "save" | "discard"): Promise<ProjectSnapshot>;
@@ -28,7 +28,7 @@ const suggestions = [
   "Make a rap song with lyrics for the verses and hook",
 ];
 
-export function AIChat({ chatId, projectId, active, openToken, initialHistory, onUpdate, onNewChat, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
+export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, onNewChat, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
   const [permissions, setPermissions] = useState(initialHistory?.permissions ?? { beat: !vocalStudio, lyrics: vocalStudio });
   const [fullSend, setFullSend] = useState(initialHistory?.fullSend ?? false);
   const [progress, setProgress] = useState("");
@@ -40,9 +40,6 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
   const resetProjectHistory = useRef(false);
   const projectMode = desktop && !!folderName;
   const editsDialog = useRef<ModalHandle>(null);
-  const [open, setOpen] = useState(false);
-  const dialog = useRef<ModalHandle>(null);
-  const launcher = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(initialHistory?.prompt ?? "");
   const [turns, setTurns] = useState<Turn[]>(initialHistory?.turns ?? []);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
@@ -65,9 +62,9 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
     });
   }, [chatId, onUpdate, prompt, turns, targetFile, permissions, fullSend, pendingPrompt, busy, error, projectMode]);
   useEffect(() => {
-    if (!active) { dialog.current?.close(); return; }
-    if (openToken) { dialog.current?.showModal(); queueMicrotask(() => setOpen(true)); }
-  }, [active, openToken]);
+    if (active) input.current?.focus();
+    else editsDialog.current?.close();
+  }, [active]);
   const latestFiles = new Map<string, BangerFile>();
   for (const turn of turns) for (const file of turn.reply.files) {
     latestFiles.delete(file.name);
@@ -121,7 +118,7 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
 
   useEffect(() => {
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: "instant" });
-  }, [turns, pendingPrompt, error, open, activity]);
+  }, [turns, pendingPrompt, error, active, activity]);
 
   async function send(action?: "save" | "discard") {
     const text = prompt.trim();
@@ -188,7 +185,7 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
         projectRequest.current = false;
         request.current = null;
         setPendingPrompt(null);
-        if (dialog.current?.open) input.current?.focus();
+        input.current?.focus();
       }
       return;
     }
@@ -221,7 +218,7 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
       if (request.current === controller) {
         request.current = null;
         setPendingPrompt(null);
-        if (dialog.current?.open) input.current?.focus();
+        input.current?.focus();
       }
     }
   }
@@ -247,23 +244,11 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
 
   if (!active) return null;
   return <>
-    <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined} className="ai-chat-launcher-hint"><IconButton disabled={!languageModel} ref={launcher} className="ai-chat-launcher" variant="primary" aria-label="Open AI chat"
-      aria-haspopup="dialog" aria-expanded={open} aria-controls="ai-chat-dialog"
-      onClick={() => { dialog.current?.showModal(); setOpen(true); if (!busy) input.current?.focus(); }}>
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5A8.5 8.5 0 0 1 9.5 3h3a8.5 8.5 0 0 1 8.5 8.5Z" transform="translate(1 -1) scale(.95)" />
-        <path d="M7 10h8M7 14h5" />
-      </svg>
-    </IconButton></KeyHint>
-    <Modal dismissOnOutsideClick ref={dialog} id="ai-chat-dialog" className="ai-chat-dialog" aria-labelledby="ai-chat-title"
-      onClose={() => { setOpen(false); launcher.current?.focus(); }}
-      >
-    <Panel className="producer-ai" aria-labelledby="ai-chat-title">
+    <Panel id="ai-chat-view" className="producer-ai" aria-labelledby="ai-chat-title">
     <div className="producer-panel-heading">
-      <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Banger AI</h2></div>
+      <div><p className="producer-eyebrow">{folderName || fileName}</p><h1 id="ai-chat-title">{turns[0]?.prompt.slice(0, 70) || "New chat"}</h1></div>
       <div className="ai-chat-heading-actions"><span className="producer-tag">{connection}</span>
         <Button variant="ghost" onClick={onNewChat}>New chat</Button>
-        <IconButton className="ai-chat-close" variant="ghost" aria-label="Close AI chat" onClick={() => dialog.current?.close()}>×</IconButton>
       </div>
     </div>
     <AIModelSelect id="chat-ai" reasoningOnly />
@@ -318,7 +303,6 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
       {notice && <p role="status">{notice}</p>}
     </div>
     </Panel>
-    </Modal>
     <Modal ref={editsDialog} className="producer-project-dialog ai-chat-edits-dialog" aria-labelledby="ai-chat-edits-title" aria-describedby="ai-chat-edits-description"
       onCancel={event => { if (busy) event.preventDefault(); }}
       onClose={() => input.current?.focus()}>
@@ -332,4 +316,13 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
       </div>
     </Modal>
   </>;
+}
+
+export function AIChatLauncher({ onNewChat }: { onNewChat(): void }) {
+  return <IconButton className="ai-chat-launcher" variant="primary" aria-label="Start a new chat" title="New chat" aria-controls="ai-chat-view" onClick={onNewChat}>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5A8.5 8.5 0 0 1 9.5 3h3a8.5 8.5 0 0 1 8.5 8.5Z" transform="translate(1 -1) scale(.95)" />
+      <path d="M8 11h8M12 7v8" />
+    </svg>
+  </IconButton>;
 }
