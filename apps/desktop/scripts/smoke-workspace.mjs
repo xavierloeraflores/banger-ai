@@ -191,12 +191,12 @@ async function run(window) {
     await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'verse.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
     await wait("document.querySelector('#producer-source').value.includes('tempo 110')");
     await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#producer-source').disabled");
-    // Exercise the real export button after loading the workspace song.
+    // Exercise the real export menu after loading the workspace song.
     await evaluate("document.querySelector('#project-controls').close()");
     window.webContents.session.on('will-download', event => event.preventDefault());
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
     for (let version = 1; version <= 2; version++) {
-      await evaluate("[...document.querySelectorAll('.studio-export button')].find(b=>b.textContent.includes('Export WAV')).click()");
+      await evaluate("(() => { const select = document.querySelector('.studio-export [aria-label=\"Export song\"]'); select.value = 'export'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
       await wait("document.querySelector('.studio-export-status')?.textContent.includes('Exported stereo WAV')");
       const saved = await readFile(join(directory, `.banger/history/verse/instrumentals/verse.instrumental-v00${version}.wav`));
       assert.equal(saved.toString('ascii', 0, 4), 'RIFF');

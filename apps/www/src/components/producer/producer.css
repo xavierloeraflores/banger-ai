@@ -26,6 +26,9 @@ body { margin: 0; background: #141514; }
 .producer-start-card { width: min(100%, 520px); padding: clamp(24px, 5vw, 48px); border: 1px solid var(--producer-border); border-radius: 16px; background: var(--producer-panel); }
 .producer-start-card .producer-wordmark { margin-bottom: 32px; }
 .producer-start-card > p { color: var(--producer-dim); }
+.producer-project-dialog.producer-project-required { width: min(520px, calc(100vw - 32px)); padding: 0; }
+.producer-project-required .producer-start-card { width: 100%; border: 0; overflow-wrap: anywhere; }
+.producer .producer-project-required h2 { font-size: 24px; line-height: 1.25; }
 .producer-start-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .producer-start-actions > button { flex: 1 1 100%; }
 .producer-start-card [role="alert"] { color: #ffb4ab; }

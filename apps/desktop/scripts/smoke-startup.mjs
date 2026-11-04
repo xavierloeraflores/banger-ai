@@ -53,7 +53,7 @@ export async function smokeStartup(window, directory) {
   const idle = () => wait(window, "document.querySelector('.producer-start-card')?.getAttribute('aria-busy') === 'false'");
   const input = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(field.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await wait(window, "document.querySelector('.producer-start')");
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project']);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Open Library']);
   dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
   dialog.showSaveDialog = async () => ({ canceled: true });
   for (const label of ['Open Project', 'Create New Project', 'Load Sample Project']) { await click(window, label); await idle(); }
@@ -70,6 +70,8 @@ export async function smokeStartup(window, directory) {
   assert.match(await evaluate("document.querySelector('.producer-project').textContent"), /sample-project.*night-drive/);
   await wait(window, "document.querySelector('#workspace-file')");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('#project-controls > section')].map(s => s.querySelector('h2')?.textContent)"), ['Project Workspace', 'night-drive.banger', 'Export Controls']);
+  await click(window, 'Project');
+  await wait(window, "document.querySelector('#project-controls').open");
   await click(window, 'Create Song');
   await wait(window, "document.querySelector('.create-song-dialog')?.open");
   assert.equal(await evaluate("document.activeElement.getAttribute('aria-label')"), 'New song name');

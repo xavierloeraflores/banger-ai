@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   compileMusic,
   CompileError,
@@ -85,18 +85,25 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
-  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder } | null>(null);
-  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved, folder) => setSession({ file, saved, folder })} />;
-  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} initialFolder={session.folder} />;
+  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; studio: "beat" | "vocal" } | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [requiredStudio, setRequiredStudio] = useState<"beat" | "vocal" | null>(null);
+  if (!session && !libraryOpen) return <ProjectStart sample={initialFile} onOpenLibrary={() => setLibraryOpen(true)} onStart={(file, saved, folder) => setSession({ file, saved, folder, studio: "beat" })} />;
+  return <Studio key={session ? "project" : "library"} initialFile={session?.file ?? initialFile} sample={initialFile} initiallySaved={session?.saved ?? false} initialFolder={session?.folder} initialStudio={session?.studio ?? "library"} onRequireProject={setRequiredStudio}>
+    {requiredStudio && <ProjectStart sample={initialFile} requiredStudio={requiredStudio} onCancel={() => setRequiredStudio(null)} onStart={(file, saved, folder) => {
+      setSession({ file, saved, folder, studio: requiredStudio });
+      setRequiredStudio(null);
+    }} />}
+  </Studio>;
 }
 
-function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder }) {
+function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStudio, onRequireProject, children }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; initialStudio: "beat" | "vocal" | "library"; onRequireProject(studio: "beat" | "vocal"): void; children: ReactNode }) {
   const projectDialog = useRef<HTMLDialogElement>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
   const [projectEpoch, setProjectEpoch] = useState(0);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
-  function showProjects() { projectDialog.current?.showModal(); }
+  function showProjects() { if (!hasProject) { onRequireProject("beat"); return; } projectDialog.current?.showModal(); }
   const [vocalEdits,setVocalEdits]=useState({dirty:false,busy:false});
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const cloudMusicContext=useMemo<CloudMusicContext|undefined>(()=>cloudBinding?{url:cloudBinding.url,token:cloudBinding.token,projectId:cloudBinding.projectId,revision:cloudBinding.revision}:undefined,[cloudBinding]);
@@ -105,7 +112,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     try { return { program: compileMusic(initialFile.source), source: initialFile.source }; }
     catch { return { program: compileMusic(sample.source), source: sample.source }; }
   });
-  const [studio, setStudio] = useState<"beat" | "vocal" | "library">("beat");
+  const [studio, setStudio] = useState<"beat" | "vocal" | "library">(initialStudio);
   const [vocalBeat, setVocalBeat] = useState<BangerFile | null>(null);
   const [vocalRecording, setVocalRecording] = useState<StageRecording | null>(null);
   const [libraryRecording, setLibraryRecording] = useState<StageRecording | null>(null);
@@ -515,7 +522,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     <main className="producer" data-view={beatStudio ? view : studio}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
-        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
+        <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>}{hasProject ? ` / ${fileName}` : ""}</span></div>
         <div className="producer-file-actions">
           {studio === "library" && !stageProgram && <BandStageButton disabled title="Select a song with a beat to open the band stage." />}
           {stageProgram && <PerformanceStage program={stageProgram} fileName={beatStudio ? fileName : associatedBeat!.name} heroDisabled={(beatStudio && draft) || fileBusy || workspaceBusy} stopGame={stagePlayback.stop} readPerformance={stagePlayback.readPerformance} playing={stagePlayback.state.playing} starting={stagePlayback.starting} tempo={stagePlayback.state.playing ? stagePlayback.state.tempo ?? stageProgram.tempo : stageProgram.tempo} tracks={stageProgram.tracks.length} error={stagePlayback.error} onPlay={stagePlayback.play} onStop={beatStudio ? stopPlayback : stagePlayback.stop} onOpen={() => { if (stageRecording) { associatedPlayback.stop(); stageRecording.prepare?.(); } }} onClose={() => { if (!beatStudio) stagePlayback.stop(); }} />}
@@ -525,9 +532,11 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </Button>}
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
+            const next = event.target.value as "beat" | "vocal" | "library";
+            if (next !== "library" && !hasProject) { onRequireProject(next); return; }
             stopPlayback();
             setSingAlongOpen(false);
-            setStudio(event.target.value as "beat" | "vocal" | "library");
+            setStudio(next);
           }}>
             <option value="vocal">Vocal Studio</option>
             <option value="beat">Beat Studio</option>
@@ -537,7 +546,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <SettingsMenu />
       </header>
 
-      <dialog ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
+      {hasProject && <dialog ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
         <div className="producer-project-dialog-heading">
           <div className="project-dialog-title"><span className="project-dialog-emblem"><ProjectIcon name="folder" /></span><div><h2 id="project-controls-title">Project</h2><p id="project-controls-description">Open, save, export audio, and manage your music files.</p></div></div>
           <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
@@ -568,7 +577,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </details>}
         />
         <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy || workspaceBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
-      </dialog>
+      </dialog>}
 
       <section hidden={!beatStudio} className="producer-transport" aria-label="Transport">
         <div className="producer-play-controls">
@@ -677,10 +686,10 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
+          {hasProject && <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
         {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
-        <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
+        {hasProject && <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}
           onProjectBusy={setWorkspaceBusy} onProjectFile={(file, requestRevision) => {
@@ -690,8 +699,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
             }
             loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
             setWorkspaceFile(file); setProjectName(folderName); setCloudBinding(null);
-          }} />
+          }} />}
       </div>
+      {children}
       <footer className="producer-footer"><span role="status">{notice}</span></footer>
     </main>
   );
