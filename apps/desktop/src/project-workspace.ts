@@ -1,3 +1,4 @@
+import { projectRecord } from './library-records.js';
 import type { EditPermissions } from "@banger/agent";
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename, join } from "node:path";
@@ -166,6 +167,7 @@ export function installWorkspaceHandlers(options: {
     if (resetHistory === true) current.sessions.delete(thread);
     try {
       const selected = await options.selectModel();
+      await projectRecord(current.workspace.root, prompt);
       controller.signal.throwIfAborted();
       // Keep task history, but refresh provider credentials and model selection each run.
       let session = current.sessions.get(thread);

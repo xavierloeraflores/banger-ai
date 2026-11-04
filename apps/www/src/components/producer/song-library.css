@@ -46,3 +46,15 @@
 
 .song-library .library-card[aria-pressed="true"] { box-shadow: none; }
 .song-library .library-card:hover { background-image: none; }
+
+.library-record { min-width: 0; border: 1px solid var(--producer-border); border-radius: 12px; padding: 16px; background: var(--producer-surface); }
+.library-record h2 { margin: 16px 0 4px; font-size: 18px; overflow-wrap: anywhere; }
+.library-record h2:first-child { margin-top: 0; }
+.library-record-count { margin: 0 0 16px; font-size: 12px; color: var(--producer-dim); }
+.library-record-songs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.library-record .library-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; }
+.library-record .library-card > span:last-child { min-width: 0; }
+.library-record .library-card strong { margin: 0 0 6px; }
+.library-record .library-card[aria-pressed="true"] { background: var(--producer-bg); }
+.library-song-play { color: var(--producer-accent); }
+.library-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); align-items: start; }

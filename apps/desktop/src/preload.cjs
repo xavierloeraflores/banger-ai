@@ -60,7 +60,7 @@ contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
 }));
 
 contextBridge.exposeInMainWorld("bangerStorage", Object.freeze({
-  addToLibrary: (name, source, bytes) => ipcRenderer.invoke("banger:storage-add-library", name, source, bytes),
+  addToLibrary: (name, source, bytes, token) => ipcRenderer.invoke("banger:storage-add-library", name, source, bytes, token),
   prepare: (name, source) => ipcRenderer.invoke("banger:storage-prepare", name, source),
   audio: (token, bytes) => ipcRenderer.invoke("banger:storage-audio", token, bytes),
   readDraft: token => ipcRenderer.invoke("banger:storage-draft-read", token),

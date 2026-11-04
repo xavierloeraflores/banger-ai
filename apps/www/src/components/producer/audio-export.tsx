@@ -1,5 +1,5 @@
 import "./audio-worklet";
-import { saveLibraryBundle } from "@/lib/browser-library";
+import { saveLibraryBundle, captureLibraryRecord } from "@/lib/browser-library";
 import { ProjectIcon } from "./project-icon";
 import { useState } from "react";
 import type { MusicProgram } from "@banger/compiler";
@@ -23,6 +23,7 @@ export function AudioExport({ program, fileName, source, disabled, cloud, compac
     if (busy) return;
     setBusy(true); setStatus("Rendering audio…");
     const name = fileName.replace(/\.banger$/i, "").replace(/[^\w.-]/g, "_");
+    const record = cloud ? { id: cloud.projectId, name } : captureLibraryRecord(name);
     try {
       const token = await prepareSong(fileName, source);
       if (individual) {
@@ -40,8 +41,8 @@ export function AudioExport({ program, fileName, source, disabled, cloud, compac
           setStatus(`WAV uploaded to cloud revision ${cloud.revision}.`); return;
         }
         if (library) {
-          if (window.bangerStorage) await window.bangerStorage.addToLibrary(fileName, source, new Uint8Array(audio.wav));
-          else await saveLibraryBundle(name, audio.wav, { [`${name}.banger`]: source, [`${name}.wav`]: audio.wav }, { name: `${name}.banger`, source });
+          if (window.bangerStorage) await window.bangerStorage.addToLibrary(fileName, source, new Uint8Array(audio.wav), token);
+          else await saveLibraryBundle(name, audio.wav, { [`${name}.banger`]: source, [`${name}.wav`]: audio.wav }, { name: `${name}.banger`, source }, undefined, record);
         }
         download(audio.wav, `${name}.wav`); setStatus(library ? "Exported and saved to library." : `Exported stereo WAV with ${audio.tailSeconds.toFixed(1)} seconds of effect tails.`);
       }

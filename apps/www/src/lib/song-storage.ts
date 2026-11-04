@@ -4,7 +4,7 @@ export type LibrarySelection = { audio: string; instrumental?: string; lyrics?: 
 declare global {
   interface Window {
     bangerStorage?: {
-      addToLibrary(name: string, source: string, bytes: Uint8Array): Promise<{ name: string }>;
+      addToLibrary(name: string, source: string, bytes: Uint8Array, token?: string): Promise<{ name: string }>;
       prepare(name: string, source?: string): Promise<string>;
       audio(token: string, bytes: Uint8Array): Promise<string>;
       readDraft(token: string): Promise<LyricDraft | null>;

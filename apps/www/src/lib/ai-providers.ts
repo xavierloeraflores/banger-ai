@@ -149,3 +149,14 @@ export function hasLanguageModel(settings: AISettings): boolean {
   if (settings.chatgpt?.selected) return settings.chatgpt.accounts.some(account => account.id === settings.chatgpt?.activeAccountId && account.connected);
   return Boolean(settings.activeProvider && settings.providers[settings.activeProvider]?.configured);
 }
+
+export function browserArtworkCredentials(): import('@banger/agent').ArtworkCredentials | null {
+  try {
+    const settings = read();
+    for (const provider of ['vercel', 'meta'] as const) {
+      const value = settings.providers[provider];
+      if (value) return { provider, key: value.key };
+    }
+  } catch { /* Optional artwork must not interrupt an audio save. */ }
+  return null;
+}

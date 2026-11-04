@@ -204,3 +204,26 @@ renderer. They cover draft fitting, lyric saves, full/selected generation,
 version history, vocal exports and permission-scoped Full Send. Never enable
 this preload in a deployed server. Live provider access and Vercel Blob still
 require deployment-specific validation.
+
+### Library records and artwork
+
+Run migrations before deploying this version. `007_library_records.sql` groups
+existing account library songs by project and adds a persistent UUID per record.
+The library returns a record ID and name with each song. Cover images are served
+through the authenticated `/api/library/:recordId/artwork` endpoint.
+
+Saving audio returns before artwork generation. The client submits its saved
+Vercel or Meta key to the artwork endpoint, which schedules generation with
+Next.js `after`. Muse Wonder writes the cover brief from the initial project
+prompt, score and lyrics; Muse Image renders one square cover with `n=1` and
+`size=1024x1024`. Keys and provider errors are not stored. A database lease
+prevents simultaneous requests from generating duplicate covers. Library
+refresh resumes unfinished work when credentials are available, with at most
+three attempts per record. Without a compatible saved key, songs remain usable
+without artwork. Paid generation is covered by fixture tests, not live calls.
+
+Desktop projects keep their record UUID in `.banger/record.json`. Exported song
+metadata retains this ID, and a shared cover is stored in the user's `records`
+directory. Browser folder projects use their persistent project ID and an
+IndexedDB records store. Old local exports without project identity remain
+individual records because their original project cannot be recovered reliably.

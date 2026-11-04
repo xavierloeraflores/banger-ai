@@ -1,18 +1,19 @@
 import { mkdir, readdir, rm, writeFile, rename } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { songStorage as storage } from '@banger/harness';
 import { validateWav } from '@banger/elevenlabs';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
+import { projectRecord, createLibraryRecords } from './library-records.js';
 import { validateSource } from './project-files.js';
 
-export type SongLocation = { root: string; name: string };
+export type SongLocation = { root: string; name: string; projectRoot?: string };
 export type AudioKind = 'instrumentals' | 'vocals';
 export type LibrarySelection = { audio: string; instrumental?: string; lyrics?: string };
 export const songName = storage.songName;
 const { directory, readRegular, history, append } = storage;
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
-export function createSongStorage(userData: string) {
+export function createSongStorage(userData: string, records = createLibraryRecords(userData)) {
   const queues = new Map<string, Promise<unknown>>();
   function locked<T>(key: string, work: () => Promise<T>): Promise<T> {
     const task = (queues.get(key) ?? Promise.resolve()).then(work);
@@ -25,6 +26,7 @@ export function createSongStorage(userData: string) {
       validateWav(audio, false);
       if (source !== undefined) validateSource(source);
       const name = songName(song.name);
+      const record = await projectRecord(song.projectRoot ?? song.root);
       const library = await directory(userData, ['library']);
       const id = randomUUID();
       const staging = await directory(library, [`.${id}`]);
@@ -33,7 +35,7 @@ export function createSongStorage(userData: string) {
         const savedSource = source ?? await readRegular(join(await directory(song.root), `${name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
         if (savedSource !== undefined) await writeFile(join(staging, `${name}.banger`), savedSource);
         const savedLyrics = lyrics === undefined ? await storage.readCurrentLyrics(song) ?? undefined : JSON.stringify(lyrics, null, 2);
-        await writeFile(join(staging, `${name}.library.json`), JSON.stringify({ songType: songType ?? librarySongType(savedLyrics?.toString()) }));
+        await writeFile(join(staging, `${name}.library.json`), JSON.stringify({ record: { id: record.id, name: record.name }, songType: songType ?? librarySongType(savedLyrics?.toString()) }));
         if (savedLyrics !== undefined) await writeFile(join(staging, `${name}.lyric.json`), savedLyrics);
         for (const kind of ['instrumentals', 'vocals', 'lyrics'] as const) {
           const folder = await history(song, kind);
@@ -44,10 +46,12 @@ export function createSongStorage(userData: string) {
           }
         }
         await rename(staging, join(library, `${name}-${id}`));
+        await records.ensure(record, { name: record.name, source: savedSource?.toString(), lyrics: savedLyrics?.toString() }).catch(() => {});
         return { name };
       } catch (error) { await rm(staging, { recursive: true, force: true }); throw error; }
     },
     async prepare(root: string | undefined, name: string, source?: string): Promise<SongLocation> {
+      const projectRoot = root;
       if (root && name.endsWith('.banger') && name.includes('/')) {
         const parts=name.split('/');
         if(parts.some(part=>!part||part.startsWith('.')||/[\\\0]/.test(part)))throw new Error('Choose a song inside this project.');
@@ -61,7 +65,7 @@ export function createSongStorage(userData: string) {
         validateSource(source);
         await writeFile(join(root, `${name}.banger`), source, { flag: 'wx', mode: 0o600 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
       }
-      return { root, name };
+      return { root, name, projectRoot: projectRoot ?? root };
     },
     saveLyrics(song: SongLocation, document: unknown): Promise<string> { return storage.saveLyrics(song, document); },
     async saveAudio(song: SongLocation, kind: AudioKind, bytes: Uint8Array) {
@@ -93,17 +97,19 @@ export function createSongStorage(userData: string) {
       if (hasLyrics && !selection.instrumental) throw new Error('Choose an instrumental revision for this song with lyrics.');
       const instrumental = selection.instrumental ? await selected(selection.instrumental, 'instrumentals') : undefined;
       if (instrumental) validateWav(instrumental, false);
-      const library = scope === 'global' ? await directory(userData, ['library']) : await directory(song.root, ['.banger', 'library']);
-      return locked(join(library, song.name), async () => {
-        const target = join(library, song.name);
+      const record = await projectRecord(song.projectRoot ?? song.root);
+      const library = scope === 'global' ? await directory(userData, ['library']) : await directory(song.projectRoot ?? song.root, ['.banger', 'library']);
+      return locked(join(library, `${record.id}-${createHash('sha256').update(song.root).digest('hex').slice(0,12)}-${song.name}`), async () => {
+        const target = join(library, `${record.id}-${createHash('sha256').update(song.root).digest('hex').slice(0,12)}-${song.name}`);
         // Existing entries are never silently replaced by a later selection.
         await mkdir(target);
         try {
           await writeFile(join(target, `${song.name}.wav`), audio, { flag: 'wx' });
-          await writeFile(join(target, `${song.name}.library.json`), JSON.stringify({ songType: selection.audio.startsWith('vocals/') ? 'vocal' : 'instrumental' }), { flag: 'wx' });
+          await writeFile(join(target, `${song.name}.library.json`), JSON.stringify({ record: { id: record.id, name: record.name }, songType: selection.audio.startsWith('vocals/') ? 'vocal' : 'instrumental' }), { flag: 'wx' });
           if (instrumental) await writeFile(join(target, `${song.name}.instrumental.wav`), instrumental, { flag: 'wx' });
           if (source) await writeFile(join(target, `${song.name}.banger`), source, { flag: 'wx' });
           if (lyrics) await writeFile(join(target, `${song.name}.lyric.json`), lyrics, { flag: 'wx' });
+          await records.ensure(record, { name: record.name, source: source ? Buffer.from(source).toString() : undefined, lyrics: lyrics?.toString() }).catch(() => {});
           return { name: song.name, scope };
         } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
       });

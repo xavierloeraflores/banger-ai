@@ -136,3 +136,8 @@ const browserWorkspace: WorkspaceBridge = {
   onEvent: () => () => {},
 };
 export function getProjectWorkspace(): WorkspaceBridge { return window.bangerWorkspace ?? browserWorkspace; }
+
+export function browserProjectIdentity() {
+  const project = [...directories.values()].find(item => item.directory === root);
+  return project ? { id: project.id, name: project.name } : undefined;
+}

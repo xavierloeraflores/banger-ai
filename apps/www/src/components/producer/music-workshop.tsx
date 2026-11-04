@@ -15,7 +15,7 @@ import {assertLyricsPreserved,waitForMusic,type FullSend} from '@/lib/full-send'
 import {sendLyrics} from '@/lib/ai-chat';
 import {prepareSong,archiveWav,draftStorage,type LyricDraft} from '@/lib/song-storage';
 import {cloudRequest,type CloudSnapshot} from '@/lib/cloud-projects';
-import {saveLibraryBundle} from '@/lib/browser-library';
+import {saveLibraryBundle,captureLibraryRecord} from '@/lib/browser-library';
 import {renderWav,encodeWav} from '@banger/engine';
 import {compileMusic} from '@banger/compiler';
 import {vocalStyleEdits,librarySongType,chunkName,lyricsOf,lyricEditError,MAX_CHUNK_TEXT_CHARACTERS,MAX_CHUNK_TEXT_LINES,MAX_CHUNK_LINE_CHARACTERS,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
@@ -186,6 +186,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
     setNotice('WAV analyzed. Saved vocal styles are ready for generation.');
   }
   async function exportSong(library:boolean, selected=song, download=true) {
+    const record = cloud ? { id: cloud.projectId, name: studioFile.name.replace(/\.banger$/i, '') } : captureLibraryRecord(studioFile.name);
     const song=selected;
     if (!song || !backend) throw new Error('The composition is unavailable.');
     if (library) {
@@ -194,6 +195,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
         const files:Record<string,ArrayBuffer|string> = {};
         if (cloud) {
           const snapshot=await cloudRequest<CloudSnapshot>(cloud,`/projects/${cloud.projectId}`);
+          record.name = snapshot.name;
           for(const file of snapshot.files) if(file.path.endsWith('.banger')) files[file.path]=file.source;
         }
         let before:number|undefined;
@@ -217,7 +219,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
         if(song.beat)files[song.beat.name]=song.beat.source;
         if(!selected)throw new Error('Selected audio is unavailable.');
         const recording = versions.find(version => version.version === song.audioVersion) ?? song;
-        await saveLibraryBundle(song.name,selected,files,song.beat,librarySongType(recording));
+        await saveLibraryBundle(song.name,selected,files,song.beat,librarySongType(recording),record);
       }
     }
     if(download)await backend.save(song);
@@ -238,6 +240,7 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
     const beat={name:file.name,source:file.source};
     try {
       signal.throwIfAborted();
+      const record = cloud ? { id: cloud.projectId, name: file.name.replace(/\.banger$/i, '') } : captureLibraryRecord(file.name);
       const songToken=await prepareSong(studioPath,file.source);
       // Read saved lyrics afresh: a project agent may have just revised them.
       const existingDraft=withVocals?await drafts.read():null;
@@ -253,8 +256,8 @@ export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studio
       if(!withVocals){
         report('Adding WAV to library…');
         signal.throwIfAborted();
-        if(window.bangerStorage)await window.bangerStorage.addToLibrary(file.name,file.source,new Uint8Array(rendered.wav));
-        else await saveLibraryBundle(file.name.replace(/\.banger$/i,''),rendered.wav,{[file.name]:file.source,'original.wav':rendered.wav},beat);
+        if(window.bangerStorage)await window.bangerStorage.addToLibrary(file.name,file.source,new Uint8Array(rendered.wav),songToken);
+        else await saveLibraryBundle(file.name.replace(/\.banger$/i,''),rendered.wav,{[file.name]:file.source,'original.wav':rendered.wav},beat,undefined,record);
         return 'Full Send complete. WAV added to your library.';
       }
       const api=backend!;

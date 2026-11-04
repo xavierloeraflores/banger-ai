@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { app, BrowserWindow } from 'electron';
-import { mkdtemp, mkdir, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -43,7 +43,11 @@ try {
   assert.ok(validateWav(archived).durationMs >= 3000);
   assert.notDeepEqual(archived, mp3);
   for(const scope of ['global','project']) await evaluate(`window.bangerStorage.copyToLibrary(${JSON.stringify(token)},${JSON.stringify(scope)},${JSON.stringify({ audio:`vocals/${history.vocals[0]}`, instrumental:history.instrumentals[0] })})`);
-  assert.deepEqual(await readFile(join(root, 'library/midnight/midnight.wav')), archived);
+  assert.deepEqual(await readFile(join(root, 'library', (await readdir(join(root,'library'))).find(name=>name.endsWith('-midnight')), 'midnight.wav')), archived);
+  await evaluate(`window.bangerStorage.addToLibrary('midnight.banger','tempo 120;',new Uint8Array(${JSON.stringify(bytes)}),${JSON.stringify(token)})`);
+  const saved = await evaluate('window.bangerLibrary.list()');
+  const identity = JSON.parse(await readFile(join(project, '.banger/record.json'), 'utf8'));
+  assert.ok(saved.every(song => song.recordId === identity.id), 'exports retain the original project after switching');
   await assert.rejects(evaluate(`window.bangerStorage.audio('invalid-token',new Uint8Array(${JSON.stringify(bytes)}))`));
   await assert.rejects(toWav(new Uint8Array([1,2,3])));
   console.log('Storage smoke passed: real IPC, project switch, provider MP3 decoding, immutable WAVs, lyric sidecars, both libraries, invalid token and corrupt audio rejection.');

@@ -40,6 +40,7 @@ export async function runWebTask(user: string, project: string, body: unknown, s
   await authorize(user, project, true);
   if (snapshot.revision !== input.baseRevision) throw new ApiError(409, 'The project changed. Reload it before running the agent.');
   if (input.activeFile && !snapshot.files.some(file => file.path === input.activeFile)) throw new ApiError(404, 'Active song not found.');
+  await db().query('UPDATE projects SET original_prompt=COALESCE(original_prompt,$2) WHERE id=$1', [project,input.prompt]);
   const modelName = `${input.credentials.provider}:${input.credentials.model}:${input.credentials.reasoningLevel ?? ''}`;
   const lease = randomUUID();
   const history = await transaction(async client => {

@@ -125,3 +125,9 @@ This exercises background tasks, project switching, independent chat history,
 draft preservation, cancellation, and restoring chats and recent projects after
 reload. Also run `smoke:chat` and `smoke:workspace` for changes to these flows.
 The hosted workspace isolation test runs in the API integration suite.
+
+Record grouping and delayed artwork use
+`pnpm --filter @banger/desktop exec electron scripts/smoke-records.mjs`.
+This checks native and IndexedDB records, one square cover per record, automatic
+cover refresh, uninterrupted playback, and narrow layouts. Run `smoke-sing-along.mjs`
+as well when changing the library song list.

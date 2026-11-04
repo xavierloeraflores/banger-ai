@@ -4,7 +4,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_URL, getDevelopmentUrl, isAppUrl, serveApp } from "./static-app.js";
 import { MAX_PROJECT_BYTES, projectName, requireProjectExtension, validateSource } from "./project-files.js";
-import { generateLyrics, lyricRequestSchema, parseChatRequest, selectModel, selectLocalModel, runBangerAgent, publicAIError } from "@banger/agent";
+import { generateRecordArtwork, generateLyrics, lyricRequestSchema, parseChatRequest, selectModel, selectLocalModel, runBangerAgent, publicAIError } from "@banger/agent";
 import { createAISettingsStore } from "./ai-settings.js";
 import { createChatGPTAuth, ChatGPTError, publicChatGPTError } from "./chatgpt-auth.js";
 import { createLocalModel } from "./local-model.js";
@@ -167,7 +167,6 @@ void app.whenReady().then(() => {
     if (window?.isMinimized()) window.restore();
     window?.focus();
   });
-  songStorage = installSongStorage(senderWindow);
   const localModel = createLocalModel(join(app.getPath("userData"), "local-model"));
   app.on("before-quit", () => localModel.dispose());
   protocol.handle("banger", (request) => serveApp(request, fileURLToPath(new URL("./web/", import.meta.url))));
@@ -181,6 +180,10 @@ void app.whenReady().then(() => {
     decrypt: async (value: Buffer) => (await safeStorage.decryptStringAsync(value)).result,
   };
   const aiSettings = createAISettingsStore(join(app.getPath("userData"), "ai-settings.enc"), encryption);
+  songStorage = installSongStorage(senderWindow, async context => {
+    const credentials = await aiSettings.artworkCredentials();
+    return credentials ? generateRecordArtwork(context, credentials) : undefined;
+  });
   installMusicHandlers(senderWindow, undefined, songStorage, () => aiSettings.elevenLabsKey());
   const chatgpt = createChatGPTAuth(join(app.getPath("userData"), "chatgpt-accounts.enc"), encryption, { openExternal: url => shell.openExternal(url) });
   app.on("before-quit", () => chatgpt.dispose());

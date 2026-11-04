@@ -87,6 +87,14 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       delete settings.elevenLabsKey;
       return persist(settings);
     }),
+    artworkCredentials: () => serialize(async () => {
+      const settings = await read();
+      for (const provider of ['vercel', 'meta'] as const) {
+        const value = settings.providers[provider];
+        if (value) return { provider, key: value.key };
+      }
+      return null;
+    }),
     credentials: () => serialize(async () => {
       const settings = await read();
       const provider = settings.activeProvider;

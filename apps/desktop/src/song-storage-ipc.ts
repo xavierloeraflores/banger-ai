@@ -1,11 +1,14 @@
+import { createLibraryRecords } from './library-records.js';
+import type { ArtworkContext } from '@banger/agent';
 import { songStorage } from '@banger/harness';
 import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { createSongLibrary } from './song-library.js';
 import { randomUUID } from 'node:crypto';
 import { createSongStorage, type SongLocation, type LibrarySelection } from './song-storage.js';
 
-export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => BrowserWindow) {
-  const storage = createSongStorage(app.getPath('userData'));
+export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => BrowserWindow, generate?: (context: ArtworkContext) => Promise<string | undefined>) {
+  const records = createLibraryRecords(app.getPath('userData'), generate);
+  const storage = createSongStorage(app.getPath('userData'), records);
   const roots = new Map<number, string>();
   const bindings = new Map<string, { window: number; song: SongLocation }>();
   const watched = new Set<number>();
@@ -26,7 +29,7 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
   ipcMain.handle('banger:library-list', (event) => {
     const window = senderWindow(event); watch(window);
     let library = libraries.get(window.id);
-    if (!library) { library = createSongLibrary(app.getPath('userData')); libraries.set(window.id, library); }
+    if (!library) { library = createSongLibrary(app.getPath('userData'), records); libraries.set(window.id, library); }
     return library.list(roots.get(window.id));
   });
   ipcMain.handle('banger:library-read', (event, id: string) => {
@@ -44,10 +47,10 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
     if (!(bytes instanceof Uint8Array)) throw new Error('Invalid WAV.');
     return storage.saveAudio(song, 'instrumentals', bytes);
   });
-  ipcMain.handle('banger:storage-add-library', async (event, name: string, source: string, bytes: Uint8Array) => {
+  ipcMain.handle('banger:storage-add-library', async (event, name: string, source: string, bytes: Uint8Array, token?: string) => {
     const window = senderWindow(event);
     if (typeof source !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('Invalid song.');
-    const song = await storage.prepare(roots.get(window.id), name, source);
+    const song = token ? resolve(window, token) : await storage.prepare(roots.get(window.id), name, source);
     return storage.addToLibrary(song, bytes, source, undefined, 'instrumental');
   });
   ipcMain.handle('banger:storage-draft-read', (event, token: string) => songStorage.readDraft(resolve(senderWindow(event), token)));

@@ -25,6 +25,7 @@ export async function enqueue(user: string, project: string, kind: Job["kind"], 
     let session: string | null = null;
     if (kind === "agent") {
       const agent = agentInput.parse(parsed);
+      await client.query('UPDATE projects SET original_prompt=COALESCE(original_prompt,$2) WHERE id=$1', [project,agent.prompt]);
       if (current.revision !== agent.baseRevision) throw new ApiError(409, "Reload the project before running the agent.", { currentRevision: current.revision });
       session = randomUUID();
       await client.query("INSERT INTO agent_sessions(id,project_id,user_id,base_revision) VALUES($1,$2,$3,$4)", [session, project, user, agent.baseRevision]);

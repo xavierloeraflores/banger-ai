@@ -1,3 +1,4 @@
+import { browserArtworkCredentials } from '@/lib/ai-providers';
 import type { WebWorkspace } from './web-workspace';
 import { cloudMusic, cloudVocalRequest } from '@/lib/elevenlabs';
 import { cloudHeaders, uploadWav, type CloudBinding } from '@/lib/cloud-projects';
@@ -12,6 +13,15 @@ const operation = (job: Job): MusicOperation => ({ id: job.id, musicId: job.resu
 export function installWebMusic(accountId: string, workspace: WebWorkspace) {
   const { request } = workspace;
   const connection = { url: '', accountId };
+  function queueArtwork(recordId: string) {
+    const credentials = browserArtworkCredentials();
+    if (credentials) void request(`/library/${recordId}/artwork`, 'POST', credentials).catch(() => {});
+  }
+  async function saveToLibrary(input: unknown) {
+    const entry = await request<{name:string;recordId:string;scope:string}>('/library', 'POST', input);
+    queueArtwork(entry.recordId);
+    return entry;
+  }
   const tokens = new Map<string, SongToken>();
   const archived = new Map<string, string>();
   const backends = new Map<string, ReturnType<typeof cloudMusic>>();
@@ -68,9 +78,9 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
     async readDraft(token) { const song = resolve(token); return (await request<{draft:import('@/lib/song-storage').LyricDraft|null}>(`/projects/${song.projectId}/draft?path=${encodeURIComponent(song.path)}`)).draft; },
     async saveDraft(token, draft, expected) { const song = resolve(token); await request(`/projects/${song.projectId}/draft?path=${encodeURIComponent(song.path)}`, 'PUT', { draft, expected }); },
     async retireDraft(token, expected) { const song = resolve(token); await request(`/projects/${song.projectId}/draft?path=${encodeURIComponent(song.path)}`, 'DELETE', { expected }); },
-    async addToLibrary(name, source, bytes) {
-      const token = await prepare(name, source);
-      return request('/library', 'POST', { name: name.replace(/\.banger$/i, ''), artifactId: await archive(token, bytes), beat: { name, source } });
+    async addToLibrary(name, source, bytes, prepared) {
+      const token = prepared ?? await prepare(name, source);
+      return saveToLibrary( { name: name.replace(/\.banger$/i, ''), artifactId: await archive(token, bytes), beat: { name, source } });
     },
     async history(token) {
       const song = resolve(token);
@@ -93,7 +103,7 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
         if (!history.lyrics.includes(name)) throw new Error('Choose saved lyrics from this song.');
         const match = name.match(/^(.+)-v(\d+)\.json$/)!; musicId = match[1]; selectedVersion = Number(match[2]);
       }
-      return request('/library', 'POST', { artifactId, scope, name: song.path.replace(/\.banger$/, ''), beat: { name: song.path.split('/').pop()!, source: song.source }, ...(musicId ? { musicId, version: selectedVersion } : {}) });
+      return saveToLibrary( { artifactId, scope, name: song.path.replace(/\.banger$/, ''), beat: { name: song.path.split('/').pop()!, source: song.source }, ...(musicId ? { musicId, version: selectedVersion } : {}) });
     },
   };
   window.bangerMusic = {
@@ -129,10 +139,14 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
       const url = URL.createObjectURL(new Blob([new Uint8Array(data.bytes)], { type: data.contentType }));
       const link = document.createElement('a'); link.href = url; link.download = `${selected.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}-v${number}.${data.contentType === 'audio/wav' ? 'wav' : 'mp3'}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); return true;
     },
-    async addToLibrary(id, number) { const song = await version(id, number); return request('/library', 'POST', { name: song.name, artifactId: song.audioId, musicId: song.id, version: song.version }); },
+    async addToLibrary(id, number) { const song = await version(id, number); return saveToLibrary( { name: song.name, artifactId: song.audioId, musicId: song.id, version: song.version }); },
   };
   window.bangerLibrary = {
-    list: async () => (await request<{songs:Awaited<ReturnType<NonNullable<Window['bangerLibrary']>['list']>>}>('/library')).songs,
+    list: async () => {
+      const { songs } = await request<{songs:Awaited<ReturnType<NonNullable<Window['bangerLibrary']>['list']>>}>('/library');
+      for (const recordId of new Set(songs.filter(song => !song.artwork && (song.artworkAttempts ?? 0) < 3).map(song => song.recordId))) if(recordId)queueArtwork(recordId);
+      return songs;
+    },
     async read(id) { const entry = await request<{artifactId:string;beat?:{name:string;source:string};lyrics?:unknown}>(`/library/${id}`); return { ...await audio(entry.artifactId), beat: entry.beat, lyrics: entry.lyrics }; },
   };
 }

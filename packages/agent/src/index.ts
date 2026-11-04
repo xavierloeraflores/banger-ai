@@ -179,3 +179,5 @@ export function publicAIError(error: unknown): string {
 }
 
 export { generateLyrics, lyricRequestSchema } from "./lyrics.js";
+
+export { generateRecordArtwork, artworkContext, validateArtwork, MAX_ARTWORK_BYTES, type ArtworkContext, type ArtworkCredentials } from './artwork.js';
