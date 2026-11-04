@@ -6,9 +6,29 @@ import { createProject, projectFiles, saveChanges } from '../src/server/projects
 import { runWebTask } from '../src/server/web-task';
 import { readSongDraft, saveSongDraft } from '../src/server/song-drafts';
 import { db } from '../src/server/db';
+import { claimAgentFile, releaseAgentFiles } from '../src/server/agent-file-claims';
 
 const source = 'tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain .6; }';
 const credentials = { provider: 'openai' as const, model: 'fixture', key: 'not-a-real-key' };
+test('hosted claims serialize writes, allow reads, release, and expire', { skip: !process.env.DATABASE_URL }, async () => {
+  const user = `claims-${randomUUID()}`;
+  const project = (await createProject(user, 'Claims fixture', [{ path: 'song.banger', source }])).projectId;
+  const [first, second] = await Promise.allSettled([
+    claimAgentFile(project, 'song.banger', randomUUID(), randomUUID()),
+    claimAgentFile(project, 'song.banger', randomUUID(), randomUUID()),
+  ]);
+  assert.deepEqual([first.status, second.status].sort(), ['fulfilled', 'rejected']);
+  assert.match((first.status === 'rejected' ? first.reason : second.status === 'rejected' ? second.reason : null).message, /song\.banger is being edited in another chat/);
+  assert.equal((await projectFiles(user, project)).files[0]?.source, source);
+  await db().query('DELETE FROM agent_file_claims WHERE project_id=$1', [project]);
+  const owner = randomUUID(), token = randomUUID();
+  await claimAgentFile(project, 'song.draft.json', owner, token);
+  await releaseAgentFiles(project, owner, token);
+  await claimAgentFile(project, 'song.draft.json', randomUUID(), randomUUID());
+  await db().query("UPDATE agent_file_claims SET expires_at=now()-interval '1 second' WHERE project_id=$1 AND path=$2", [project, 'song.draft.json']);
+  await claimAgentFile(project, 'song.draft.json', randomUUID(), randomUUID());
+  await claimAgentFile(project, 'song.lyric.json', randomUUID(), randomUUID());
+});
 function model(tool: string, args: unknown, before?: () => Promise<void>, inspect?: (body: string) => void) {
   let calls = 0;
   return selectModel(credentials, async (_url, init) => {
@@ -27,6 +47,15 @@ test('account projects persist without Blob, run desktop file tools and preserve
   await assert.rejects(projectFiles('stranger', project), /access denied/);
   const thread = randomUUID();
   const input = { thread, baseRevision: 1, prompt: 'Change only the tempo', activeFile: 'song.banger', credentials };
+  const competingOwner = randomUUID(), competingToken = randomUUID();
+  await claimAgentFile(project, 'song.banger', competingOwner, competingToken);
+  const blocked = await runWebTask(user, project, input, new AbortController().signal, model('edit_file', { path: 'song.banger', search: 'tempo 120', replacement: 'tempo 124' }));
+  assert.equal(blocked.reply.status, 'incomplete');
+  assert.deepEqual(blocked.reply.changedPaths, []);
+  assert.ok(blocked.events.some(event => event.type === 'tool-result' && event.error === 'song.banger is being edited in another chat.'));
+  assert.equal((await projectFiles(user, project)).files[0]?.source, source);
+  assert.equal((await db().query('SELECT 1 FROM agent_file_claims WHERE project_id=$1 AND lease_token=$2', [project, competingToken])).rowCount, 1);
+  await releaseAgentFiles(project, competingOwner, competingToken);
   const changed = await runWebTask(user, project, input, new AbortController().signal, model('edit_file', { path: 'song.banger', search: 'tempo 120', replacement: 'tempo 124' }));
   assert.equal(changed.reply.status, 'completed');
   assert.deepEqual(changed.reply.changedPaths, ['song.banger']);
@@ -76,5 +105,6 @@ test('account projects persist without Blob, run desktop file tools and preserve
   assert.equal(stopped.reply.status,'incomplete');
   assert.deepEqual(stopped.reply.changedPaths,['song.banger']);
   assert.equal((await projectFiles(user,project)).files[0]?.source,source.replace('120','132'));
+  assert.equal((await db().query('SELECT 1 FROM agent_file_claims WHERE project_id=$1', [project])).rowCount, 0);
 
 });

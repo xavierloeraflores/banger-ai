@@ -11,7 +11,7 @@ export type WorkspaceBridge = {
   read(path: string, projectId?: string): Promise<WorkspaceFile>;
   save(path: string, source: string, expected: string | null): Promise<WorkspaceFile>;
   run(prompt: string, activeFile?: string, resetHistory?: boolean, permissions?: import("@banger/agent/protocol").EditPermissions, projectId?: string, threadId?: string, history?: { role: "user" | "assistant"; content: string }[]): Promise<{ ok: true; reply: { text: string; status: string; changedPaths?: string[] } } | { ok: false; error: string }>;
-  cancel(projectId?: string): Promise<void>;
+  cancel(projectId?: string, threadId?: string): Promise<void>;
   onEvent(callback: (event: Event) => void): () => void;
 };
 declare global { interface Window { bangerWorkspace?: WorkspaceBridge } }

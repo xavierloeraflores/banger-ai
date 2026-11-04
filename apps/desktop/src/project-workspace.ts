@@ -12,7 +12,7 @@ function safeError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-type State = { id: string; workspace: ProjectWorkspace; sessions: Map<string, ProjectSession>; controller?: AbortController; };
+type State = { id: string; workspace: ProjectWorkspace; sessions: Map<string, ProjectSession>; controllers: Map<string, AbortController> };
 export function installWorkspaceHandlers(options: {
   senderWindow(event: IpcMainInvokeEvent): BrowserWindow;
   selectModel(): Promise<SelectedModel>;
@@ -53,7 +53,7 @@ export function installWorkspaceHandlers(options: {
     if (window.isDestroyed()) return;
     const visible = { ...event, projectId, threadId };
     if ("path" in visible && visible.path && (visible.path.startsWith("/") || visible.path.includes("..") || visible.path.includes("\\"))) delete visible.path;
-    if (visible.type === "tool-result" && visible.error) visible.error = safeError(new Error(visible.error), "Project operation failed. Inspect the music file and retry.");
+    if (visible.type === "tool-result" && visible.error && visible.error !== `${visible.path} is being edited in another chat.`) visible.error = safeError(new Error(visible.error), "Project operation failed. Inspect the music file and retry.");
     // The studio file picker accepts music only; lyric tool activity still reaches chat.
     if (visible.type === "file-changed" && !visible.file.path.endsWith(".banger")) return;
     window.webContents.send("banger:workspace-event", visible);
@@ -62,12 +62,12 @@ export function installWorkspaceHandlers(options: {
     const id = await remember(workspace);
     if (!projects.has(window.id)) {
       projects.set(window.id, new Map());
-      const cancel = () => { for (const item of projects.get(window.id)?.values() ?? []) item.controller?.abort(); };
+      const cancel = () => { for (const item of projects.get(window.id)?.values() ?? []) for (const controller of item.controllers.values()) controller.abort(); };
       window.once("closed", () => { cancel(); states.delete(window.id); projects.delete(window.id); });
       window.webContents.on("did-start-navigation", (_event, _url, _inPlace, main) => { if (main) cancel(); });
     }
     const known = projects.get(window.id)!;
-    if (!known.has(id)) known.set(id, { id, workspace, sessions: new Map() });
+    if (!known.has(id)) known.set(id, { id, workspace, sessions: new Map(), controllers: new Map() });
     states.set(window.id, known.get(id)!);
     options.onOpen?.(window, workspace.root);
     return id;
@@ -150,20 +150,24 @@ export function installWorkspaceHandlers(options: {
   });
   ipcMain.handle("banger:workspace-save", async (event, path: unknown, source: unknown, expected: unknown) => {
     const current = state(options.senderWindow(event));
-    if (current.controller) throw new Error("Stop the project task before saving manual edits.");
+    if (current.controllers.size) throw new Error("Stop the project task before saving manual edits.");
     if (typeof path !== "string" || typeof source !== "string" || (expected !== null && typeof expected !== "string")) throw new Error("Invalid project edit.");
     try { return await current.workspace.write(path, source, expected); }
     catch (error) { throw new Error(safeError(error, "Could not save the file. Reload it to check for external changes.")); }
   });
-  ipcMain.handle("banger:workspace-cancel", (event, id: unknown) => { state(options.senderWindow(event), id).controller?.abort(); });
+  ipcMain.handle("banger:workspace-cancel", (event, id: unknown, threadId: unknown) => {
+    const current = state(options.senderWindow(event), id);
+    if (typeof threadId === 'string') current.controllers.get(threadId)?.abort();
+    else for (const controller of current.controllers.values()) controller.abort();
+  });
   ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown, resetHistory: unknown, permissions: unknown, id: unknown, threadId: unknown, history: unknown) => {
     const window = options.senderWindow(event);
     const current = state(window, id);
-    if (current.controller || opening.has(window.id)) return { ok: false, error: "A project operation is already running." };
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16000 || (activeFile !== undefined && typeof activeFile !== "string")) return { ok: false, error: "Enter a task under 16,000 characters and choose a music file." };
-    const controller = new AbortController();
-    current.controller = controller;
     const thread = typeof threadId === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(threadId) ? threadId : "default";
+    if (current.controllers.has(thread) || opening.has(window.id)) return { ok: false, error: "A project operation is already running." };
+    const controller = new AbortController();
+    current.controllers.set(thread, controller);
     if (resetHistory === true) current.sessions.delete(thread);
     try {
       const selected = await options.selectModel();
@@ -176,7 +180,7 @@ export function installWorkspaceHandlers(options: {
       return { ok: true, reply: await session.run(prompt, { signal: controller.signal, activeFile, permissions: permissions as EditPermissions | undefined }) };
     } catch (error) {
       return { ok: false, error: controller.signal.aborted ? "Project task stopped. Completed saves are kept." : (options.modelError?.(error) ?? "Project task failed. Check the selected model and connection.") };
-    } finally { delete current.controller; }
+    } finally { current.controllers.delete(thread); }
   });
-  return { cancelAll: () => { for (const group of projects.values()) for (const current of group.values()) current.controller?.abort(); } };
+  return { cancelAll: () => { for (const group of projects.values()) for (const current of group.values()) for (const controller of current.controllers.values()) controller.abort(); } };
 }

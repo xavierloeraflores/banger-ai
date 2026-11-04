@@ -6,6 +6,7 @@ import { ApiError, hash, changeSchema } from "./domain";
 import { agentInput, checkpoint, type Job } from "./jobs";
 import { readManifest, saveChanges } from "./projects";
 import { db } from "./db";
+import { claimAgentFile, releaseAgentFiles } from './agent-file-claims';
 const resultSchema = z.object({ status: z.enum(["completed", "incomplete", "failed"]), text: z.string().max(64000).optional(), error: z.string().max(1000).optional(), files: z.array(changeSchema.extend({ source: z.string().max(65536) })).max(256).optional() });
 export async function runAgentStep(job: Job) {
   const input = agentInput.parse(job.input);
@@ -52,17 +53,19 @@ export async function runAgentStep(job: Job) {
       await checkpoint(job, 'publishing', 90, { candidate }, 'running');
     }
     const base = await readManifest(job.project_id, input.baseRevision);
-    const changes = [...result.files, ...base.files.filter(file => !result.files!.some(next => next.path === file.path)).map(file => ({path:file.path,source:null}))];
+    const changes = [...result.files, ...base.files.filter(file => !result.files!.some(next => next.path === file.path)).map(file => ({path:file.path,source:null}))]
+      .filter(file => file.source === null || base.files.find(previous => previous.path === file.path)?.sha256 !== hash(file.source));
     try {
+      for (const change of changes) await claimAgentFile(job.project_id, change.path, job.session_id!, job.lease_token);
       const manifest = await saveChanges(job.user_id, job.project_id, input.baseRevision, changes, projectObjects, { id: job.id, lease: job.lease_token });
       await db().query("UPDATE agent_sessions SET status=$2 WHERE id=$1", [job.session_id, result.status]);
       return manifest;
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        await checkpoint(job, 'conflict', 90, {}, 'conflict', { candidateAvailable: true, text: result.text }, 'The project changed during the task. Review the agent files before saving a merged revision.');
+        await checkpoint(job, 'conflict', 90, {}, 'conflict', { candidateAvailable: true, text: result.text }, error.message);
         await db().query("UPDATE agent_sessions SET status='conflict' WHERE id=$1", [job.session_id]);
       } else throw error;
-    }
+    } finally { await releaseAgentFiles(job.project_id, job.session_id!, job.lease_token); }
   } finally {
     const state = (await db().query("SELECT status FROM jobs WHERE id=$1", [job.id])).rows[0]?.status;
     if (!['queued', 'running'].includes(state)) {

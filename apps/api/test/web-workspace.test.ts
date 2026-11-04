@@ -30,7 +30,7 @@ test('web project tasks retain their project and thread while switching, cancel 
     const body = JSON.parse(String(init!.body));
     return await new Promise<Response>((resolve, reject) => {
       signal.addEventListener('abort', () => reject(new Error('Stopped')), { once: true });
-      pending.set(id, { signal, thread: body.thread, complete() {
+      pending.set(body.thread, { signal, thread: body.thread, complete() {
         snapshots.get(id)!.files[0]!.source = `completed ${id}`;
         resolve(new Response(`${JSON.stringify({ event: { type: 'file-changed', file: { path: 'song.banger', source: `completed ${id}` } } })}\n${JSON.stringify({ reply: { text: `Done ${id}`, status: 'completed', changedPaths: ['song.banger'] } })}\n`));
       } });
@@ -41,26 +41,34 @@ test('web project tasks retain their project and thread while switching, cancel 
   web.workspace.onEvent(event => events.push(event));
   await web.workspace.open();
   const first = web.workspace.run('Task A', 'song.banger', false, {beat:true, lyrics:false}, 'A', 'chat-a');
-  while (!pending.has('A')) await setImmediate();
+  while (!pending.has('chat-a')) await setImmediate();
   await web.workspace.restore!('B');
   const second = web.workspace.run('Task B', 'song.banger', false, {beat:true, lyrics:false}, 'B', 'chat-b');
-  while (!pending.has('B')) await setImmediate();
-  assert.deepEqual(await web.workspace.run('Duplicate', undefined, false, undefined, 'A'), {ok:false,error:'A project task is already running.'});
+  while (!pending.has('chat-b')) await setImmediate();
+  assert.deepEqual(await web.workspace.run('Duplicate', undefined, false, undefined, 'A', 'chat-a'), {ok:false,error:'A project task is already running.'});
   await web.workspace.cancel('A');
   assert.equal((await first).ok, false);
-  assert.equal(pending.get('B')!.signal.aborted, false);
-  pending.get('B')!.complete();
+  assert.equal(pending.get('chat-b')!.signal.aborted, false);
+  pending.get('chat-b')!.complete();
   assert.equal((await second).ok, true);
   assert.equal(web.current().projectId, 'B');
-  pending.delete('A');
+  pending.delete('chat-a');
   const third = web.workspace.run('Another A task', 'song.banger', false, undefined, 'A', 'chat-a-two');
-  while (!pending.has('A')) await setImmediate();
-  pending.get('A')!.complete();
+  while (!pending.has('chat-a-two')) await setImmediate();
+  pending.get('chat-a-two')!.complete();
   assert.equal((await third).ok, true);
   assert.equal(web.current().projectId, 'B');
   assert.equal((await web.workspace.read('song.banger', 'A')).source, 'completed A');
   assert.equal(web.current().projectId, 'B');
   assert.deepEqual(events.map(event => [event.projectId,event.threadId]), [['B','chat-b'],['A','chat-a-two']]);
+  const simultaneousA = web.workspace.run('Concurrent A', 'song.banger', false, undefined, 'A', 'parallel-a');
+  const simultaneousB = web.workspace.run('Concurrent B', 'song.banger', false, undefined, 'A', 'parallel-b');
+  while (!pending.has('parallel-a') || !pending.has('parallel-b')) await setImmediate();
+  await web.workspace.cancel('A', 'parallel-a');
+  assert.equal((await simultaneousA).ok, false);
+  assert.equal(pending.get('parallel-b')!.signal.aborted, false);
+  pending.get('parallel-b')!.complete();
+  assert.equal((await simultaneousB).ok, true);
   assert.deepEqual((await web.workspace.recent!()).map(item => item.id), ['B','A']);
   const reopened = installWebWorkspace(request, async () => null, 'account-one');
   assert.equal((await reopened.workspace.recent!()).length, 2);

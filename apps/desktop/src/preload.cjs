@@ -52,7 +52,7 @@ contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
   read: (path, id) => ipcRenderer.invoke("banger:workspace-read", path, id),
   save: (path, source, expectedSource) => ipcRenderer.invoke("banger:workspace-save", path, source, expectedSource),
   run: (prompt, activeFile, resetHistory, permissions, id, threadId, history) => ipcRenderer.invoke("banger:workspace-run", prompt, activeFile, resetHistory, permissions, id, threadId, history),
-  cancel: id => ipcRenderer.invoke("banger:workspace-cancel", id),
+  cancel: (id, threadId) => ipcRenderer.invoke("banger:workspace-cancel", id, threadId),
   onEvent: callback => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on("banger:workspace-event", listener);

@@ -12,6 +12,7 @@ import { db, transaction } from './db';
 import { authorize, projectFiles, saveChanges } from './projects';
 import { projectObjects } from './project-objects';
 import { saveSongDraft } from './song-drafts';
+import { claimAgentFile, releaseAgentFiles } from './agent-file-claims';
 
 const inputSchema = z.object({ thread: id, baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional(), permissions: editPermissionsSchema.optional(), credentials: credentialsSchema }).strict();
 type Sidecar = { path: string; source: string; songPath: string; music?: MusicVersion };
@@ -82,7 +83,9 @@ export async function runWebTask(user: string, project: string, body: unknown, s
       await writeFile(join(root, file.path), file.source, { flag: 'wx', mode: 0o600 });
     }
     const workspace = await openProject(root);
-    session = new ProjectSession({ workspace, history, selected: model ?? { ...selectModel(input.credentials), timeoutMs: 180000 }, onEvent(event) {
+    session = new ProjectSession({ workspace, history, selected: model ?? { ...selectModel(input.credentials), timeoutMs: 180000 },
+      claimFile: path => claimAgentFile(project, path, input.thread, lease),
+      onEvent(event) {
       if (event.type === 'file-changed') changes.set(event.file.path, event.file.source);
       else if (events.length < 160) { events.push(event); if (!['complete','stopped'].includes(event.type)) emit?.(event); }
     } });
@@ -94,15 +97,18 @@ export async function runWebTask(user: string, project: string, body: unknown, s
     // checks the saved revision, so concurrent users cannot overwrite each other.
     const musicChanges = [...changes].filter(([path]) => path.endsWith('.banger')).map(([path, source]) => ({ path, source }));
     if (musicChanges.length) {
+      for (const file of musicChanges) await claimAgentFile(project, file.path, input.thread, lease);
       await saveChanges(user, project, snapshot.revision, musicChanges);
       saved.push(...musicChanges.map(file => file.path));
     }
     for (const [path, source] of changes) {
       if (path.endsWith('.draft.json')) {
+        await claimAgentFile(project, path, input.thread, lease);
         const before = sidecars.find(file => file.path === path);
         await saveSongDraft(user, project, path.replace(/\.draft\.json$/, '.banger'), songStorage.validateDraft(JSON.parse(source)), before ? JSON.parse(before.source) : null);
         saved.push(path);
       } else if (path.endsWith('.lyric.json')) {
+        await claimAgentFile(project, path, input.thread, lease);
         const before = sidecars.find(file => file.path === path)?.music;
         if (!before) throw new ApiError(409, 'The saved composition is unavailable.');
         await saveLyrics(user, project, before, source); saved.push(path);
@@ -111,8 +117,10 @@ export async function runWebTask(user: string, project: string, body: unknown, s
   } catch (error) {
     reply = { text: error instanceof ApiError ? error.message : publicAIError(error), status: 'incomplete', changedPaths: saved };
   } finally {
-    if (root) await rm(root, { recursive: true, force: true });
-    await db().query('UPDATE web_agent_threads SET history=$3,model=$4,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2', [input.thread, lease, JSON.stringify([...(session?.messages ?? history), ...(reply.status==='incomplete' ? [{role:'assistant',content:`Publication result: ${reply.text} Saved project paths: ${JSON.stringify(saved)}. Read current files before continuing.`}] : [])]), modelName]);
+    try {
+      await releaseAgentFiles(project, input.thread, lease);
+      await db().query('UPDATE web_agent_threads SET history=$3,model=$4,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2', [input.thread, lease, JSON.stringify([...(session?.messages ?? history), ...(reply.status==='incomplete' ? [{role:'assistant',content:`Publication result: ${reply.text} Saved project paths: ${JSON.stringify(saved)}. Read current files before continuing.`}] : [])]), modelName]);
+    } finally { if (root) await rm(root, { recursive: true, force: true }); }
   }
   const published = saved.filter(path => path.endsWith('.banger')).map(path => ({ type: 'file-changed' as const, file: { path, source: changes.get(path)! } }));
   for (const event of published) emit?.(event);

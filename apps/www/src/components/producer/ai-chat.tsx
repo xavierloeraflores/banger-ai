@@ -271,7 +271,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
   function stop() {
     request.current?.abort();
     if (projectRequest.current) {
-      void window.bangerWorkspace?.cancel(projectId).catch(cause => setError(cause instanceof Error ? cause.message : "Could not stop the project task."));
+      void window.bangerWorkspace?.cancel(projectId, chatId).catch(cause => setError(cause instanceof Error ? cause.message : "Could not stop the project task."));
     }
   }
 
