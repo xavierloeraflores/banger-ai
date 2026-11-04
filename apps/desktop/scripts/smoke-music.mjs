@@ -124,6 +124,12 @@ async function run(){
  const evaluate=code=>window.webContents.executeJavaScript(code,true).catch(error=>{throw new Error(`${error.message} Script: ${code}`);});
  const wait=async expression=>{for(let i=0;i<400;i++){if(await evaluate(`Boolean(${expression})`))return;await delay(40);}throw new Error(`UI timeout: ${expression}; ${await evaluate("JSON.stringify({active:document.activeElement?.outerHTML,dialogs:[...document.querySelectorAll('[role=dialog][data-state=open]')].map(e=>e.id),menus:[...document.querySelectorAll('[role=menu]')].map(e=>e.outerHTML)})")}`);};
  const click=async text=>{await wait(`[...document.querySelectorAll('button')].some(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled).click()`);};
+ let chatReturn = 'Vocal Studio';
+ const openChat = async () => {
+  chatReturn = await evaluate("document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')") || chatReturn;
+  await evaluate("[...document.querySelectorAll('.app-sidebar-chat')].at(-1).click()");
+ };
+ const closeChat = () => click(chatReturn);
  const exportSong=async()=>{
   window.show();window.focus();window.webContents.focus();
   const key=keyCode=>{window.webContents.sendInputEvent({type:'keyDown',keyCode});window.webContents.sendInputEvent({type:'keyUp',keyCode});};
@@ -196,7 +202,7 @@ async function run(){
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
   if(fullSendMode){
     const originalSource=await evaluate("document.querySelector('#producer-source').value");
-    await click('Open AI chat');
+    await openChat();
     assert.equal(await evaluate("document.querySelectorAll('.ai-chat-permissions [role=checkbox]')[2].getAttribute('aria-checked') === 'true'"),false);
     await evaluate(`(() => { const wanted=[${fullSendMode!=='lyrics'},${fullSendMode!=='beat'},true]; [...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].forEach((input,index)=>{if((input.getAttribute('aria-checked') === 'true')!==wanted[index])input.click();}); })()`);
     await fill('#ai-chat-prompt',fullSendMode==='lyrics'?'Write a hopeful morning song':'Change only the tempo to 111'+(fullSendMode==='both'?' and write a hopeful morning song':''));
@@ -213,10 +219,10 @@ async function run(){
       assert.ok(generatedInputs[0].version.plan.chunks.every(chunk=>chunk.text.includes('Tomorrow brings the light')));
     }
     if(fullSendMode==='lyrics'){
-      await click('Close AI chat');
+      await closeChat();
       await fill('#vocal-style','Warm alto');await click('Apply to all chunks');await click('Save lyrics & style');
       await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 4')");
-      await click('Open AI chat');
+      await openChat();
       await fill('#ai-chat-prompt','Change only the first chunk to Morning brings the light. Leave the second chunk unchanged.');await click('Send');
       await wait("document.querySelectorAll('.ai-chat-turn .ai-chat-answer').length===2 || document.querySelector('.ai-chat-footer [role=alert]')");
       assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"),'');
@@ -226,16 +232,16 @@ async function run(){
       assert.ok(generatedInputs[1].version.plan.chunks[1].text.includes('Tomorrow brings the light'));
       assert.equal(await evaluate("document.querySelector('#producer-source').value"),originalSource);
     }
-    await click('Close AI chat');await click('Library');
+    await closeChat();await click('Library');
     await wait(`document.querySelectorAll('.library-card').length>=${cloud?1:2}`);
     console.log(`${cloud?'Browser':'Desktop'} Full Send ${fullSendMode} passed: edited source, WAV, ${fullSendMode==='beat'?'no provider calls':'analysis, saved chunk lyrics, vocal generation'}, library.`);
     return;
   }
   if(process.argv.includes('--draft')){
-    await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);
+    await openChat();await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);
     await fill('#ai-chat-prompt','Write a hopeful morning song');await click('Send');
     await wait("document.querySelector('.ai-chat-transcript').textContent.includes('.draft.json')");
-    await click('Close AI chat');
+    await closeChat();
     await wait("document.querySelector('[aria-label=\"Lyrics for draft, line 1\"]')?.value==='Tomorrow brings the light'");
     await fill('[aria-label="Lyrics for draft, line 1"]','Edited first line');
     await click('Move draft, line 1 down');
@@ -403,7 +409,7 @@ async function run(){
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
-  await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await click('Close AI chat');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+  await openChat();await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions [role=checkbox]')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if ((input.getAttribute('aria-checked') === 'true') !== checked) input.click(); } })()`);await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await closeChat();await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
   assert.equal(provider.calls.lyrics,0,'LLM lyrics must not call ElevenLabs');
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.saveElevenLabs('fake-vocal-key');else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));settings.elevenLabsKey='fake-vocal-key';sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("!document.querySelector('[aria-label=\"Generate new variation\"]').disabled");

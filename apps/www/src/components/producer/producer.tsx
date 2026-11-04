@@ -545,7 +545,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
       setExpandedTrack(null);
       setEditorEpoch(value => value + 1);
       if (!automatic) { setChatView(false); setStudio("beat"); }
-      setNotice(`Loaded ${file.name}. Save .banger to keep it.`);
+      setNotice(`Loaded ${file.name}. Save to keep it.`);
     } catch (cause) { setNotice(diagnose(cause)); }
   }
 
