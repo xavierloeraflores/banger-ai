@@ -57,7 +57,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.equal(await evaluate("document.querySelector('[aria-label=\"Play Browser recording\"] .library-song-tag').textContent"), 'Vocal');
     assert.equal(await evaluate(`document.querySelector('[aria-label="Play ${name}"] .library-song-tag').textContent`), 'Vocal');
     await writeFile('/tmp/banger-library-tags.png', (await window.webContents.capturePage()).toPNG());
-    assert.equal(await evaluate("document.querySelector('.performance-stage-trigger').nextElementSibling.textContent.trim()"), 'Lyrics', 'action sits beside Band stage');
+    assert.equal(await evaluate("document.querySelectorAll('.producer-file-actions > button')[1].textContent.trim()"), 'Lyrics', 'action sits beside Band stage');
     assert.equal(await evaluate("document.querySelector('[aria-controls=\"library-sing-along\"]').disabled"), true);
     await click(`[aria-label="Play ${name}"]`);
     await wait("!document.querySelector('[aria-controls=\"library-sing-along\"]').disabled", 'lyrics available');
