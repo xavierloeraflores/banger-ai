@@ -22,7 +22,7 @@ for(const song of ['First light','Open skies']){
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jU1sAAAAASUVORK5CYII=';
 const timeout=setTimeout(()=>{console.error('Record smoke timed out');app.exit(1);},90000);
 app.on('browser-window-created',(_event,window)=>window.webContents.once('did-finish-load',async()=>{
- const evaluate=code=>window.webContents.executeJavaScript(code,true);
+ const evaluate=async code=>{try{return await window.webContents.executeJavaScript(code,true);}catch(error){console.error(code);throw error;}};
  const wait=async(code,label)=>{for(let i=0;i<400;i++){if(await evaluate(`Boolean(${code})`))return;await delay(30);}throw new Error(`Timed out: ${label}`);};
  try{
   await enterStudio(window);window.setContentSize(1200,900);window.show();
@@ -48,18 +48,25 @@ app.on('browser-window-created',(_event,window)=>window.webContents.once('did-fi
   const geometry = () => evaluate(`(() => {
     const record = document.querySelector('.library-record'), song = document.querySelector('.library-single');
     const r = record.querySelector('.library-art').getBoundingClientRect(), s = song.querySelector('.library-art').getBoundingClientRect();
+    const rp = record.querySelector('.library-card-play').getBoundingClientRect(), sp = song.querySelector('.library-card-play').getBoundingClientRect();
     const rm = record.querySelector('.library-record-options').getBoundingClientRect(), sm = song.querySelector('.library-record-options').getBoundingClientRect();
     return { sameSize: Math.abs(r.width-s.width)<1 && Math.abs(r.height-s.height)<1, recordsAbove: r.bottom<s.top,
+      samePlay: Math.abs((r.right-rp.right)-(s.right-sp.right))<1 && Math.abs((r.bottom-rp.bottom)-(s.bottom-sp.bottom))<1,
       sameMenu: Math.abs((r.right-rm.right)-(s.right-sm.right))<1 && Math.abs((rm.top-r.top)-(sm.top-s.top))<1,
       round: getComputedStyle(record.querySelector('.library-art')).borderRadius==='50%', square: getComputedStyle(song.querySelector('.library-art')).borderRadius!=='50%' };
   })()`);
-  assert.deepEqual(await geometry(), {sameSize:true,recordsAbove:true,sameMenu:true,round:true,square:true});
-  await evaluate(`document.querySelector('[aria-label="Show songs on Browser record"]').focus()`);
+  assert.deepEqual(await geometry(), {sameSize:true,recordsAbove:true,sameMenu:true,samePlay:true,round:true,square:true});
+  await evaluate(`document.querySelector('[aria-label="Play Browser record"]').focus()`);
   window.webContents.sendInputEvent({type:'keyDown',keyCode:'Space'});window.webContents.sendInputEvent({type:'keyUp',keyCode:'Space'});
-  await wait(`document.querySelectorAll('.library-single').length===2 && document.querySelector('[aria-label="Play Browser one"]')`,'keyboard record selection filters songs');
-  assert.equal(await evaluate(`document.querySelector('.library-now-playing strong').textContent`),'Open skies');
-  await evaluate(`document.querySelector('[aria-label="Show songs on After midnight"]').click()`);
-  await wait(`document.querySelectorAll('.library-single').length===2 && document.querySelector('[aria-label="Play First light"]')`,'switch records');
+  await wait(`document.querySelectorAll('.library-single').length===2 && [...document.querySelectorAll('.library-single strong')].some(node=>node.textContent.includes('Browser one'))`,'keyboard record selection filters songs');
+  await wait(`document.querySelector('.library-now-playing strong').textContent==='Browser one' && !document.querySelector('.library-player audio').paused`,'record playback');
+  await wait(`document.querySelector('[aria-label="Pause Browser record"]')`,'record pause control');
+  await evaluate(`document.querySelector('[aria-label="Pause Browser record"]').click()`);
+  await wait(`document.querySelector('.library-player audio').paused && document.querySelector('[aria-label="Play Browser record"]')`,'record pause');
+  await evaluate(`document.querySelector('[aria-label="Play Browser record"]').click()`);
+  await wait(`!document.querySelector('.library-player audio').paused`,'record resume');
+  await evaluate(`document.querySelector('[aria-label="Play After midnight"]').click()`);
+  await wait(`document.querySelectorAll('.library-single').length===2 && [...document.querySelectorAll('.library-single strong')].some(node=>node.textContent.includes('First light'))`,'switch records');
   await evaluate(`document.querySelector('.library-section-heading button').click()`);
   await wait(`document.querySelectorAll('.library-single').length===4`,'return to all songs');
   await evaluate(`document.querySelector('.library-heading').scrollIntoView({block:'start'})`);
@@ -68,7 +75,7 @@ app.on('browser-window-created',(_event,window)=>window.webContents.once('did-fi
   window.setMinimumSize(0,0); window.setContentSize(430,900);
   await delay(100);
   assert.ok(await evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'));
-  assert.deepEqual(await geometry(), {sameSize:true,recordsAbove:true,sameMenu:true,round:true,square:true});
+  assert.deepEqual(await geometry(), {sameSize:true,recordsAbove:true,sameMenu:true,samePlay:true,round:true,square:true});
   await writeFile('/tmp/banger-records-mobile.png',(await window.webContents.capturePage()).toPNG());
   console.log('Record smoke passed: native and browser grouping, equal-sized circular records and square songs, anchored menus, record filtering, automatic refresh, uninterrupted playback, and mobile layout.');clearTimeout(timeout);app.exit(0);
  }catch(error){console.error(error);await writeFile('/tmp/banger-records-failure.png',(await window.webContents.capturePage()).toPNG());clearTimeout(timeout);app.exit(1);}

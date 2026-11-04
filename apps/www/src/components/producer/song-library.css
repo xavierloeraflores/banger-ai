@@ -55,7 +55,8 @@
 .library-record, .library-single { position: relative; min-width: 0; align-self: start; }
 .library-record > .library-card, .library-single > .library-card { width: 100%; }
 .library-art { width: 100%; }
-.library-record-art { border-radius: 50%; }
+.library-record-art { border-radius: 50%; overflow: visible; }
+.library-record-art img { border-radius: inherit; }
 .library-record-options { position: absolute; top: 10px; right: 10px; }
 .library-record-menu-trigger { width: 32px; height: 32px; padding: 0; font-size: 25px; line-height: 1; opacity: 0; transition: opacity .15s; }
 .library-record:hover .library-record-menu-trigger, .library-record:focus-within .library-record-menu-trigger, .library-record-menu-trigger[data-state="open"] { opacity: 1; }
