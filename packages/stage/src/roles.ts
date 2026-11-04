@@ -1,18 +1,18 @@
 import { FACTORY_PATCHES, INSTRUMENT_PATCHES, type MusicTrack, type Step, type SynthConfig } from '@banger/compiler';
 import { synthForEvent } from '@banger/engine';
 
-export type ExtendedRole = 'bass808' | 'marimba' | 'woodblock' | 'downlifter' | 'impact' | 'mutedGuitar';
-export const extendedRoles: readonly PerformanceRole[] = ['bass808', 'marimba', 'woodblock', 'downlifter', 'impact', 'mutedGuitar'];
+export type ExtendedRole = 'musicBox' | 'clavinet' | 'bass808' | 'marimba' | 'woodblock' | 'downlifter' | 'impact' | 'mutedGuitar';
+export const extendedRoles: readonly PerformanceRole[] = ['musicBox', 'clavinet', 'bass808', 'marimba', 'woodblock', 'downlifter', 'impact', 'mutedGuitar'];
 export type PerformanceRole = ExtendedRole | 'drums' | 'bass' | 'keys' | 'dance' | 'brass' | 'flute' | 'chiptune' | 'strings' | 'kalimba' | 'riser';
 export type PlayedRole = 'brass' | 'flute' | 'chiptune' | 'strings' | 'kalimba' | 'riser';
 export const playedRoles: readonly PerformanceRole[] = ['brass', 'flute', 'chiptune', 'strings', 'kalimba', 'riser'];
 export const roleLabels: Record<PerformanceRole, string> = {
-  bass808: '808 Bass', marimba: 'Marimba', woodblock: 'Woodblock', downlifter: 'Noise Downlifter', impact: 'Impact', mutedGuitar: 'Muted Synth Guitar',
+  musicBox: 'Music Box', clavinet: 'Clavinet', bass808: '808 Bass', marimba: 'Marimba', woodblock: 'Woodblock', downlifter: 'Noise Downlifter', impact: 'Impact', mutedGuitar: 'Muted Synth Guitar',
   drums: 'Drums', bass: 'Bass', keys: 'Keys', dance: 'Lead / pad', brass: 'Synth Brass', flute: 'Flute Lead',
   chiptune: 'Chiptune Lead', strings: 'String Ensemble', kalimba: 'Kalimba Pluck', riser: 'Noise Riser',
 };
 const factoryRoles: Record<string, PerformanceRole> = {
-  '808 Bass': 'bass808', 'Marimba': 'marimba', 'Woodblock': 'woodblock', 'Noise Downlifter': 'downlifter', 'Impact': 'impact', 'Muted Synth Guitar': 'mutedGuitar',
+  'Music Box': 'musicBox', 'Clavinet': 'clavinet', '808 Bass': 'bass808', 'Marimba': 'marimba', 'Woodblock': 'woodblock', 'Noise Downlifter': 'downlifter', 'Impact': 'impact', 'Muted Synth Guitar': 'mutedGuitar',
   'Synth Brass': 'brass', 'Flute Lead': 'flute', 'Chiptune Lead': 'chiptune', 'String Ensemble': 'strings', 'Kalimba Pluck': 'kalimba', 'Noise Riser': 'riser',
 };
 // Tone identity survives level/filter edits. A stored modular name can be stale,
@@ -32,7 +32,9 @@ function synthRole(config: SynthConfig): PerformanceRole {
   if (config.noise >= .65 && (config.tone ?? 1) === 0 && (config.filterSweep ?? 0) > 0) return 'riser';
   if (config.noise >= .65 && (config.tone ?? 1) === 0 && (config.filterSweep ?? 0) < 0 && config.attack < .1) return 'downlifter';
   if (config.noise >= .4 && (config.tone ?? 1) > 0 && config.pitchEnv >= 12 && config.sustain < .1 && config.attack < .03) return 'impact';
-  if (config.osc1 === 'sine' && config.mix === 0 && config.sub >= .15 && config.drive >= .1 && config.pitchEnv > 0 && config.sustain >= .5) return 'bass808';
+  if (config.osc1 === 'sine' && config.osc2 === 'sine' && config.mix === 0 && config.sub >= .15 && config.noise < .05 && config.drive > 0 && config.pitchEnv > 0) return 'bass808';
+  if (config.osc1 === 'sine' && config.osc2 === 'sine' && config.mix === 0 && config.sub === 0 && config.noise === 0 && config.fm > 0 && config.fm <= .3 && config.fmRatio === 3 && config.sustain === 0 && config.attack < .02) return 'musicBox';
+  if (config.osc1 === 'sawtooth' && config.osc2 === 'triangle' && config.mix >= .15 && config.mix <= .5 && config.sub === 0 && config.sustain === 0 && config.attack < .02 && config.decay <= .4 && (config.filterDecay ?? 0) > 0) return 'clavinet';
   if (config.osc1 === 'triangle' && config.osc2 === 'sine' && config.sub === 0 && config.noise < .05 && config.sustain === 0 && config.decay <= .2 && config.drive > 0) return 'mutedGuitar';
   if (config.osc1 === 'sine' && config.mix === 0 && config.sub === 0 && config.sustain === 0 && config.attack < .01) {
     if (config.fmRatio >= 3.8 && config.fmRatio <= 4.2 && config.fm > 0 && config.fm < .2) return 'marimba';

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Group, Mesh, Vector3 } from 'three';
-import { FACTORY_PATCHES, INSTRUMENT_PATCHES, compileMusic } from '@banger/compiler';
+import { FACTORY_PATCHES, INSTRUMENT_PATCHES, compileMusic, serializeMusic } from '@banger/compiler';
 import { createCharacter } from '../dist/character.js';
 import { createInstrument, animatePerformer, PerformerAnimator } from '../dist/animation.js';
 import { PerformanceScore, trackRole } from '../dist/score.js';
 import { concertLayout } from '../dist/concert.js';
 
-const roles = ['brass', 'flute', 'chiptune', 'strings', 'kalimba', 'riser', 'bass808', 'marimba', 'woodblock', 'downlifter', 'impact', 'mutedGuitar'];
-const names = ['Synth Brass', 'Flute Lead', 'Chiptune Lead', 'String Ensemble', 'Kalimba Pluck', 'Noise Riser', ...Object.values(INSTRUMENT_PATCHES).map(patch => patch.name)];
+const roles = ['brass', 'flute', 'chiptune', 'strings', 'kalimba', 'riser', 'bass808', 'marimba', 'woodblock', 'downlifter', 'impact', 'mutedGuitar', 'musicBox', 'clavinet'];
+const names = ['Synth Brass', 'Flute Lead', 'Chiptune Lead', 'String Ensemble', 'Kalimba Pluck', 'Noise Riser', ...Object.values(INSTRUMENT_PATCHES).map(patch => patch.name), 'Music Box', 'Clavinet'];
 const patch = name => structuredClone([...FACTORY_PATCHES, ...Object.values(INSTRUMENT_PATCHES)].find(patch => patch.name === name).config);
 const fixture = name => {
   const program = compileMusic('tempo 120; track misleading_name { instrument "synth/bass"; piano { note "C4" start 0 duration 3 velocity .8; note "E4" start 0 duration 1 velocity .7; note "G4" start 1 duration .25 velocity .5; } gain .8; }');
@@ -220,4 +220,81 @@ test('new props remain within mitten reach across the MIDI range', () => {
     }
     dispose(instrument); rig.dispose();
   }
+});
+
+
+test('Music Box, Clavinet and 808 identity survives rename, save/reopen and numeric locks', () => {
+  for (const [name, role] of [['Music Box', 'musicBox'], ['Clavinet', 'clavinet'], ['808 Bass', 'bass808']]) {
+    for (const mode of ['synth', 'modular']) {
+      const program = fixture(name), track = program.tracks[0];
+      if (mode === 'modular') track.modular = { name: 'Renamed', config: track.synth };
+      const restored = compileMusic(serializeMusic(program));
+      assert.equal(trackRole(restored.tracks[0]), role);
+      assert.equal(trackRole(restored.tracks[0], { kind: 'note', midi: 60, locks: { cutoff: 1200, release: .08, volume: .4, decay: .3 } }), role);
+    }
+  }
+});
+
+test('chromatic clavinet chords use independent key gates, with rests, tempo changes and loops', () => {
+  const program = fixture('Clavinet');
+  program.tracks[0].pianoRoll = [
+    { midi: 60, start: 0, duration: 2, velocity: .8 },
+    { midi: 63, start: 0, duration: .25, velocity: .6 },
+    { midi: 67, start: .5, duration: .5, velocity: .7 },
+  ];
+  const score = new PerformanceScore(), rig = createCharacter(), instrument = createInstrument('clavinet', rig);
+  const pose = (beat, playing = true, song = program) => {
+    const motion = score.sample(snapshot(song, beat, playing))[0];
+    rig.resetPose(); animatePerformer('clavinet', rig, motion, instrument);
+    return motion;
+  };
+  const depressed = key => { const part = instrument.getObjectByName('clav-key-' + key); return part.position.y < part.userData.restY; };
+  pose(0); assert.equal(depressed(12), true); assert.equal(depressed(15), true); assert.equal(depressed(19), false);
+  pose(.6); assert.equal(depressed(12), true); assert.equal(depressed(15), false); assert.equal(depressed(19), true);
+  pose(1.2); assert.equal(depressed(12), true); assert.equal(depressed(19), false);
+  pose(2.5); assert.equal(depressed(12), false);
+  pose(4); assert.equal(depressed(15), true);
+  pose(4, false); assert.equal(depressed(12), false); assert.equal(depressed(15), false);
+  const faster = { ...program, tempo: 240 };
+  const motion = pose(.6, true, faster);
+  assert.equal(motion.notes.find(note => note.midi === 60).age, .15);
+  assert.equal(motion.notes.find(note => note.midi === 60).duration, .5);
+  assert.equal(depressed(19), true);
+  dispose(instrument); rig.dispose();
+});
+
+test('music-box mechanism and 808 lights follow scheduled envelopes and release tails', () => {
+  for (const [name, role, part] of [['Music Box', 'musicBox', 'pinned-cylinder'], ['808 Bass', 'bass808', 'bass-light-0']]) {
+    const program = fixture(name), score = new PerformanceScore();
+    program.tracks[0].pianoRoll = [{ midi: 60, start: 3.9, duration: .1, velocity: .8 }];
+    const rig = createCharacter(), instrument = createInstrument(role, rig);
+    const sample = (beat, playing = true) => {
+      const motion = score.sample(snapshot(program, beat, playing))[0];
+      rig.resetPose(); animatePerformer(role, rig, motion, instrument); return motion;
+    };
+    assert.equal(sample(3).notes.length, 0);
+    assert.equal(sample(3.95).notes.length, 1);
+    const playingValue = role === 'musicBox' ? instrument.getObjectByName(part).rotation.x : instrument.getObjectByName(part).material.emissiveIntensity;
+    assert.ok(playingValue > 0);
+    assert.equal(sample(4.05).notes.length, 1, 'release from previous cycle remains visible');
+    assert.equal(sample(4.5).notes.length, 0);
+    sample(3.95, false);
+    assert.equal(role === 'musicBox' ? instrument.getObjectByName(part).rotation.x : instrument.getObjectByName(part).material.emissiveIntensity, 0);
+    const held = fixture(name); held.tracks[0].pianoRoll = [{ midi: 60, start: 0, duration: 4, velocity: .8 }];
+    assert.equal(new PerformanceScore().sample(snapshot(held, 3.8))[0].notes[0].level, 0, 'held sustain-free note decays to silence');
+    dispose(instrument); rig.dispose();
+  }
+});
+
+
+test('a repeated music-box pitch strikes again while its earlier voice releases', () => {
+  const rig = createCharacter(), instrument = createInstrument('musicBox', rig);
+  const latest = { midi: 60, pitchDecay: .035, age: 0, duration: .1, energy: .8, level: 0 };
+  const earlier = { ...latest, age: .15, level: .3 };
+  animatePerformer('musicBox', rig, { ...note, notes: [latest] }, instrument);
+  const rotation = instrument.getObjectByName('comb-tine-0').rotation.x;
+  rig.resetPose();
+  animatePerformer('musicBox', rig, { ...note, notes: [earlier, latest] }, instrument);
+  assert.equal(instrument.getObjectByName('comb-tine-0').rotation.x, rotation);
+  dispose(instrument); rig.dispose();
 });

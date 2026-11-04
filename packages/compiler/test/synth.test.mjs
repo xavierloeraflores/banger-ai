@@ -60,3 +60,17 @@ test('built-in synth instruments round trip with patterns, locks, chords and arr
   }
   assert.throws(() => compileMusic('track bad { instrument "synth/guitar"; notes "C4"; }'), /Unknown instrument/);
 });
+
+
+test('agent-facing preset recipes compile to exactly the factory sound without new source syntax', async () => {
+  const { BANGER_LANGUAGE_GUIDE, INSTRUMENT_PATCHES } = await import('../dist/index.js');
+  for (const name of ['Music Box', 'Clavinet', '808 Bass']) {
+    const line = BANGER_LANGUAGE_GUIDE.split('\n').find(line => line.startsWith(name + ': synth {'));
+    assert.ok(line, name + ' recipe missing from shared agent prompt');
+    const program = compileMusic('track voice { instrument "synth/keys"; notes "C4 ."; ' + line.slice(name.length + 2) + ' }');
+    const patch = [...FACTORY_PATCHES, ...Object.values(INSTRUMENT_PATCHES)].find(patch => patch.name === name);
+    assert.deepEqual(program.tracks[0].synth, patch.config);
+    assert.deepEqual(compileMusic(serializeMusic(program)), program);
+  }
+  for (const source of ['synth/music-box', 'synth/clavinet']) assert.throws(() => compileMusic('track bad { instrument "' + source + '"; notes "C4"; }'), /Unknown instrument/);
+});

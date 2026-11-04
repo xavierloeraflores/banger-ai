@@ -514,7 +514,7 @@ test('native synth sources use recipes, step locks and explicit override precede
 
 test('808 glide and transient apply to the fundamental and sub together', async () => {
   const { INSTRUMENT_PATCHES } = await import('@banger/compiler');
-  const config = INSTRUMENT_PATCHES['synth/808-bass'].config;
+  const config = { ...INSTRUMENT_PATCHES['synth/808-bass'].config, glide: .12 }; // Slides are opt-in.
   const context = new Context();
   const result = scheduleSynth(context, context.destination, { time: 1, duration: 2, sustained: true, velocity: 1, step: { kind: 'note', midi: 48 } }, config, 36);
   const fundamental = result.pitchOscillators[0], sub = result.pitchOscillators.at(-1);
