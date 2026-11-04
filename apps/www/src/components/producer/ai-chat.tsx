@@ -1,6 +1,7 @@
 "use client";
 
 import { AIModelSelect } from "./ai-model-select";
+import { AgentResponse } from "./agent-response";
 
 import { useEffect, useRef, useState } from "react";
 import { Button, IconButton, Panel, Modal, Select, Checkbox, Textarea, type ModalHandle } from "@banger/shadcn";
@@ -274,7 +275,7 @@ export function AIChat({ chatId, projectId, active, openToken, initialHistory, o
       {turns.map((turn, index) => <div className="ai-chat-turn" key={index}>
         <p className="ai-chat-user"><span className="producer-sr-only">You: </span>{turn.prompt}</p>
         {turn.project && <p className="ai-chat-model">Project · {turn.project}</p>}
-        <p className="ai-chat-answer"><span className="producer-sr-only">Banger: </span>{turn.reply.text}</p>
+        <AgentResponse text={turn.reply.text} />
         <div className="ai-chat-files">{turn.reply.files.map(file => <article className="ai-chat-file" key={file.name}>
           <div className="ai-chat-file-heading"><strong>{file.name}</strong><span>{file.operation === "edit" ? "Revision compiled" : "Compiled"}</span></div>
           <details><summary>Preview source</summary><pre>{file.source}</pre></details>

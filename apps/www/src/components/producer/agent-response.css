@@ -1,0 +1,29 @@
+.agent-response { min-width: 0; line-height: 1.6; }
+.agent-response > :first-child { margin-top: 0; }
+.agent-response > :last-child { margin-bottom: 0; }
+.agent-response p, .agent-response ul, .agent-response ol,
+.agent-response blockquote, .agent-response pre, .agent-response-table { margin: 0 0 12px; }
+.producer .agent-response :is(h1, h2, h3, h4, h5, h6) { margin: 20px 0 8px; font-weight: 600; line-height: 1.3; letter-spacing: normal; }
+.producer .agent-response h1 { font-size: 20px; }
+.producer .agent-response h2 { font-size: 18px; }
+.producer .agent-response h3 { font-size: 16px; }
+.producer .agent-response :is(h4, h5, h6) { font-size: 14px; }
+.producer .agent-response > :first-child { margin-top: 0; }
+.agent-response ul, .agent-response ol { padding-left: 24px; }
+.agent-response ul { list-style: disc; }
+.agent-response ol { list-style: decimal; }
+.agent-response li + li { margin-top: 4px; }
+.agent-response li > :is(ul, ol) { margin: 4px 0 0; }
+.agent-response li > p { margin: 0 0 4px; }
+.agent-response .contains-task-list { list-style: none; padding-left: 4px; }
+.agent-response .task-list-item input { margin-right: 8px; }
+.agent-response blockquote { margin-left: 0; padding-left: 14px; border-left: 3px solid var(--producer-border); color: var(--producer-dim); }
+.agent-response a { color: var(--producer-accent); text-decoration: underline; text-underline-offset: 3px; }
+.agent-response code { padding: 2px 4px; border-radius: 4px; background: var(--producer-bg); font-family: monospace; font-size: .92em; }
+.agent-response pre { max-width: 100%; overflow: auto; padding: 12px; border: 1px solid var(--producer-border); border-radius: 6px; background: var(--producer-bg); white-space: pre; overflow-wrap: normal; }
+.agent-response pre code { padding: 0; border-radius: 0; background: transparent; }
+.agent-response-table { max-width: 100%; overflow-x: auto; }
+.agent-response table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.agent-response th, .agent-response td { padding: 8px 10px; border: 1px solid var(--producer-border); text-align: start; }
+.agent-response th { font-weight: 600; background: var(--producer-bg); }
+.agent-response hr { margin: 16px 0; border: 0; border-top: 1px solid var(--producer-border); }

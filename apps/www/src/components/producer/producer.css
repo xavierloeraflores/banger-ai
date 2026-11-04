@@ -256,7 +256,7 @@ body:has(.ai-chat-dialog[data-state="open"]) { overflow: hidden; }
 .ai-chat-suggestions button { border: 1px solid var(--producer-border); font-size: 12px; height: auto; white-space: normal; text-align: left; }
 .ai-chat-turn { padding: 4px 0 18px; }
 .ai-chat-user { padding: 12px 16px; margin: 8px 0 16px auto; width: fit-content; max-width: 85%; background: #282e35; border-radius: 10px 10px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.ai-chat-answer { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 16px; }
+.ai-chat-answer { overflow-wrap: anywhere; margin: 0 0 16px; }
 .ai-chat-files { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px; }
 .ai-chat-file { min-width: 0; border: 1px solid #3b485a; border-radius: 8px; padding: 14px; background: #1b1f25; }
 .ai-chat-file-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
