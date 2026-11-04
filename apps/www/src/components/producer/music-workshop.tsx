@@ -4,6 +4,8 @@ import type {StageRecording} from './recorded-stage';
 import {readSingAlong} from '@/lib/sing-along';
 import './music-workshop.css';
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
+import {ExportMenu} from './export-menu';
 import {KeyHint,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
 import {assertLyricsPreserved,waitForMusic,type FullSend} from '@/lib/full-send';
 import {sendLyrics} from '@/lib/ai-chat';
@@ -21,7 +23,7 @@ const audioName=(version:MusicVersion)=>version.audioVersion===1?'Original WAV':
 type Pending={id:string;lyrics:string[];upload?:boolean};
 
 export type LyricAgent = { run(prompt:string,signal:AbortSignal):Promise<string>; fullSend:FullSend; checkFullSend(vocals:boolean):void };
-export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProject=false,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;hasProject?:boolean;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
+export function MusicWorkshop({exportTarget,onLyricAgent,cloud,studioFile,studioPath,hasProject=false,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{exportTarget?:HTMLDivElement|null;onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;hasProject?:boolean;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
   const {languageModel,vocals}=useGenerationAccess();
   const lyricRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>lyricRequest.current?.abort(),[cloud]);
@@ -268,6 +270,7 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProje
     <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioPath,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token,studioFile),true);});}}>Use studio WAV</button></KeyHint>
   </div>;
   return <section className="music-workshop" aria-label="Vocal Studio">
+    {active&&exportTarget&&createPortal(<ExportMenu disabled={!song||blocked||dirty} onExport={library=>{void action(()=>exportSong(library));}}/>,exportTarget)}
     {!hasProject&&backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&vocals&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
     <header className="music-heading">
       <div><h1>{studioFile.name.replace(/\.banger$/i,'')}</h1></div>
@@ -315,7 +318,6 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProje
       <audio ref={attachAudio} src={audio.url||undefined} preload="metadata" aria-label="Vocal Studio song preview" onLoadedMetadata={event=>audio.setDuration(event.currentTarget.duration)} onTimeUpdate={event=>audio.updateTime(event.currentTarget)} onPlay={()=>audio.setPlaying(true)} onPause={()=>audio.setPlaying(false)} onEnded={()=>audio.setPlaying(false)} onError={()=>audio.setError('This audio could not be played. Try selecting it again.')}/>
       <div className="music-player-controls"><div className="music-player-view"><span>Timeline</span><button onClick={()=>setZoom(1)} disabled={!song}>Fit</button><label>Zoom<input aria-label="Timeline zoom" type="range" min={1} max={4} step={.25} value={zoom} onChange={event=>setZoom(Number(event.target.value))} disabled={!song}/></label><label className="music-volume">Volume<input aria-label="Preview volume" type="range" min={0} max={1} step={.05} value={audio.volume} onChange={event=>audio.setVolume(Number(event.target.value))}/></label></div>
         <div className="music-playback"><time>{clockTime(audio.position)}</time><button className="music-play" aria-label={audio.playing?'Pause song':'Play song'} disabled={!audio.url||audio.loading||!active} onClick={()=>void audio.toggle()}>{audio.playing?'Ⅱ':'▶'}</button><time>{clockTime(duration)}</time></div>
-        <select aria-label="Export song" value="" disabled={!song||blocked||dirty} onChange={event=>{const library=event.target.value==='library';void action(()=>exportSong(library));}}><option value="" disabled>Export…</option><option value="export">Export</option><option value="library">Export and save to library</option></select>
       </div>
       <div className="music-timeline-scroll"><div className="music-timeline" style={{width:`${zoom*100}%`}}>
         <div className="music-time-ruler">{Array.from({length:9},(_,index)=><span key={index}>{clockTime(duration*index/8)}</span>)}</div>

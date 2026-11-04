@@ -101,6 +101,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
 function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStudio, onRequireProject, children }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; initialStudio: "beat" | "vocal" | "library"; onRequireProject(studio: "beat" | "vocal"): void; children: ReactNode }) {
   const projectDialog = useRef<HTMLDialogElement>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
+  const [vocalExportTarget, setVocalExportTarget] = useState<HTMLDivElement | null>(null);
   const [projectEpoch, setProjectEpoch] = useState(0);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
@@ -537,6 +538,8 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
             Sing along
           </Button>}
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
+          {beatStudio && <AudioExport compact program={program} fileName={fileName} source={source} disabled={draft || fileBusy || workspaceBusy} />}
+          <div ref={setVocalExportTarget} hidden={!vocalStudio} />
           <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
             const next = event.target.value as "beat" | "vocal" | "library";
             if (next !== "library" && !hasProject) { onRequireProject(next); return; }
@@ -608,7 +611,6 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
           </div>
           {playback.state.hasPendingUpdate && <span className="producer-transport-state" role="status">Changes next bar</span>}
         </div>
-        <AudioExport compact program={program} fileName={fileName} source={source} disabled={draft || fileBusy} />
         <TransportControls program={program} disabled={draft || fileBusy} onChange={edit} onFill={playback.setFill} fill={playback.fill}
           onTempo={tempo => { if (edit({ ...program, tempo })) setTempoDraft(String(tempo)); }}
           onLaunch={launchPattern} />
@@ -692,7 +694,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          {hasProject && <MusicWorkshop hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
+          {hasProject && <MusicWorkshop exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
         {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
         {hasProject && <AIChat onFullSend={runFullSend} onFullSendCheck={checkFullSend} onLyrics={runLyrics} vocalStudio={vocalStudio} source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}

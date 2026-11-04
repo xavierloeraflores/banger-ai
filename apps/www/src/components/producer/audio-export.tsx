@@ -7,6 +7,7 @@ import { prepareSong, archiveWav } from "@/lib/song-storage";
 import { renderWav } from "@banger/engine";
 import { uploadWav, type CloudBinding } from "@/lib/cloud-projects";
 import { Button, Select } from "@banger/shadcn";
+import { ExportMenu } from "./export-menu";
 
 function download(wav: ArrayBuffer, name: string) {
   const url = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
@@ -47,10 +48,8 @@ export function AudioExport({ program, fileName, source, disabled, cloud, compac
     } catch (cause) { setStatus(cause instanceof Error ? cause.message : "Audio export failed."); }
     finally { setBusy(false); }
   }
-  const menu = <Select aria-label="Export song" value="" disabled={disabled || busy} onChange={event => { const library = event.target.value === 'library'; void render(false, false, library); }}>
-    <option value="" disabled>Export…</option><option value="export">Export</option><option value="library">Export and save to library</option>
-  </Select>;
-  if (compact) return <div>{menu}<span role="status">{status}</span></div>;
+  const menu = <ExportMenu disabled={disabled || busy} onExport={library => { void render(false, false, library); }} />;
+  if (compact) return <div className="studio-header-export">{menu}<span className="studio-header-export-status" role="status">{status}</span></div>;
   return <section className="studio-export" aria-labelledby="project-export-title">
     <h2 id="project-export-title"><ProjectIcon name="audio" />Export Controls</h2>
     <fieldset disabled={disabled || busy}>

@@ -124,6 +124,27 @@ async function run(){
  const evaluate=code=>window.webContents.executeJavaScript(code,true).catch(error=>{throw new Error(`${error.message} Script: ${code}`);});
  const wait=async expression=>{for(let i=0;i<400;i++){if(await evaluate(`Boolean(${expression})`))return;await delay(40);}throw new Error(`UI timeout: ${expression}; ${await evaluate("document.querySelector('.music-workshop')?.textContent")}`);};
  const click=async text=>{await wait(`[...document.querySelectorAll('button')].some(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>(b.textContent.trim()===${JSON.stringify(text)}||b.getAttribute('aria-label')===${JSON.stringify(text)})&&!b.disabled).click()`);};
+ const exportSong=async()=>{
+  const trigger='.producer-header [aria-haspopup="menu"]';
+  await wait(`document.querySelector('${trigger}') && !document.querySelector('${trigger}').disabled`);
+  assert.equal(await evaluate("document.querySelectorAll('select[aria-label=\"Export song\"]').length"),0,'Export uses buttons in both studios');
+  assert.ok(await evaluate(`(() => { const project=document.querySelector('[aria-controls="project-controls"]'), button=document.querySelector('${trigger}'); const a=project.getBoundingClientRect(), b=button.getBoundingClientRect(); return b.left>a.left && Math.abs(a.top-b.top)<2; })()`),'Export sits beside Project');
+  await evaluate(`document.querySelector('${trigger}').click()`);
+  await wait("document.activeElement?.textContent==='Export and download'");
+  if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png',`-export-${await evaluate("document.querySelector('.producer').dataset.view")}.png`),(await window.webContents.capturePage()).toPNG());
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-header [role=menuitem]')].map(item=>item.textContent)"),['Export and download','Export and save to library']);
+  await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
+  assert.equal(await evaluate('document.activeElement.textContent'),'Export and save to library');
+  await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+  await wait(`document.activeElement===document.querySelector('${trigger}') && !document.querySelector('.producer-header [role=menu]')`);
+  await evaluate(`document.querySelector('${trigger}').click()`);
+  const [width,height]=window.getContentSize();
+  window.setContentSize(390,844);await delay(100);
+  assert.ok(await evaluate("(() => {const bounds=document.querySelector('.producer-header [role=menu]').getBoundingClientRect();return bounds.left>=16 && bounds.right<=document.documentElement.clientWidth-16;})()"),'Export menu fits a narrow viewport');
+  if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-export-mobile.png'),(await window.webContents.capturePage()).toPNG());
+  window.setContentSize(width,height);await delay(100);
+  await click('Export and save to library');
+ };
  const fill=(selector,value)=>evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:input instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event(input instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
  try{
   await window.loadURL(`http://127.0.0.1:${web.address().port}`);await enterStudio(window);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
@@ -275,7 +296,7 @@ async function run(){
   await click('Play song');await wait("document.querySelector('.music-workshop audio')?.duration>7");
   await evaluate("(()=>{const audio=document.querySelector('.music-workshop audio');audio.muted=true;return audio.play();})()");await wait("document.querySelector('.music-workshop audio').currentTime>0");
   const download=cloud?new Promise((resolve,reject)=>window.webContents.session.once('will-download',(_event,item)=>{item.setSavePath(join(root,'final.mp3'));item.once('done',(_event,state)=>state==='completed'?resolve():reject(new Error(state)));})):null;
-  await fill('.music-workshop [aria-label="Export song"]','library');if(download)await download;else for(let i=0;i<100;i++){try{await readFile(join(root,'final.mp3'));break;}catch{await delay(20);}}
+  await exportSong();if(download)await download;else for(let i=0;i<100;i++){try{await readFile(join(root,'final.mp3'));break;}catch{await delay(20);}}
   assert.deepEqual(await readFile(join(root,'final.mp3')),finalAudio);assert.deepEqual(provider.calls,{analyze:1,lyrics:0,generate:2});
   assert.equal(await evaluate("document.querySelectorAll('.music-chunk .producer-tag,.music-chunk details').length"),0);
   assert.equal(await evaluate("document.querySelectorAll('.music-timeline-chunks button').length"),2);
@@ -363,7 +384,7 @@ async function run(){
   }
   // Export the associated vocal after changing Beat Studio, then open that saved beat.
   await selectView('vocal');
-  await fill('.music-workshop [aria-label="Export song"]','library');
+  await exportSong();
   await wait("document.querySelector('.music-status').textContent.includes('Exported and saved to library.')");
   await selectView('library');
   await wait("document.querySelectorAll('.library-card').length>=2");
@@ -390,8 +411,8 @@ async function run(){
   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('140 BPM')"),'Beat Studio stage uses the current beat');
   await click('Close band stage');
   await wait("!document.querySelector('#performance-stage')?.open");
-  await fill('.producer-transport [aria-label="Export song"]','library');
-  await wait("document.querySelector('.producer-transport').textContent.includes('Exported and saved to library.')");
+  await exportSong();
+  await wait("document.querySelector('.producer-header').textContent.includes('Exported and saved to library.')");
   await selectView('library');await wait("document.querySelectorAll('.library-card').length>=1");
   assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),true,'Returning to the library requires a new selection');
   assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
