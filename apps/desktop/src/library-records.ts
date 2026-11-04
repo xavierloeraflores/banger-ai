@@ -81,10 +81,10 @@ export function createLibraryRecords(userData: string, generate?: (context: Artw
     pending.set(id, task);
   }
   return {
-    async ensure(record: RecordIdentity, context: ArtworkContext) {
+    async ensure(record: RecordIdentity, context: ArtworkContext, options?: { artwork?: string; generate?: boolean }) {
       const file = await path(record.id);
-      await writeFile(file, JSON.stringify({ id: record.id, name: record.name, context: artworkContext({ ...context, prompt: record.prompt ?? context.prompt }), attempts: 0 }), { flag: 'wx', mode: 0o600 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
-      resume(record.id);
+      await writeFile(file, JSON.stringify({ id: record.id, name: record.name, context: artworkContext({ ...context, prompt: record.prompt ?? context.prompt }), artwork: options?.artwork, attempts: 0 }), { flag: 'wx', mode: 0o600 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
+      if (options?.generate !== false) resume(record.id);
     },
     async rename(id: string, name: string) {
       if (typeof name !== 'string' || !name.trim() || name.trim().length > 160) throw new Error('Enter a record name from 1 to 160 characters.');

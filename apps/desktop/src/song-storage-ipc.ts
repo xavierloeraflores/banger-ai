@@ -38,6 +38,18 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
   }
   ipcMain.handle('banger:record-rename', (event, id: string, name: string) => { senderWindow(event); return recordAction(() => records.rename(id, name)); });
   ipcMain.handle('banger:record-regenerate', (event, id: string) => { senderWindow(event); return recordAction(() => records.regenerate(id)); });
+  for (const method of ['renameSong', 'addToRecord', 'editRecordSongs', 'regenerateSongArtwork'] as const) {
+    ipcMain.handle(`banger:library-${method}`, (event, ...args: unknown[]) => {
+      const library = libraries.get(senderWindow(event).id);
+      return recordAction(async () => {
+        if (!library) throw new Error('Open the library first.');
+        if (method === 'renameSong') await library.renameSong(args[0] as string, args[1] as string);
+        if (method === 'addToRecord') await library.addToRecord(args[0] as string, args[1] as string, args[2] as string | undefined);
+        if (method === 'editRecordSongs') await library.editRecordSongs(args[0] as string, args[1] as string[]);
+        if (method === 'regenerateSongArtwork') await library.regenerateSongArtwork(args[0] as string);
+      });
+    });
+  }
   ipcMain.handle('banger:library-read', (event, id: string) => {
     const library = libraries.get(senderWindow(event).id);
     if (!library) throw new Error('Open the library first.');

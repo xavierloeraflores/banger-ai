@@ -5,13 +5,13 @@ import { readChats } from './chat-sessions';
 import { generateRecordArtwork, artworkContext, type ArtworkContext } from '@banger/agent';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 
-export type LibraryRecord = { id: string; name: string; prompt?: string };
+export type LibraryRecord = { id: string; name: string; prompt?: string; projectId?: string | null };
 type StoredRecord = LibraryRecord & { context: ArtworkContext; attempts: number; leaseUntil?: number; regenerating?: boolean; artwork?: string };
-export type LibraryBundle = { id: string; name: string; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string; songType?: LibrarySongType; wav: ArrayBuffer; files: Record<string, ArrayBuffer | string>; beat?: { name: string; source: string } };
+export type LibraryBundle = { id: string; name: string; projectId?: string | null; recordPosition?: number; artworkId?: string; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string; songType?: LibrarySongType; wav: ArrayBuffer; files: Record<string, ArrayBuffer | string>; beat?: { name: string; source: string } };
 export function captureLibraryRecord(name: string): LibraryRecord {
   const project = browserProjectIdentity();
   const chat = project ? readChats().find(chat => chat.snapshot.folder?.id === project.id) : undefined;
-  return { id: project?.id ?? crypto.randomUUID(), name: (project?.name ?? name).slice(0,160), prompt: chat?.history?.turns[0]?.prompt ?? chat?.history?.prompt };
+  return { id: project?.id ?? crypto.randomUUID(), projectId: project?.id ?? null, name: (project?.name ?? name).slice(0,160), prompt: chat?.history?.turns[0]?.prompt ?? chat?.history?.prompt };
 }
 function database(key = browserStorageKey('banger-library')): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -66,7 +66,7 @@ export async function saveLibraryBundle(name: string, wav: ArrayBuffer, files: L
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(['songs','records'], 'readwrite');
-      tx.objectStore('songs').add({ id: crypto.randomUUID(), recordId: record.id, name, wav, files, beat, songType });
+      tx.objectStore('songs').add({ id: crypto.randomUUID(), recordId: record.id, projectId: 'projectId' in record ? record.projectId : record.id, name, wav, files, beat, songType });
       const records = tx.objectStore('records'), existing = records.get(record.id);
       existing.onsuccess = () => { if(!existing.result) records.add({ id: record.id, name: record.name.slice(0,160), attempts: 0, context: artworkContext({ name: record.name, prompt: record.prompt, source: beat?.source, lyrics: typeof files['lyrics.json'] === 'string' ? files['lyrics.json'] : undefined }) }); };
       tx.oncomplete = () => resolve();
@@ -86,8 +86,8 @@ export async function browserLibrarySongs(): Promise<LibraryBundle[]> {
     const byId = new Map(records.map(record=>[record.id,record]));
     for(const record of records)if((!record.artwork || record.regenerating) && record.attempts<3)resumeArtwork(key,record.id);
     return songs.map(song => {
-      const record = byId.get(song.recordId ?? '');
-      return { ...song, recordName: record?.name, artwork: record?.artwork ?? song.artwork, artworkPending: Boolean(record?.regenerating && (record.attempts<3 || (record.leaseUntil ?? 0)>Date.now())), artworkError: Boolean(record?.regenerating && record.attempts>=3 && (record.leaseUntil ?? 0)<=Date.now()) };
+      const record = byId.get(song.recordId ?? song.artworkId ?? '');
+      return { ...song, projectId: 'projectId' in song ? song.projectId : song.recordId ?? null, recordName: record?.name, artwork: record?.artwork ?? song.artwork, artworkPending: Boolean(record?.regenerating && (record.attempts<3 || (record.leaseUntil ?? 0)>Date.now())), artworkError: Boolean(record?.regenerating && record.attempts>=3 && (record.leaseUntil ?? 0)<=Date.now()) };
     });
   } finally { db.close(); }
 }
@@ -121,4 +121,64 @@ export async function regenerateBrowserArtwork(id: string) {
     return { ...value, attempts: 0, regenerating: true };
   });
   resumeArtwork(key, id);
+}
+
+function libraryName(name: string) {
+  if (!name.trim() || name.trim().length > 160) throw new Error('Enter a name from 1 to 160 characters.');
+  return name.trim();
+}
+async function editLibrary(change: (songs: LibraryBundle[], records: StoredRecord[], tx: IDBTransaction) => void) {
+  const db = await database();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(['songs', 'records'], 'readwrite');
+      const songs = tx.objectStore('songs').getAll(), records = tx.objectStore('records').getAll();
+      let error: unknown;
+      records.onsuccess = () => { try { change(songs.result, records.result, tx); } catch (cause) { error = cause; tx.abort(); } };
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(error ?? tx.error); tx.onabort = () => reject(error ?? tx.error);
+    });
+  } finally { db.close(); }
+}
+function findSong(songs: LibraryBundle[], id: string) {
+  const song = songs.find(item => item.id === id);
+  if (!song) throw new Error('Song not found. Refresh the library.');
+  return song;
+}
+export async function renameBrowserSong(id: string, name: string) {
+  const next = libraryName(name);
+  await editLibrary((songs, _records, tx) => tx.objectStore('songs').put({ ...findSong(songs, id), name: next }));
+}
+export async function addBrowserSongToRecord(id: string, recordId: string, name?: string) {
+  await editLibrary((songs, records, tx) => {
+    const song = findSong(songs, id);
+    if (!records.some(record => record.id === recordId)) {
+      if (!name) throw new Error('Record not found.');
+      tx.objectStore('records').add({ id: recordId, name: libraryName(name), context: artworkContext({ name: libraryName(name), source: song.beat?.source }), attempts: 0 });
+    }
+    tx.objectStore('songs').put({ ...song, projectId: 'projectId' in song ? song.projectId : song.recordId ?? null, recordId, recordPosition: Date.now() });
+  });
+}
+export async function editBrowserRecordSongs(recordId: string, ids: string[]) {
+  await editLibrary((songs, records, tx) => {
+    if (!records.some(record => record.id === recordId)) throw new Error('Record not found.');
+    if (new Set(ids).size !== ids.length) throw new Error('Choose each song once.');
+    ids.forEach(id => findSong(songs, id));
+    for (const song of songs) {
+      const index = ids.indexOf(song.id);
+      if (index >= 0 || song.recordId === recordId) tx.objectStore('songs').put({ ...song, projectId: 'projectId' in song ? song.projectId : song.recordId ?? null, recordId: index >= 0 ? recordId : undefined, recordPosition: index >= 0 ? index : undefined });
+    }
+  });
+}
+export async function regenerateBrowserSongArtwork(id: string) {
+  if (!browserArtworkCredentials()) throw new Error('Add a Meta or Vercel key in AI settings to regenerate artwork.');
+  let artworkId = '';
+  await editLibrary((songs, records, tx) => {
+    const song = findSong(songs, id);
+    artworkId = song.artworkId ?? crypto.randomUUID();
+    const record = records.find(record => record.id === artworkId);
+    if ((record?.leaseUntil ?? 0) > Date.now() || (record?.regenerating && record.attempts < 3)) throw new Error('Artwork is already being generated.');
+    tx.objectStore('records').put({ ...record, id: artworkId, name: song.name, artwork: record?.artwork ?? song.artwork, context: record?.context ?? artworkContext({ name: song.name, source: song.beat?.source, lyrics: typeof song.files['lyrics.json'] === 'string' ? song.files['lyrics.json'] : undefined }), attempts: 0, regenerating: true });
+    tx.objectStore('songs').put({ ...song, artworkId });
+  });
+  resumeArtwork(browserStorageKey('banger-library'), artworkId);
 }
