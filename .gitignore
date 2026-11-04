@@ -4,6 +4,7 @@ node_modules/
 .next/
 dist/
 out/
+/output/
 *.tsbuildinfo
 .env*
 !.env.example
