@@ -55,9 +55,7 @@ export function createSongLibrary(userData: string) {
         }
       }
       await scan(userData, join(userData, 'library'), 'Library');
-      await scan(userData, join(userData, 'projects'), 'Saved song');
       if (project) {
-        await scan(project, project, 'Project');
         const hidden = join(project, '.banger');
         try { if ((await lstat(hidden)).isDirectory() && !(await lstat(hidden)).isSymbolicLink()) await scan(project, join(hidden, 'library'), 'Project library'); }
         catch (error) { if (!absent(error)) throw error; }

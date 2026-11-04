@@ -1,4 +1,5 @@
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { songStorage as storage } from '@banger/harness';
 import { validateWav } from '@banger/elevenlabs';
@@ -19,6 +20,31 @@ export function createSongStorage(userData: string) {
     return task;
   }
   return {
+    async addToLibrary(song: SongLocation, audio: Uint8Array, source?: string, lyrics?: unknown) {
+      validateWav(audio, false);
+      if (source !== undefined) validateSource(source);
+      const name = songName(song.name);
+      const library = await directory(userData, ['library']);
+      const id = randomUUID();
+      const staging = await directory(library, [`.${id}`]);
+      try {
+        await writeFile(join(staging, `${name}.wav`), audio);
+        const savedSource = source ?? await readRegular(join(await directory(song.root), `${name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
+        if (savedSource !== undefined) await writeFile(join(staging, `${name}.banger`), savedSource);
+        const savedLyrics = lyrics === undefined ? await readRegular(join(song.root, `${name}.lyrics.json`)).catch(error => { if (missing(error)) return undefined; throw error; }) : JSON.stringify(lyrics, null, 2);
+        if (savedLyrics !== undefined) await writeFile(join(staging, `${name}.lyrics.json`), savedLyrics);
+        for (const kind of ['instrumentals', 'vocals', 'lyrics'] as const) {
+          const folder = await history(song, kind);
+          const target = await directory(staging, ['.history', kind]);
+          for (const file of await readdir(folder)) {
+            if (!/-v\d+\.(wav|json)$/.test(file)) continue;
+            await writeFile(join(target, file), await readRegular(join(folder, file)));
+          }
+        }
+        await rename(staging, join(library, `${name}-${id}`));
+        return { name };
+      } catch (error) { await rm(staging, { recursive: true, force: true }); throw error; }
+    },
     async prepare(root: string | undefined, name: string, source?: string): Promise<SongLocation> {
       name = songName(name);
       if (!root) { await directory(userData, ['projects']); root = await directory(userData, ['projects', name]); }

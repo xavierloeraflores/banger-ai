@@ -5,7 +5,9 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {KeyHint,LLM_KEY_HINT,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
 import {sendLyrics} from '@/lib/ai-chat';
 import {prepareSong} from '@/lib/song-storage';
-import {renderWav} from '@banger/engine';
+import {cloudRequest,type CloudSnapshot} from '@/lib/cloud-projects';
+import {saveLibraryBundle} from '@/lib/browser-library';
+import {renderWav,encodeWav} from '@banger/engine';
 import {compileMusic} from '@banger/compiler';
 import {chunkName,lyricsOf,lyricEditError,MAX_CHUNK_TEXT_CHARACTERS,MAX_CHUNK_TEXT_LINES,MAX_CHUNK_LINE_CHARACTERS,type MusicVersion,type MusicOperation,type MusicAction,type MusicHistory} from '@banger/elevenlabs/protocol';
 import {cloudMusic,desktopMusic,type MusicBackend,type CloudMusicContext} from '@/lib/elevenlabs';
@@ -91,6 +93,41 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChan
       }finally{lyricRequest.current=null;}
     });
   }
+  async function exportSong(library:boolean) {
+    if (!song || !backend) return;
+    if (library) {
+      if (backend.mode === 'desktop' && window.bangerMusic) await window.bangerMusic.addToLibrary(song.id, song.version);
+      else {
+        const files:Record<string,ArrayBuffer|string> = {};
+        if (cloud) {
+          const snapshot=await cloudRequest<CloudSnapshot>(cloud,`/projects/${cloud.projectId}`);
+          for(const file of snapshot.files) if(file.path.endsWith('.banger')) files[file.path]=file.source;
+        }
+        let before:number|undefined;
+        const versions:MusicVersion[] = [];
+        do { const page=await backend.versions(song.id,before); versions.push(page.original,...page.versions); before=page.nextBefore; } while(before);
+        const context=new AudioContext();
+        let selected:ArrayBuffer|undefined;
+        try {
+          for (const version of [...new Map([...versions,song].map(item=>[item.audioId,item])).values()]) {
+            const url=await backend.audio(version);
+            try {
+              const response=await fetch(url); if(!response.ok)throw new Error('Could not read song audio.');
+              const wav=encodeWav(await context.decodeAudioData(await response.arrayBuffer()));
+              files[`audio-v${version.audioVersion}.wav`]=wav;
+              if(version.audioId===song.audioId)selected=wav;
+            } finally { URL.revokeObjectURL(url); }
+          }
+        } finally { await context.close(); }
+        for(const version of versions)files[`lyrics-v${version.version}.json`]=JSON.stringify(version);
+        files['lyrics.json']=JSON.stringify(song);
+        if(!selected)throw new Error('Selected audio is unavailable.');
+        await saveLibraryBundle(song.name,selected,files,song.beat);
+      }
+    }
+    await backend.save(song);
+    setNotice(library?'Exported and saved to library.':'Exported.');
+  }
   function discard(){return !dirty||window.confirm('Discard the unsaved lyric draft?');}
   function select(version:MusicVersion){if(blocked||!head||!discard())return false;audio.pause();adopt(version,head);setNotice('');return true;}
   const actionBase={baseVersion:baseRevision,sourceVersion:song?.version};
@@ -157,7 +194,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChan
       <audio ref={attachAudio} src={audio.url||undefined} preload="metadata" aria-label="Vocal Studio song preview" onLoadedMetadata={event=>audio.setDuration(event.currentTarget.duration)} onTimeUpdate={event=>audio.updateTime(event.currentTarget)} onPlay={()=>audio.setPlaying(true)} onPause={()=>audio.setPlaying(false)} onEnded={()=>audio.setPlaying(false)} onError={()=>audio.setError('This audio could not be played. Try selecting it again.')}/>
       <div className="music-player-controls"><div className="music-player-view"><span>Timeline</span><button onClick={()=>setZoom(1)} disabled={!song}>Fit</button><label>Zoom<input aria-label="Timeline zoom" type="range" min={1} max={4} step={.25} value={zoom} onChange={event=>setZoom(Number(event.target.value))} disabled={!song}/></label><label className="music-volume">Volume<input aria-label="Preview volume" type="range" min={0} max={1} step={.05} value={audio.volume} onChange={event=>audio.setVolume(Number(event.target.value))}/></label></div>
         <div className="music-playback"><time>{clockTime(audio.position)}</time><button className="music-play" aria-label={audio.playing?'Pause song':'Play song'} disabled={!audio.url||audio.loading||!active} onClick={()=>void audio.toggle()}>{audio.playing?'Ⅱ':'▶'}</button><time>{clockTime(duration)}</time></div>
-        <button disabled={!song||busy} onClick={()=>void action(async()=>{if(song&&backend)await backend.save(song);})}>↓ Download</button>
+        <select aria-label="Export song" value="" disabled={!song||blocked||dirty} onChange={event=>{const library=event.target.value==='library';void action(()=>exportSong(library));}}><option value="" disabled>Export…</option><option value="export">Export</option><option value="library">Export and save to library</option></select>
       </div>
       <div className="music-timeline-scroll"><div className="music-timeline" style={{width:`${zoom*100}%`}}>
         <div className="music-time-ruler">{Array.from({length:9},(_,index)=><span key={index}>{clockTime(duration*index/8)}</span>)}</div>

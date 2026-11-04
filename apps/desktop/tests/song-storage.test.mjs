@@ -151,3 +151,24 @@ test('library copies retain the selected vocal beat snapshot after studio change
   await storage.copyToLibrary(song, 'global', { audio: 'vocals/midnight.vocals-v001.wav', instrumental: 'midnight.instrumental-v001.wav' });
   assert.equal(await readFile(join(root, 'library/midnight/midnight.banger'), 'utf8'), beat.source);
 });
+
+test('explicit library snapshot preserves current source, lyrics and audio history as one entry', async t => {
+  const { root, storage, song } = await fixture(t);
+  await storage.saveAudio(song, 'instrumentals', wav());
+  await storage.saveAudio(song, 'vocals', wav());
+  await storage.saveLyrics(song, document('Saved lyrics'));
+  await storage.addToLibrary(song, wav(), 'tempo 99;', document('Selected lyrics'));
+  const [entry] = await readdir(join(root, 'library'));
+  const target = join(root, 'library', entry);
+  assert.equal(await readFile(join(target, 'midnight.banger'), 'utf8'), 'tempo 99;');
+  assert.deepEqual(JSON.parse(await readFile(join(target, 'midnight.lyrics.json'))), document('Selected lyrics'));
+  assert.deepEqual(await readFile(join(target, 'midnight.wav')), wav());
+  assert.equal((await readdir(join(target, '.history', 'instrumentals'))).length, 1);
+  assert.equal((await readdir(join(target, '.history', 'vocals'))).length, 1);
+  assert.equal((await readdir(join(target, '.history', 'lyrics'))).length, 1);
+  const { createSongLibrary } = await import('../dist/song-library.js');
+  assert.equal((await createSongLibrary(root).list()).length, 1);
+  await storage.addToLibrary(song, wav(), 'tempo 100;');
+  assert.equal((await readdir(join(root, 'library'))).length, 2);
+  assert.equal(await readFile(join(song.root, 'midnight.banger'), 'utf8'), 'tempo 120;');
+});

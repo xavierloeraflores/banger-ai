@@ -43,6 +43,12 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
     if (!(bytes instanceof Uint8Array)) throw new Error('Invalid WAV.');
     return storage.saveAudio(song, 'instrumentals', bytes);
   });
+  ipcMain.handle('banger:storage-add-library', async (event, name: string, source: string, bytes: Uint8Array) => {
+    const window = senderWindow(event);
+    if (typeof source !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('Invalid song.');
+    const song = await storage.prepare(roots.get(window.id), name, source);
+    return storage.addToLibrary(song, bytes, source);
+  });
   ipcMain.handle('banger:storage-history', (event, token: string) => storage.list(resolve(senderWindow(event), token)));
   ipcMain.handle('banger:storage-library', (event, token: string, scope: 'global' | 'project', selection: LibrarySelection) => storage.copyToLibrary(resolve(senderWindow(event), token), scope, selection));
   return {
