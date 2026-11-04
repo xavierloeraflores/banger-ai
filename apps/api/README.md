@@ -28,9 +28,9 @@ Deploy `apps/api` as its own Vercel project, including workspace files outside t
 
 ## Persistence and conflicts
 
-Every saved file version and manifest is an immutable private Blob object. PostgreSQL records the manifest's path and indexed revision metadata. It also records users, ownership, viewer/editor grants, agent sessions, jobs, and audio references.
+New source versions and manifests are immutable PostgreSQL objects. Existing Blob-backed source versions remain readable. PostgreSQL records revision metadata beside the source. It also records users, ownership, viewer/editor grants, agent sessions, jobs, and audio references.
 
-A save compiles all submitted `.banger` source before any publication. It writes immutable objects, then locks the project row, rechecks permissions and the expected revision, and publishes the new manifest and revision in one transaction. A stale client receives HTTP 409 and keeps its draft. Failed or conflicting writes can leave unreferenced Blob objects; they never become the current project. Garbage collection is deliberately not automatic. Any future collector must retain objects referenced by all historical manifests, artifacts, pending uploads, and job checkpoints.
+A save compiles all submitted `.banger` source before any publication. It writes immutable source objects, then locks the project row, rechecks permissions and the expected revision, and publishes the new manifest and revision in one transaction. A stale client receives HTTP 409 and keeps its draft. Failed or conflicting writes can leave unreferenced source or Blob objects; they never become the current project. Garbage collection is deliberately not automatic. Any future collector must retain objects referenced by all historical manifests, artifacts, pending uploads, and job checkpoints.
 
 Sync uses `GET /api/projects/:id?since=N` to return changed source and deleted paths. Projects are limited to 256 files, 64 KiB per file, and 4 MiB of total source. Lists return at most 100 projects, 50 jobs, or 50 artifacts. Older revisions remain available to the backend for manifests and artifact provenance; the panel displays current projects and recent activity.
 
@@ -143,3 +143,42 @@ BYOK chat and lyric requests go through the same-origin authenticated API.
 Provider endpoints are fixed by the provider adapter; clients cannot supply a
 proxy destination. Keys are not saved in the server database or logged. Browser
 keys remain in account-scoped tab storage and are cleared on sign-out.
+
+## Hosted studio projects and storage
+
+The hosted entry point installs web implementations of the existing workspace,
+music, song-storage and library interfaces. Open Project, Create New Project,
+Save, project chat, Vocal Studio and library exports use the signed-in account.
+The separate cloud-source editor is hidden in the hosted app. The static export
+and Electron continue to use their existing adapters.
+
+Apply all migrations before updating the app. Projects, source revisions, lyric
+drafts, conversation history and library metadata use PostgreSQL. Project chat
+runs the same bounded file-tool agent in a temporary directory. It restores
+conversation history, streams activity, revalidates writes and checks source
+revisions before publication. Conflicting edits remain unchanged in the saved
+project and the task reports incomplete. Account-bound request headers prevent a
+stale tab from applying another account's credentials after sign-in changes.
+
+For Vercel, use the private Blob store for audio. For a self-hosted Node server,
+set `BANGER_LOCAL_DATA_DIR` to an absolute directory on persistent disk. The API
+stores media there with private permissions and streams it only after project
+authorization. The app uploads directly to that server with a 100 MiB bound.
+This directory must be shared by every server/worker instance and backed up
+alongside PostgreSQL. Do not point it at a public directory or ephemeral
+serverless filesystem. Leave it unset on Vercel. Changing storage backends does
+not migrate existing audio.
+
+The local renderer check uses a dedicated database and local media directory:
+
+```sh
+NODE_ENV=production DATABASE_URL=postgresql://localhost/banger_test \
+  APP_ORIGIN=http://127.0.0.1:3048 BANGER_LOCAL_DATA_DIR=/tmp/banger-test-media \
+  pnpm --filter @banger/api exec next start --hostname 127.0.0.1 --port 3048
+# In another terminal, after building and migrating:
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --projects
+```
+
+This check exercises account flows, project creation and reload, source saves,
+draft persistence, real WAV rendering, private uploads, library persistence and
+non-silent playback. It does not call a paid provider.

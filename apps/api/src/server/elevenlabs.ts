@@ -1,35 +1,18 @@
-import { get, head, put } from '@vercel/blob';
+import { mediaObjects, type MusicObjects } from './media-objects';
+export { boundedAudio, type MusicObjects } from './media-objects';
 import { ElevenMusic, MusicProviderError, musicActionBase, performMusicAction, publicMusicError, type MusicProvider, type MusicVersion } from '@banger/elevenlabs';
 import { db, transaction } from './db';
 import { ApiError } from './domain';
 import { authorize } from './projects';
 import { checkpoint, elevenInput, type Job } from './jobs';
-import { getArtifact, MAX_AUDIO_BYTES } from './artifacts';
-export async function boundedAudio(stream: ReadableStream<Uint8Array>, limit = MAX_AUDIO_BYTES): Promise<Buffer> {
-  const reader = stream.getReader(); const chunks: Buffer[] = []; let size = 0;
-  try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.byteLength; if (size > limit) throw new ApiError(413, 'Audio exceeds 100 MiB.'); chunks.push(Buffer.from(part.value)); } }
-  finally { await reader.cancel(); }
-  return Buffer.concat(chunks);
-}
+import { getArtifact } from './artifacts';
 export async function getMusic(user:string,musicId:string) {
   const row=(await db().query('SELECT * FROM music_sessions WHERE id=$1',[musicId])).rows[0];
   if(!row) throw new ApiError(404,'Music session not found.');
   await authorize(user,row.project_id);
   return row as {id:string;project_id:string;source_artifact_id:string;revision:number;current_version:MusicVersion|null};
 }
-export interface MusicObjects {
-  exists(path:string):Promise<boolean>;
-  read(path:string):Promise<Buffer>;
-  write(path:string,body:string|Buffer,contentType:string):Promise<void>;
-  size(path:string):Promise<number>;
-}
-const musicObjects:MusicObjects={
-  async exists(path){return Boolean(await head(path).catch((error:unknown)=>{if(error instanceof Error&&error.name==='BlobNotFoundError')return null;throw error;}));},
-  async read(path){const value=await get(path,{access:'private'});if(!value||value.statusCode!==200)throw new ApiError(502,'The saved music is unavailable.');return boundedAudio(value.stream);},
-  async write(path,body,contentType){await put(path,body,{access:'private',addRandomSuffix:false,allowOverwrite:false,contentType});},
-  async size(path){return (await head(path)).size;},
-};
-export async function runElevenStep(job: Job, injected?: MusicProvider, objects:MusicObjects=musicObjects) {
+export async function runElevenStep(job: Job, injected?: MusicProvider, objects:MusicObjects=mediaObjects) {
   const input=elevenInput.parse(job.input);
   const key=input.clientKeyRequired ? undefined : process.env.ELEVENLABS_API_KEY;
   const analyze='artifactId' in input;

@@ -13,3 +13,13 @@ body { margin: 0; }
 .web-auth-card [role=alert], .web-account [role=alert] { color: #ffb3b3; }
 .web-account { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 6px 16px; background: #101116; color: #c5c6d0; font-size: 12px; }
 .web-account button { padding: 4px 10px; }
+
+.web-hosted .project-cloud-controls { display: none; }
+.web-project-picker { width: min(440px, calc(100vw - 32px)); padding: 24px; border: 1px solid #41434f; border-radius: 12px; background: #191b23; color: #f5f5f5; font-family: Arial, Helvetica, sans-serif; }
+.web-project-picker::backdrop { background: #0009; }
+.web-project-picker form, .web-project-picker label { display: grid; gap: 16px; }
+.web-project-picker form > div { display: flex; justify-content: flex-end; gap: 12px; }
+.web-project-picker input, .web-project-picker select, .web-project-picker button { padding: 10px; border: 1px solid #686b7d; border-radius: 6px; background: #101116; color: inherit; font: inherit; }
+.web-project-picker button[type=submit] { background: #d9ff75; color: #171a10; }
+.web-project-picker :focus-visible { outline: 2px solid #d9ff75; outline-offset: 3px; }
+.web-project-picker button:disabled { opacity: .5; }
