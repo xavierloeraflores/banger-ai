@@ -4,21 +4,22 @@ import { AIModelSelect } from "./ai-model-select";
 
 import { useEffect, useRef, useState } from "react";
 import { Button, IconButton, Panel, Modal, Select, Checkbox, Textarea, type ModalHandle } from "@banger/shadcn";
-import type { BangerFile, ChatMessage, ChatReply } from "@banger/agent/protocol";
+import type { BangerFile, ChatMessage } from "@banger/agent/protocol";
 import { KeyHint, LLM_KEY_HINT, useGenerationAccess } from "./generation-access";
 import { sendChat } from "@/lib/ai-chat";
 import { saveProject } from "@/lib/project-files";
 import { AI_PROVIDERS, aiSettingsBridge } from "@/lib/ai-providers";
 
 import type { FullSend } from "@/lib/full-send";
+import type { ChatHistory, ChatTurn as Turn, ProjectChat } from "@/lib/chat-sessions";
 import type { WorkspaceFile } from "@/lib/project-workspace";
 
-type Turn = { prompt: string; reply: ChatReply; revision: number; project?: string; activity?: string[] };
 type ProjectSnapshot = { source: string; revision: number; activeFile?: string };
-type Props = { onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
+type Props = { chatId: string; projectId?: string; active: boolean; openToken: number; initialHistory?: ChatHistory;
+  onUpdate(id: string, update: Partial<ProjectChat>): void; onNewChat(): void; onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
   folderName: string; projectEpoch: number; activeFile?: string; projectDirty: boolean;
   onResolveEdits(action: "save" | "discard"): Promise<ProjectSnapshot>;
-  onProjectBusy(busy: boolean): void; onProjectFile(file: WorkspaceFile, revision: number): void;
+  onProjectComplete(): void; onProjectFile(file: WorkspaceFile, revision: number): void;
 };
 const suggestions = [
   "Make a beat",
@@ -26,9 +27,9 @@ const suggestions = [
   "Make a rap song with lyrics for the verses and hook",
 ];
 
-export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectBusy, onProjectFile }: Props) {
-  const [permissions, setPermissions] = useState({ beat: !vocalStudio, lyrics: vocalStudio });
-  const [fullSend, setFullSend] = useState(false);
+export function AIChat({ chatId, projectId, active, openToken, initialHistory, onUpdate, onNewChat, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
+  const [permissions, setPermissions] = useState(initialHistory?.permissions ?? { beat: !vocalStudio, lyrics: vocalStudio });
+  const [fullSend, setFullSend] = useState(initialHistory?.fullSend ?? false);
   const [progress, setProgress] = useState("");
   const { languageModel, vocals } = useGenerationAccess();
   const [desktop, setDesktop] = useState(false);
@@ -41,12 +42,12 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
   const [open, setOpen] = useState(false);
   const dialog = useRef<ModalHandle>(null);
   const launcher = useRef<HTMLButtonElement>(null);
-  const [prompt, setPrompt] = useState("");
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [prompt, setPrompt] = useState(initialHistory?.prompt ?? "");
+  const [turns, setTurns] = useState<Turn[]>(initialHistory?.turns ?? []);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialHistory?.error ?? null);
   const [notice, setNotice] = useState("");
-  const [targetFile, setTargetFile] = useState<string | null>(null);
+  const [targetFile, setTargetFile] = useState<string | null>(initialHistory?.targetFile ?? null);
   const [connection, setConnection] = useState("Choose a provider in Settings → BYOK");
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -54,6 +55,18 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
   const transcript = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const busy = pendingPrompt !== null;
+  useEffect(() => {
+    onUpdate(chatId, {
+      history: { prompt, turns, targetFile, permissions, fullSend, error },
+      title: (turns[0]?.prompt ?? pendingPrompt ?? "New chat").slice(0, 70),
+      status: busy ? "running" : error ? "error" : turns.length ? "done" : "idle",
+      blocksSwitch: busy && (fullSend || (permissions.lyrics && !projectMode)),
+    });
+  }, [chatId, onUpdate, prompt, turns, targetFile, permissions, fullSend, pendingPrompt, busy, error, projectMode]);
+  useEffect(() => {
+    if (!active) { dialog.current?.close(); return; }
+    if (openToken) { dialog.current?.showModal(); queueMicrotask(() => setOpen(true)); }
+  }, [active, openToken]);
   const latestFiles = new Map<string, BangerFile>();
   for (const turn of turns) for (const file of turn.reply.files) {
     latestFiles.delete(file.name);
@@ -74,7 +87,7 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
   }, [folderName, projectEpoch]);
 
   useEffect(() => window.bangerWorkspace?.onEvent(event => {
-    if (!projectRequest.current) return;
+    if (!projectRequest.current || (event.projectId && event.projectId !== projectId) || (event.threadId && event.threadId !== chatId)) return;
     const text = event.type === "file-changed" ? `Saved ${event.file?.path}`
       : event.type === "tool-start" ? `${event.name}${event.path ? ` · ${event.path}` : ""}`
       : event.type === "tool-result" && !event.ok ? event.error : "";
@@ -82,10 +95,10 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
       activityRef.current = [...activityRef.current, text].slice(-80);
       setActivity(activityRef.current);
     }
-  }), []);
+  }), [chatId, projectId]);
 
   useEffect(() => {
-    if (!busy || !projectMode) return;
+    if (!busy) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -128,7 +141,7 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
     setNotice("");
     setProgress("");
     const snapshotRevision = revision;
-    if(permissions.lyrics && !permissions.beat) {
+    if(permissions.lyrics && !permissions.beat && !projectMode) {
       try {
         let answer=await onLyrics(text,controller.signal);
         if(fullSend)answer += `\n\n${await onFullSend({file:{name:fileName,source},vocals:true},controller.signal,setProgress)}`;
@@ -142,23 +155,24 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
       projectRequest.current = true;
       activityRef.current = [];
       setActivity([]);
-      onProjectBusy(true);
       try {
         const snapshot = action ? await onResolveEdits(action) : { source, revision, activeFile };
         editsDialog.current?.close();
-        const result = await bridge.run(text, snapshot.activeFile, resetProjectHistory.current, permissions);
+        const result = await bridge.run(text, snapshot.activeFile, resetProjectHistory.current, permissions, projectId, chatId, turns.slice(-5).flatMap(turn => [{ role: "user" as const, content: turn.prompt }, { role: "assistant" as const, content: turn.reply.text.slice(0, 4000) }]));
         resetProjectHistory.current = false;
+        if (!result.ok || result.reply.status !== "completed") setError(result.ok ? "The task stopped before completing. Review the saved changes before retrying." : result.error);
         setTurns(previous => [...previous, { prompt: text, revision: snapshotRevision, project: folderName,
           reply: { text: result.ok ? result.reply.text : result.error, files: [], model: connection }, activity: activityRef.current }]);
         setPrompt("");
         let completedFile:BangerFile={name:fileName,source:snapshot.source};
         // Cancelled tasks can still have saved files. Refresh only an unchanged studio.
         if (permissions.beat && snapshot.activeFile) {
-          const saved = await bridge.read(snapshot.activeFile);
+          const saved = await bridge.read(snapshot.activeFile, projectId);
           completedFile={name:fileName,source:saved.source};
           if (saved.source !== snapshot.source) onProjectFile(saved, snapshot.revision);
         }
         projectRequest.current = false;
+        if (permissions.lyrics && !fullSend) onProjectComplete();
         if(fullSend && (permissions.beat || permissions.lyrics)) {
           controller.signal.throwIfAborted();
           if(!result.ok || result.reply.status !== "completed")throw new Error("Full Send stopped because the project task did not complete. Review its saved changes before retrying.");
@@ -173,7 +187,6 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
         projectRequest.current = false;
         request.current = null;
         setPendingPrompt(null);
-        onProjectBusy(false);
         if (dialog.current?.open) input.current?.focus();
       }
       return;
@@ -215,7 +228,7 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
   function stop() {
     request.current?.abort();
     if (projectRequest.current) {
-      void window.bangerWorkspace?.cancel().catch(cause => setError(cause instanceof Error ? cause.message : "Could not stop the project task."));
+      void window.bangerWorkspace?.cancel(projectId).catch(cause => setError(cause instanceof Error ? cause.message : "Could not stop the project task."));
     }
   }
 
@@ -231,6 +244,7 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
     finally { savingRef.current = false; setSaving(false); }
   }
 
+  if (!active) return null;
   return <>
     <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined} className="ai-chat-launcher-hint"><IconButton disabled={!languageModel} ref={launcher} className="ai-chat-launcher" variant="primary" aria-label="Open AI chat"
       aria-haspopup="dialog" aria-expanded={open} aria-controls="ai-chat-dialog"
@@ -247,7 +261,7 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
     <div className="producer-panel-heading">
       <div><p className="producer-eyebrow">Create with AI</p><h2 id="ai-chat-title">Banger AI</h2></div>
       <div className="ai-chat-heading-actions"><span className="producer-tag">{connection}</span>
-        <Button variant="ghost" disabled={busy || !turns.length} onClick={() => { resetProjectHistory.current = true; setActivity([]); setTurns([]); setTargetFile(null); setPrompt(""); setError(null); setNotice(""); }}>New chat</Button>
+        <Button variant="ghost" onClick={onNewChat}>New chat</Button>
         <IconButton className="ai-chat-close" variant="ghost" aria-label="Close AI chat" onClick={() => dialog.current?.close()}>×</IconButton>
       </div>
     </div>

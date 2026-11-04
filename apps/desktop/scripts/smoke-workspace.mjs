@@ -58,7 +58,7 @@ async function run(window) {
   await rm(startupDirectory, { recursive: true, force: true });
   await enterStudio(window);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
-  const evaluate = script => window.webContents.executeJavaScript(script, true);
+  const evaluate = script => window.webContents.executeJavaScript(script, true).catch(error => { throw new Error(`${error.message} Script: ${script}`); });
   async function wait(script) {
     for (let count = 0; count < 250; count++) { if (await evaluate(`Boolean(${script})`)) return; await delay(30); }
     throw new Error(`Missing UI state: ${script}; ${await evaluate("document.querySelector('.project-workspace')?.textContent")}`);
@@ -181,12 +181,12 @@ async function run(window) {
     await closeChat();
     await click("Project");
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
-    await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await evaluate(`(() => { document.querySelector('[aria-label="Vocal Studio"]').click(); })()`);
     assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').checkVisibility()"), true);
     await openChat();
     assert.ok(await evaluate("document.querySelector('.ai-chat-transcript').textContent.includes('Fresh conversation')"));
     await closeChat();
-    await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await evaluate(`(() => { document.querySelector('[aria-label="Beat Studio"]').click(); })()`);
     await click("Project");
     if (chatOnly) {
       console.log("AI chat smoke passed: automatic harness, save/discard/cancel, duplicate-send guard, save conflict, editor refresh, clean send, mobile bounds, conversation history, and cancellation. Real harness and IPC; mocked model responses.");

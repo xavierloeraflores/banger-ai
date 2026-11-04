@@ -11,7 +11,7 @@ import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspa
 type Bridge = NonNullable<Window["bangerWorkspace"]>;
 const message = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onProjectOpened, canReplace, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; onProjectOpened(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
+export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onProjectOpened, canReplace, canChangeProject, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; canChangeProject?(): boolean; onProjectOpened(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
   const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
@@ -32,13 +32,13 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     let active = true;
     void bridge.list().then(paths => { if (active) setPaths(paths); }).catch(() => { /* Folder actions report their own errors. */ });
     const unsubscribe = bridge.onEvent(event => {
-      if (event.type === "file-changed" && event.file) {
+      if (event.type === "file-changed" && event.file && (!event.projectId || event.projectId === initialFolder?.id)) {
         const path = event.file.path;
         setPaths(previous => [...new Set([...previous, path])].sort());
       }
     });
     return () => { active = false; unsubscribe(); };
-  }, []);
+  }, [initialFolder?.id]);
   if (!available) return null;
   async function action(work: (bridge: Bridge) => Promise<void>) {
     if (pending.current || studioBusy) return;
@@ -59,7 +59,7 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     setEmptyFolder(null);
   }
   function changeProject(create: boolean) {
-    if (!canReplace()) return;
+    if (!(canChangeProject ?? canReplace)()) return;
     void action(async bridge => {
       const next = create
         ? await bridge.create()

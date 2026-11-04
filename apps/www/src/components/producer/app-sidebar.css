@@ -23,3 +23,19 @@
 .app-sidebar-footer { margin-top: auto; padding-top: 24px; }
 .app-sidebar-footer > button { width: 100%; }
 .producer.app-settings-host { min-height: 0; padding: 0; }
+
+.app-sidebar-chats, .app-sidebar-recents { margin-top: 24px; }
+.app-sidebar-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; color: #93989e; font-size: 12px; }
+.app-sidebar-section-heading button { width: 36px; height: 32px; justify-content: center; padding: 4px; font-size: 22px; }
+.app-sidebar-chats > button, .app-sidebar-recents > button { width: 100%; margin-top: 4px; }
+.app-sidebar-chats > p { color: #93989e; padding: 0 8px; font-size: 12px; }
+.app-sidebar .app-sidebar-chat { height: 56px; }
+.app-sidebar button[aria-current="true"] { border-color: #4594ff55; background: #4594ff1c; color: #75b0ff; }
+.app-chat-label { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.app-chat-label > span, .app-chat-label > small { overflow: hidden; text-overflow: ellipsis; }
+.app-chat-label > small { color: #93989e; font-size: 11px; }
+.app-chat-indicator { flex: 0 0 20px; text-align: center; font-size: 20px; }
+.app-chat-indicator[data-status="running"] { color: #75b0ff; }
+.app-chat-indicator[data-status="done"] { color: #70ceab; }
+.app-chat-indicator[data-status="error"] { color: #ffac8d; }
+.app-sidebar button:disabled { cursor: default; opacity: .45; }
