@@ -102,7 +102,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       await writeFile(audioPath(audioId),bytes,{flag:'wx',mode:0o600});
       return launch(id,key,async()=>{
         const result=await (await provider()).analyze(bytes,name);
-        return {version:{id,version:1,name,songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
+        return {version:{id,version:1,name,songId:result.songId,originalSongId:result.songId,plan:result.plan,audioMetadata:result.audioMetadata,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
       },0,hash);
       });
       imports = imported.catch(() => undefined);

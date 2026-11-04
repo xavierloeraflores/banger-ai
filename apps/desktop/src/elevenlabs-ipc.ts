@@ -12,7 +12,7 @@ export function musicStorageHooks(storage: SongStorageBridge['storage']) {
     imported: (song: SongLocation, bytes: Uint8Array) => storage.saveAudio(song, 'instrumentals', bytes),
     saved: async (song: SongLocation, version: MusicVersion, audio?: Uint8Array) => {
       if (audio) await storage.saveAudio(song, version.plan.chunks.some(chunk => lyricsOf(chunk.text)) ? 'vocals' : 'instrumentals', await toWav(audio));
-      await storage.saveLyrics(song, { schemaVersion: 1, musicId: version.id, version: version.version, createdAt: version.createdAt, plan: version.plan });
+      await storage.saveLyrics(song, { schemaVersion: 1, musicId: version.id, ...version });
     },
   };
 }

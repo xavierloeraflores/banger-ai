@@ -1,6 +1,6 @@
 import { ElevenLabsClient, type ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { Music } from '@elevenlabs/elevenlabs-js/wrapper/music.js';
-import { MUSIC_MODEL, MAX_WAV_BYTES, planSchema, providerPlanSchema, applyLyrics, lyricsOf, validateIndices, inpaintingPlan, type CompositionPlan, type MusicVersion, type ProviderPlan } from './protocol.js';
+import { MUSIC_MODEL, MAX_WAV_BYTES, audioMetadataSchema, type AudioMetadata, planSchema, providerPlanSchema, applyLyrics, lyricsOf, validateIndices, inpaintingPlan, type CompositionPlan, type MusicVersion, type ProviderPlan } from './protocol.js';
 export * from './protocol.js';
 export class MusicProviderError extends Error {
   constructor(message: string, public uncertain = false) { super(message); }
@@ -10,9 +10,9 @@ export function publicMusicError(error: unknown): string {
   return 'ElevenLabs could not complete this request. Your saved song is unchanged.';
 }
 export interface MusicProvider {
-  analyze(audio: Uint8Array, name: string): Promise<{ songId: string; plan: CompositionPlan }>;
+  analyze(audio: Uint8Array, name: string): Promise<{ songId: string; plan: CompositionPlan; audioMetadata?: AudioMetadata }>;
   lyrics(plan: CompositionPlan, prompt: string, indices: number[]): Promise<CompositionPlan>;
-  generate(version: MusicVersion, indices: number[]): Promise<{ songId: string; plan: CompositionPlan; providerPlan: ProviderPlan; audio: Uint8Array }>;
+  generate(version: MusicVersion, indices: number[]): Promise<{ songId: string; plan: CompositionPlan; providerPlan: ProviderPlan; audio: Uint8Array; audioMetadata?: AudioMetadata }>;
 }
 /** Reads PCM/IEEE-float WAVs, including metadata chunks, without interpreting user-supplied paths. */
 export function validateWav(bytes: Uint8Array, forMusic = true) {
@@ -67,9 +67,9 @@ export class ElevenMusic implements MusicProvider {
   }
   async analyze(audio: Uint8Array, name: string) {
     validateWav(audio);
-    const result = await this.call(() => this.client.music.upload({ file: new File([new Uint8Array(audio)], name, { type: 'audio/wav' }), extractCompositionPlan: MUSIC_MODEL }, { maxRetries: 0, timeoutInSeconds: 230 }));
+    const result = await this.call(() => this.client.music.upload({ file: new File([new Uint8Array(audio)], name, { type: 'audio/wav' }), extractCompositionPlan: MUSIC_MODEL, withTimestamps: true, withWaveformVisual: true }, { maxRetries: 0, timeoutInSeconds: 230 }));
     if (!result.songId) throw new MusicProviderError('ElevenLabs did not return a stored song ID.', true);
-    return { songId: result.songId, plan: planSchema.parse(result.compositionPlan) };
+    return { songId: result.songId, plan: planSchema.parse(result.compositionPlan), audioMetadata: audioMetadataSchema.parse(result) };
   }
   async lyrics(plan: CompositionPlan, prompt: string, indices: number[]) {
     planSchema.parse(plan);
@@ -85,12 +85,12 @@ export class ElevenMusic implements MusicProvider {
   }
   async generate(version: MusicVersion, indices: number[]) {
     const requestPlan=providerPlanSchema.parse(inpaintingPlan(version,indices));
-    const result=await this.call(() => this.music.composeDetailed({ modelId:MUSIC_MODEL,compositionPlan:requestPlan as ElevenLabs.CompositionPlan,storeForInpainting:true,outputFormat:'mp3_44100_128' }, {maxRetries:0,timeoutInSeconds:230}));
+    const result=await this.call(() => this.music.composeDetailed({ modelId:MUSIC_MODEL,compositionPlan:requestPlan as ElevenLabs.CompositionPlan,storeForInpainting:true,withTimestamps:true,withWaveformVisual:true,outputFormat:'mp3_44100_128' }, {maxRetries:0,timeoutInSeconds:230}));
     if (!result.songId || !result.audio.length || result.audio.length>MAX_WAV_BYTES) throw new MusicProviderError('ElevenLabs did not return a complete stored song.', true);
     const providerPlan=providerPlanSchema.parse(result.json.compositionPlan);
     if (providerPlan.chunks.length !== version.plan.chunks.length) throw new MusicProviderError('ElevenLabs returned a different chunk structure. The original song is preserved.', true);
     const plan=planSchema.parse({ ...providerPlan, chunks: providerPlan.chunks.map((chunk,index)=>'text' in chunk ? chunk : structuredClone(version.plan.chunks[index]!)) });
-    return {songId:result.songId,plan,providerPlan,audio:new Uint8Array(result.audio)};
+    return {songId:result.songId,plan,providerPlan,audio:new Uint8Array(result.audio),audioMetadata:audioMetadataSchema.parse(result.json)};
   }
 }
 
@@ -102,6 +102,8 @@ export async function performMusicAction(provider: MusicProvider | (()=>MusicPro
   if (input.operation === 'lyrics') { next.plan=await client.lyrics(base.plan,input.prompt,input.indices); return {version:next}; }
   const generated=await client.generate(base,input.indices);
   next.plan=generated.plan;next.providerPlan=generated.providerPlan;next.songId=generated.songId;
+  // A new recording replaces measurements, even if the provider omitted them.
+  next.audioMetadata=generated.audioMetadata;
   next.audioId=operationId;next.audioType='audio/mpeg';next.audioVersion=next.version;
   return {version:next,audio:generated.audio};
 }
