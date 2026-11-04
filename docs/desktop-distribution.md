@@ -204,6 +204,8 @@ app passed its smoke check from the unpacked directory and from the mounted DMG.
 The ad-hoc signature, DMG checksum, ZIP integrity, and ASAR contents were checked.
 Desktop and HTTP browser smokes passed, as did desktop ESLint, actionlint, and all
 eleven selected test suites, including integration tests in a dedicated PostgreSQL
-database. Windows x64, Linux x64, and macOS Intel packaging and launch checks
+database. After integrating concurrent changes from `main`, the HTTP browser
+smoke timed out once on a piano drag; an unchanged rerun passed. Windows x64,
+Linux x64, and macOS Intel packaging and launch checks
 still require their first GitHub Actions run. Developer ID signing, notarization,
 Windows signing, and GitHub Release publication were not exercised locally.
