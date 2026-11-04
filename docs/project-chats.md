@@ -1,8 +1,10 @@
 # Project chats
 
 The sidebar lists chats with their project and task status. Select a chat to
-open its project and song. New chat creates a separate conversation in the
-current project. Beat drafts and message drafts stay with their chat.
+open its full-screen conversation and restore its project and song. The sidebar
+stays available for switching chats or returning to a studio or the library.
+The floating New chat button creates a separate conversation in the current
+project. Beat drafts and message drafts stay with their chat.
 
 Project agents keep running when their chat is closed or another project is
 selected. Different projects can run tasks at the same time. A project allows

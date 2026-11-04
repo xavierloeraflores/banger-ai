@@ -44,7 +44,7 @@ import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import type { FullSend } from "@/lib/full-send";
 import { readChats, writeChats, type ProjectChat, type ChatSnapshot } from "@/lib/chat-sessions";
 import { FirstSongDialog } from "./first-song-dialog";
-import { AIChat } from "./ai-chat";
+import { AIChat, AIChatLauncher } from "./ai-chat";
 import { ProjectStart } from "./project-start";
 import { SourceEditor } from "./source-editor";
 import { BandStageButton, PerformanceStage } from "./performance-stage";
@@ -116,7 +116,12 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
     finally { openingRecent.current = false; }
   }
   const toggleSidebar = () => setSidebarExpanded(expanded => !expanded);
-  if (!session && !libraryOpen) return <AppShell chats={savedChats} onChat={id => { const chat = savedChats.find(item => item.id === id); if (chat?.snapshot.folder?.id) void openRecent(chat.snapshot.folder.id, id); }} onOpenRecent={id => void openRecent(id)} active={startDestination} expanded={sidebarExpanded} onToggle={toggleSidebar} onNavigate={next => {
+  if (!session && !libraryOpen) return <AppShell chats={savedChats} onChat={id => {
+    const chat = savedChats.find(item => item.id === id);
+    if (!chat) return;
+    if (chat.snapshot.folder?.id) void openRecent(chat.snapshot.folder.id, id);
+    else setSession({ file: { name: chat.snapshot.fileName, source: chat.snapshot.source }, saved: true, studio: startStudio, chatId: id });
+  }} onOpenRecent={id => void openRecent(id)} active={startDestination} expanded={sidebarExpanded} onToggle={toggleSidebar} onNavigate={next => {
     if (next === "library") setLibraryOpen(true);
     else setStartDestination(next);
   }}><ProjectStart sample={initialFile} onOpenLibrary={() => setLibraryOpen(true)} onStart={(file, saved, folder) => setSession({ file, saved, folder, studio: startStudio })} />{recentError && <p role="alert">{recentError}</p>}{emptyRecent && <FirstSongDialog folder={emptyRecent} onCreated={folder => { if (folder.file) setSession({ file: { name: folder.file.path, source: folder.file.source }, saved: true, folder, studio: startStudio }); setEmptyRecent(null); }} />}</AppShell>;
@@ -201,7 +206,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   const chatsRef = useRef(chats);
   const [activeChat, setActiveChat] = useState(startingChat?.id ?? chats[chats.length - 1]!.id);
   const activeChatRef = useRef(activeChat);
-  const [chatOpenToken, setChatOpenToken] = useState(0);
+  const [chatView, setChatView] = useState(Boolean(initialChatId));
   const switchingChat = useRef(false);
   const [emptyRecent, setEmptyRecent] = useState<ProjectFolder | null>(null);
   const updateChats = useCallback((update: (previous: ProjectChat[]) => ProjectChat[]) => {
@@ -246,10 +251,11 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     const chat: ProjectChat = { id: crypto.randomUUID(), title: "New chat", snapshot: next, status: "idle" };
     updateChats(previous => [...previous.map(item => item.id === activeChatRef.current ? { ...item, snapshot: snapshotRef.current } : item), chat]);
     activeChatRef.current = chat.id; setActiveChat(chat.id);
-    if (open) setChatOpenToken(value => value + 1);
+    setChatView(open);
+    if (open) stopPlayback();
   }
   async function selectChat(id: string) {
-    if (id === activeChatRef.current) { setChatOpenToken(value => value + 1); return; }
+    if (id === activeChatRef.current) { setChatView(true); stopPlayback(); return; }
     if (!canSwitchChat()) return;
     const chat = chatsRef.current.find(item => item.id === id);
     if (!chat) return;
@@ -268,7 +274,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
       if (file && next.source === next.savedSource) file = await bridge.read(file.path, target.folder?.id);
       activeChatRef.current = id; setActiveChat(id);
       restoreSnapshot({ ...next, ...(file && next.source === next.savedSource ? { source: file.source, appliedSource: file.source, savedSource: file.source, workspaceFile: file } : {}) });
-      setChatOpenToken(value => value + 1);
+      setChatView(true); stopPlayback();
       window.dispatchEvent(new Event("banger:projects-changed"));
     } catch (cause) {
       await getProjectWorkspace().activate(snapshotRef.current.folder?.id).catch(() => {});
@@ -281,7 +287,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     try { const program = compileMusic(next.appliedSource); setProgram(program); setAppliedSource(next.appliedSource); setTempoDraft(String(program.tempo)); } catch { /* Invalid drafts remain editable. */ }
     setSavedSource(next.savedSource); setWorkspaceFile(next.workspaceFile); setCurrentFolder(next.folder);
     setFolderName(next.folder?.name ?? ""); setProjectName(next.folder?.name ?? ""); setCloudBinding(next.cloudBinding);
-    setProjectEpoch(value => value + 1); setStudio("beat"); snapshotRef.current = next;
+    setProjectEpoch(value => value + 1); setStudio("beat"); setChatView(false); snapshotRef.current = next;
   }
   function openedRecent(folder: ProjectFolder) {
     if (!folder.file) { setEmptyRecent(folder); return; }
@@ -538,6 +544,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
       setPatterns({});
       setExpandedTrack(null);
       setEditorEpoch(value => value + 1);
+      if (!automatic) { setChatView(false); setStudio("beat"); }
       setNotice(`Loaded ${file.name}. Save .banger to keep it.`);
     } catch (cause) { setNotice(diagnose(cause)); }
   }
@@ -689,17 +696,18 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   });
 
   function navigateStudio(next: AppDestination) {
-    if (next === studio) return;
+    if (next === studio && !chatView) return;
     if (next !== "library" && !hasProject) { onRequireProject(next); return; }
     stopPlayback();
     setSingAlongOpen(false);
     setStudio(next);
+    setChatView(false);
   }
 
   return (
-    <AppShell chats={hasProject ? chats : []} activeChat={activeChat} onChat={id => void selectChat(id)} onNewChat={hasProject ? () => { if (canSwitchChat()) addChat(); } : undefined} onOpenRecent={id => void openRecent(id)} active={studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
-    <main className="producer" data-view={beatStudio ? view : studio}>
-      <header className="producer-header">
+    <AppShell chats={hasProject ? chats : []} activeChat={chatView ? activeChat : undefined} onChat={id => void selectChat(id)} onNewChat={hasProject ? () => { if (canSwitchChat()) addChat(); } : undefined} onOpenRecent={id => void openRecent(id)} active={chatView ? "chat" : studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
+    <main className="producer" data-view={chatView ? "chat" : beatStudio ? view : studio}>
+      <header className="producer-header" hidden={chatView}>
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>}{hasProject ? ` / ${fileName}` : ""}</span></div>
         <div className="producer-file-actions">
@@ -753,7 +761,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         <AudioExport program={program} source={source} fileName={fileName} disabled={draft || fileBusy || workspaceBusy} cloud={cloudBinding?.source === source ? cloudBinding : null} />
       </Modal>}
 
-      <section hidden={!beatStudio} className="producer-transport" aria-label="Transport">
+      <section hidden={chatView || !beatStudio} className="producer-transport" aria-label="Transport">
         <div className="producer-play-controls">
           <Button variant="primary" onClick={() => void playback.play()} disabled={playback.starting || playback.state.playing} className="producer-play">
             <span aria-hidden="true">▶</span> {playback.starting ? "Starting" : "Play"}
@@ -781,8 +789,8 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
           onLaunch={launchPattern} />
         <span className="producer-mode-status" role="status">{previewSection ? `Previewing ${previewSection}` : songMode ? "Song arrangement" : `Pattern loop · ${program.activePattern || "Base"}`}</span>
       </section>
-      {playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
-      <Tabs className="producer-workspace" id="studio" value={view} onValueChange={value => setView(value as StudioView)}>
+      {!chatView && playback.error && <p className="producer-alert" role="alert">{playback.error}</p>}
+      <Tabs hidden={chatView} className="producer-workspace" id="studio" value={view} onValueChange={value => setView(value as StudioView)}>
         <TabsList className="producer-tabs" variant="line" hidden={!beatStudio} aria-label="Studio views">
           {studioViews.map(item => <TabsTrigger key={item.id} value={item.id} onClick={() => setView(item.id)}
             id={`studio-tab-${item.id}`} aria-controls={`studio-panel-${item.id}`}>{item.label}</TabsTrigger>)}
@@ -856,13 +864,15 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
           </Panel>
         </TabsContent>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          {hasProject && <MusicWorkshop exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
+          {hasProject && <MusicWorkshop exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !chatView} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
         {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
+      </Tabs>
+        {hasProject && !chatView && <AIChatLauncher onNewChat={() => { if (canSwitchChat()) addChat(); }} />}
         {hasProject && chats.map(chat => {
           const selected = chat.id === activeChat;
           const bound = selected ? snapshot : chat.snapshot;
-          return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected} openToken={selected ? chatOpenToken : 0} initialHistory={chat.history} onUpdate={updateChat} onNewChat={() => { if (canSwitchChat()) addChat(); }}
+          return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected && chatView} initialHistory={chat.history} onUpdate={updateChat} onNewChat={() => { if (canSwitchChat()) addChat(); }}
             onFullSend={runFullSend} onFullSendCheck={checkFullSend} onLyrics={runLyrics} vocalStudio={vocalStudio} source={bound.source} fileName={bound.fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy || chats.some(other => other.id !== chat.id && other.status === "running" && other.snapshot.folder?.id === bound.folder?.id)}
             onLoad={(file, requestRevision, automatic) => { if (activeChatRef.current === chat.id) loadGeneratedFile(file, requestRevision, automatic); }}
             folderName={bound.folder?.name ?? ""} projectEpoch={projectEpoch} activeFile={bound.workspaceFile?.path} projectDirty={bound.source !== bound.savedSource}
@@ -884,7 +894,6 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
             }} />;
         })}
 
-      </Tabs>
       {emptyRecent && <FirstSongDialog folder={emptyRecent} onCreated={openedRecent} />}
       {children}
       <footer className="producer-footer"><span role="status">{notice}</span></footer>
