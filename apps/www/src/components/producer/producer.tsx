@@ -84,18 +84,17 @@ function diagnose(cause: unknown) {
 }
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
-  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; openProjectControls?: boolean } | null>(null);
-  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved, folder, openProjectControls) => setSession({ file, saved, folder, openProjectControls })} />;
-  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} initialFolder={session.folder} openProjectControls={session.openProjectControls} />;
+  const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder } | null>(null);
+  if (!session) return <ProjectStart sample={initialFile} onStart={(file, saved, folder) => setSession({ file, saved, folder })} />;
+  return <Studio initialFile={session.file} sample={initialFile} initiallySaved={session.saved} initialFolder={session.folder} />;
 }
 
-function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjectControls }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; openProjectControls?: boolean }) {
+function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder }) {
   const projectDialog = useRef<HTMLDialogElement>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
   const [projectEpoch, setProjectEpoch] = useState(0);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
-  useEffect(() => { if (initialFolder && openProjectControls) projectDialog.current?.showModal(); }, [initialFolder, openProjectControls]);
   function showProjects() { projectDialog.current?.showModal(); }
   const [cloudMusicContext,setCloudMusicContext]=useState<CloudMusicContext>();
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
@@ -485,7 +484,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, openProjec
           <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
         </div>
         <DesktopProjectWorkspace studioBusy={fileBusy || workspaceBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile}
-          onFirstSongCreated={() => projectDialog.current?.close()}
+          onProjectOpened={() => { projectDialog.current?.close(); setStudio("beat"); }}
           canReplace={() => !filePending.current && (!dirty || window.confirm("Replace unsaved changes in the current song?"))}
           onFolderChange={folder => {
             setProjectEpoch(value => value + 1); setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);

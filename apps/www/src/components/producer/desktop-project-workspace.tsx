@@ -11,7 +11,7 @@ import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspa
 type Bridge = NonNullable<Window["bangerWorkspace"]>;
 const message = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onFirstSongCreated, canReplace, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; onFirstSongCreated(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
+export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onProjectOpened, canReplace, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; onProjectOpened(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
   const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
@@ -48,7 +48,10 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
   }
   async function openFolder(next: ProjectFolder) {
     onFolderChange(next); setName(next.name); setPaths(next.paths);
-    if (next.file) await load(next.file, next.name);
+    if (next.file) {
+      await load(next.file, next.name);
+      onProjectOpened();
+    }
     setEmptyFolder(null);
   }
   function changeProject(create: boolean) {
@@ -63,7 +66,7 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     });
   }
   return <>
-    {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={async next => { await openFolder(next); onFirstSongCreated(); }} />}
+    {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={openFolder} />}
     <section className="project-workspace project-folder-workspace" aria-label="Project workspace">
       <div className="project-workspace-heading"><div className="project-folder-identity"><ProjectIcon name="folder" /><div><h2>Project Workspace</h2><p>{name || "No project folder selected"}</p></div></div>
         <div className="project-workspace-actions">

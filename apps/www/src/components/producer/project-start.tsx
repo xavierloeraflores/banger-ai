@@ -7,15 +7,15 @@ import type { BangerFile } from "@banger/agent/protocol";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder } from "@/lib/project-workspace";
 
-export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(file: BangerFile, saved: boolean, folder?: ProjectFolder, openProjectControls?: boolean): void }) {
+export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(file: BangerFile, saved: boolean, folder?: ProjectFolder): void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
   const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
 
-  function start(folder: ProjectFolder, openProjectControls = true) {
+  function start(folder: ProjectFolder) {
     if (!folder.file) { setEmptyFolder(folder); return; }
-    onStart({ name: folder.file.path.split("/").pop()!, source: folder.file.source }, true, folder, openProjectControls);
+    onStart({ name: folder.file.path.split("/").pop()!, source: folder.file.source }, true, folder);
   }
 
   async function choose(action: "create" | "open" | "sample") {
@@ -47,6 +47,6 @@ export function ProjectStart({ sample, onStart }: { sample: BangerFile; onStart(
       </div>
       {error && <p role="alert">{error}</p>}
     </section>
-    {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={folder => start(folder, false)} />}
+    {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={start} />}
   </main>;
 }
