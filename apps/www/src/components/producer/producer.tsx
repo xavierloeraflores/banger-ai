@@ -96,8 +96,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialFolder?.file ?? null);
   function showProjects() { projectDialog.current?.showModal(); }
-  const [cloudMusicContext,setCloudMusicContext]=useState<CloudMusicContext>();
+  const [vocalEdits,setVocalEdits]=useState({dirty:false,busy:false});
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
+  const cloudMusicContext=useMemo<CloudMusicContext|undefined>(()=>cloudBinding?{url:cloudBinding.url,token:cloudBinding.token,projectId:cloudBinding.projectId,revision:cloudBinding.revision}:undefined,[cloudBinding]);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [initialProgram] = useState(() => {
     try { return { program: compileMusic(initialFile.source), source: initialFile.source }; }
@@ -263,6 +264,11 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     }] });
   }
 
+  function canReplaceSong() {
+    if(filePending.current||vocalEdits.busy)return false;
+    return !(dirty||vocalEdits.dirty)||window.confirm("Replace unsaved beat or lyric changes in the current song?");
+  }
+
   function loadOpenedFile(file: BangerFile) {
     stopPlayback();
     // Keep invalid files editable; the last valid sequence remains available.
@@ -339,7 +345,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   }
 
   function loadGeneratedFile(file: BangerFile, generatedRevision: number) {
-    if (filePending.current || workspaceBusy) return;
+    if (filePending.current || workspaceBusy || !canReplaceSong()) return;
     if (revision.current !== generatedRevision && !window.confirm("Your project changed after this request. Load the generated file and replace the current editor?")) return;
     try {
       const next = compileMusic(file.source);
@@ -527,7 +533,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         </div>
         <DesktopProjectWorkspace studioBusy={fileBusy || workspaceBusy} onBusyChange={setWorkspaceBusy} initialFolder={initialFolder} savedFile={workspaceFile}
           onProjectOpened={() => { projectDialog.current?.close(); setStudio("beat"); }}
-          canReplace={() => !filePending.current && (!dirty || window.confirm("Replace unsaved changes in the current song?"))}
+          canReplace={canReplaceSong}
           onFolderChange={folder => {
             setProjectEpoch(value => value + 1); setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);
           }}
@@ -544,9 +550,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
             {notice && <p role="status">{notice}</p>}
           </>}
           cloudControls={<details className="project-cloud-controls"><summary>Cloud projects</summary>
-            <CloudProjectWorkspace onMusicContextChange={setCloudMusicContext} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
-              if (!window.confirm("Load this cloud file and replace the current studio editor?")) return;
-              loadGeneratedFile(file, sourceRevision); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close();
+            <CloudProjectWorkspace onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
+              if (!canReplaceSong()) return false;
+              loadOpenedFile(file); setWorkspaceFile(null); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close(); return true;
             }} />
           </details>}
         />
@@ -660,7 +666,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={vocalStudio && !stageOpen} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
+          <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !stageOpen} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
         {studio === "library" && <SongLibrary active={!stageOpen} onBeatChange={setLibraryBeat} />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}

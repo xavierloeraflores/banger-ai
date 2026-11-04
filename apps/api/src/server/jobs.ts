@@ -6,7 +6,7 @@ import { authorize } from "./projects";
 import { ApiError, id, pathSchema } from "./domain";
 export const agentInput = z.object({ baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional() }).strict();
 export const elevenInput = z.union([
-  z.object({ clientKeyRequired: z.boolean().optional(), artifactId: id, beat: associatedBeatSchema.optional(), operation: z.literal('analyze').default('analyze') }).strict(),
+  z.object({ clientKeyRequired: z.boolean().optional(), artifactId: id, studioPath: z.string().min(1).max(1024).optional(), beat: associatedBeatSchema.optional(), operation: z.literal('analyze').default('analyze') }).strict(),
   z.object({ clientKeyRequired: z.boolean().optional(), musicId: id, action: musicActionSchema }).strict(),
 ]);
 export type Job = { id: string; project_id: string; user_id: string; kind: "agent" | "elevenlabs"; session_id: string | null; status: string; stage: string; progress: number; input: Record<string, unknown>; checkpoint: Record<string, unknown>; result: Record<string, unknown> | null; error: string | null; lease_token: string; attempts: number; created_at: Date };
@@ -68,5 +68,5 @@ export async function getJob(user: string, jobId: string) {
   return job;
 }
 export function publicJob(job: Job) {
-  return { id: job.id, projectId: job.project_id, kind: job.kind, status: job.status, stage: job.stage, progress: job.progress, result: job.result, error: job.error, activity: job.checkpoint.activity ?? [], createdAt: job.created_at };
+  return { ...(job.kind==='elevenlabs'?{studioPath:job.input.studioPath,musicId:job.input.musicId??job.id}:{}), id: job.id, projectId: job.project_id, kind: job.kind, status: job.status, stage: job.stage, progress: job.progress, result: job.result, error: job.error, activity: job.checkpoint.activity ?? [], createdAt: job.created_at };
 }

@@ -25,7 +25,8 @@ const finalAudio=await readFile(new URL('../../../packages/elevenlabs/test/fixtu
 const generatedInputs=[];const provider=fixtureProvider(),generate=provider.generate;provider.generate=async(version,indices)=>{generatedInputs.push({version,indices});return {...await generate(version),audio:finalAudio};};
 const store=createMusicStore(join(root,'music'),()=>provider,musicStorageHooks(createSongStorage(root)));let uploaded,window,exitCode=0;
 const pathname=`projects/${projectId}/audio/${artifactId}.wav`;
-const job=operation=>({...operation,kind:'elevenlabs',activity:[],result:operation.status==='completed'?{musicId:operation.musicId,version:operation.resultVersion}:null});
+const jobPaths=new Map();
+const job=operation=>({...operation,studioPath:jobPaths.get(operation.id),kind:'elevenlabs',activity:[],result:operation.status==='completed'?{musicId:operation.musicId,version:operation.resultVersion}:null});
 async function run(){
  const api=createServer(async(request,response)=>{
   response.setHeader('Access-Control-Allow-Origin',request.headers.origin??'*');response.setHeader('Access-Control-Allow-Headers',request.headers['access-control-request-headers']??'*');response.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');response.setHeader('Content-Type','application/json');
@@ -42,8 +43,8 @@ async function run(){
    assert.equal(request.headers.authorization,undefined,'Browser API requests use the same-origin session, not a pasted bearer token.');
    if(url.pathname==='/api/session')return json({authenticated:true,signInEnabled:true,services:{storage:true}});
    if(url.pathname==='/api/projects')return json({projects:[{id:projectId,name:'Music project',revision:1}]});
-   if(url.pathname===`/api/projects/${projectId}`)return json({projectId,revision:1,name:'Music project',files:url.searchParams.has('since')?[]:[{path:'song.banger',source}],deleted:[]});
-   if(url.pathname.endsWith('/music'))return json({music:await store.list()});
+   if(url.pathname===`/api/projects/${projectId}`)return json({projectId,revision:1,name:'Music project',files:url.searchParams.has('since')?[]:[{path:'song.banger',source},{path:'other.banger',source}],deleted:[]});
+   if(url.pathname.endsWith('/music'))return json({music:await Promise.all((await store.list()).map(async item=>({...item,studioPath:(await store.get(item.id)).studioPath})))});
    if(url.pathname.endsWith('/artifacts'))return request.method==='POST'?json({id:artifactId,pathname}):json({artifacts:[]});
    if(url.pathname==='/api/uploads'){
     const input=body();assert.equal(input.payload.pathname,pathname);assert.equal(JSON.parse(input.payload.clientPayload).artifactId,artifactId);
@@ -51,7 +52,7 @@ async function run(){
     return json({clientToken:'vercel_blob_client_fixture_'+Buffer.from('signature.'+payload).toString('base64')});
    }
    if(url.pathname.endsWith('/complete')){assert.ok(uploaded?.length);return json({id:artifactId,status:'ready'});}
-   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');return json(job(await store.importWav(uploaded,body().input?.beat?.name??'Uploaded song',body().idempotencyKey,undefined,body().input?.beat)),202);}
+   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');const input=body();jobPaths.set(input.idempotencyKey,input.input.studioPath);return json(job(await store.importWav(uploaded,input.input?.beat?.name??'Uploaded song',input.idempotencyKey,undefined,input.input?.beat,input.input.studioPath)),202);}
    if(url.pathname.endsWith('/resume'))return json({});
    if(url.pathname.endsWith('/actions')){const input=body();if(input.action.operation==='generate')assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');else assert.equal(request.headers['x-banger-elevenlabs-key'],undefined);return json(job(await store.act(url.pathname.split('/')[3],input.action,input.idempotencyKey)),202);}
    if(url.pathname.endsWith('/versions')){const history=await store.versions(url.pathname.split('/')[3],url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined);return json({...history,versions:history.versions.map(document=>({revision:document.version,document}))});}
@@ -116,7 +117,7 @@ async function run(){
        return originalFetch(url,options);
      }; undefined;`);
    await wait("document.querySelector('details.project-workspace')");await evaluate("document.querySelector('details.project-workspace').open=true");
-   await wait("document.querySelector('details.project-workspace select')");
+   await wait("document.querySelector('details.project-workspace select')");await click('Open Vocal Studio');await fill('[aria-label="View"]','beat');
   }
   await click('Mixer');
   assert.equal(await evaluate("document.querySelectorAll('.producer-tabs [role=tab]').length"),4);
@@ -139,6 +140,33 @@ async function run(){
   assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),2);
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   const id=(await store.list())[0].id;assert.deepEqual((await store.get(id)).plan,fixturePlan);
+  if(!cloud){
+   const originalPath=await evaluate("document.querySelector('#workspace-file').value");
+   await click('Project');await click('Create Song');
+   await fill('[aria-label="New song name"]','second');await click('Create New Song');
+   await wait("document.querySelector('#workspace-file').value==='second.banger'");
+   await click('Close project controls');
+   await wait("document.querySelector('.music-empty h2')?.textContent==='No vocals yet.'");
+   await delay(1700);
+   assert.equal(await evaluate("document.querySelectorAll('.music-chunk').length"),0,'Polling never falls back to another song');
+   assert.equal(await evaluate("document.querySelector('[aria-label=\"Vocal take\"]')"),null);
+   await click('Project');await fill('#workspace-file',originalPath);await click('Close project controls');
+   await wait("document.querySelectorAll('.music-chunk').length===2");
+   assert.equal(await evaluate("document.querySelector('[aria-label=\"Vocal take\"]').value"),id);
+  }
+  if(cloud){
+   await click('Project');
+   await fill('[aria-label="Cloud music file"]','other.banger');
+   // Browsing a different cloud file cannot change either active editor.
+   assert.equal(await evaluate(`document.querySelector('[aria-label="Vocal take"]').value`),id);
+   await click('Load cloud file in studio');
+   await wait("document.querySelector('.music-empty h2')?.textContent==='No vocals yet.'");
+   await delay(1700);
+   assert.equal(await evaluate("document.querySelectorAll('.music-chunk').length"),0);
+   await click('Project');await fill('[aria-label="Cloud music file"]','song.banger');await click('Load cloud file in studio');
+   await wait("document.querySelectorAll('.music-chunk').length===2");
+   assert.equal(await evaluate(`document.querySelector('[aria-label="Vocal take"]').value`),id);
+  }
   // Invalid drafts stay editable and never enable a save in either backend.
   const lyricSelector='[aria-label="Lyrics for chunk 1"]';
   for(const invalid of ['a'.repeat(201),Array(30).fill('words').join('\n'),'[Verse]\nwords']){
@@ -151,6 +179,13 @@ async function run(){
   await fill(lyricSelector,Array(29).fill('a'.repeat(200)).join('\n'));
   await wait("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').getAttribute('aria-invalid')==='false'");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics').disabled"),false);
+  if(!cloud){
+   await evaluate('void(window.confirm=()=>false)');
+   await click('Project');await fill('#workspace-file','second.banger');await click('Close project controls');
+   assert.equal(await evaluate(`document.querySelector('[aria-label="Vocal take"]').value`),id,'Canceling a song switch preserves its lyric draft');
+   assert.equal(await evaluate(`document.querySelector('[aria-label="Lyrics for chunk 1"]').value`),Array(29).fill('a'.repeat(200)).join('\n'));
+   await evaluate('void(window.confirm=()=>true)');
+  }
   await fill('[aria-label="Lyrics for chunk 1"]','We write our own tomorrow');await click('Save lyrics');
   await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 2')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'We write our own tomorrow');
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);

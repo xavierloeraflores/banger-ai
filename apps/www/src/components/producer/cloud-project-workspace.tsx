@@ -1,13 +1,13 @@
 'use client';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {KeyHint,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
-import {cloudVocalRequest,type CloudMusicContext} from '@/lib/elevenlabs';
+import {cloudVocalRequest} from '@/lib/elevenlabs';
 import {compileMusic} from '@banger/compiler';
 import {Button} from '@banger/shadcn';
 import {audioUrl,cloudRequest,mergeCloudDelta,type CloudBinding,type CloudConnection,type CloudJob,type CloudSnapshot} from '@/lib/cloud-projects';
 type Artifact={id:string;kind:string;revision:number;status:string};
 const message=(error:unknown)=>error instanceof Error ? error.message : 'The cloud operation failed.';
-export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicContextChange,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding,projectName:string):void;onDisconnect():void;onMusicContextChange?(context:CloudMusicContext|undefined):void;onOpenMusic?():void}) {
+export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusic}:{studioFile:{name:string;source:string};onLoad(file:{name:string;source:string},binding:CloudBinding,projectName:string):boolean;onDisconnect():void;onOpenMusic?():void}) {
   const {vocals}=useGenerationAccess();
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
@@ -50,9 +50,6 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
     })();return()=>{cancelled=true;};
   },[available]);
   const projectId=snapshot?.projectId;
-  const revision=snapshot?.revision;
-  const cloudMusicContext=useMemo(()=>connection&&projectId&&revision!==undefined?{...connection,projectId,revision}:undefined,[connection,projectId,revision]);
-  useEffect(()=>{onMusicContextChange?.(cloudMusicContext);},[cloudMusicContext,onMusicContextChange]);
   const file=snapshot?.files.find(file=>file.path===path);
   const dirty=draftBase !== null;
   useEffect(()=>()=>{if(playing) URL.revokeObjectURL(playing);},[playing]);
@@ -122,9 +119,12 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
         <option value="">Choose project</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}
       </select></label>
       {snapshot && <>
-        <Button onClick={onOpenMusic}>Open Vocal Studio</Button>
+        <Button disabled={busy||dirty||!path} onClick={()=>{
+          compileMusic(source);
+          if(onLoad({name:path.split('/').pop()!,source},{...connection,projectId:snapshot.projectId,revision:snapshot.revision,path,source},snapshot.name))onOpenMusic?.();
+        }}>Open Vocal Studio</Button>
         <p>Saved revision {snapshot.revision}{dirty ? ` · Draft based on revision ${draftBase}` : ''}</p>
-        <label>Cloud music file<select disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
+        <label>Cloud music file<select aria-label="Cloud music file" disabled={busy} value={path} onChange={event=>{const next=snapshot.files.find(file=>file.path===event.target.value);if(next&&discard()){generation.current++;setPath(next.path);setSource(next.source);setDraftBase(null);}}}>
           <option value="" disabled>Choose a file</option>{snapshot.files.map(file=><option key={file.path}>{file.path}</option>)}
         </select></label>
         {path && <>
@@ -160,7 +160,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onMusicCon
         <ul aria-label="Cloud audio">{artifacts.map(artifact=><li key={artifact.id}>{artifact.kind} · revision {artifact.revision} · {artifact.status}
           {artifact.status==='ready' && <><Button disabled={busy} onClick={()=>void action(async()=>setPlaying(await audioUrl(connection,artifact.id)))}>Listen</Button>
             <Button disabled={busy} onClick={()=>void action(async()=>{const link=document.createElement('a');link.href=await audioUrl(connection,artifact.id);link.download=`${artifact.id}.${artifact.kind==='wav'?'wav':'audio'}`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),60000);})}>Download audio</Button>
-            {artifact.kind==='wav' && <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={busy||!vocals} onClick={()=>void action(async()=>{await cloudVocalRequest(connection,`/projects/${snapshot.projectId}/jobs`,{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id}});setNotice('WAV submitted for composition analysis. Open Vocal Studio to edit its lyrics.');})}>Submit to ElevenLabs</Button></KeyHint>}
+            {artifact.kind==='wav' && <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><Button disabled={busy||!vocals} onClick={()=>void action(async()=>{await cloudVocalRequest(connection,`/projects/${snapshot.projectId}/jobs`,{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId:artifact.id,studioPath:path}});setNotice('WAV submitted for composition analysis. Open Vocal Studio to edit its lyrics.');})}>Submit to ElevenLabs</Button></KeyHint>}
           </>}
         </li>)}</ul>
         {playing && <audio controls src={playing} aria-label="Cloud audio preview" />}

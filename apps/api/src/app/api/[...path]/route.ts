@@ -73,7 +73,7 @@ async function dispatch(request: Request, path: string[]) {
       if (method === 'GET') { await authorize(user,project); return json({jobs:(await db().query('SELECT * FROM jobs WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50',[project])).rows.map(publicJob)}); }
     }
     if (path[2] === 'music' && path.length === 3 && method === 'GET') {
-      await authorize(user,project); return json({music:(await db().query("SELECT id,revision AS version,current_version->>'name' AS name FROM music_sessions WHERE project_id=$1 AND revision>0 ORDER BY created_at DESC LIMIT 100",[project])).rows});
+      await authorize(user,project); return json({music:(await db().query("SELECT id,revision AS version,current_version->>'name' AS name, COALESCE(current_version->>'studioPath',current_version->'beat'->>'name') AS \"studioPath\" FROM music_sessions WHERE project_id=$1 AND revision>0 ORDER BY created_at DESC LIMIT 100",[project])).rows});
     }
     if (path[2] === 'artifacts' && path.length === 3) {
       if (method === 'POST') { const input=z.object({revision:z.number().int().nonnegative()}).strict().parse(await body(request)); return json(await reserveWav(user,project,input.revision),201); }

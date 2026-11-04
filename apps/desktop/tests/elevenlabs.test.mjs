@@ -59,3 +59,28 @@ test('history keeps original audio and branches selected versions behind the cur
   await assert.rejects(store.act(id,{operation:'generate',baseVersion:4,sourceVersion:999,indices:[0]},randomUUID()));
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('vocals and pending operations belong to one project song across restarts',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'banger-music-scope-'));
+ const first={root:join(root,'project-a'),name:'song'};
+ const second={root:first.root,name:'other'};
+ const sameName={root:join(root,'project-b'),name:'song'};
+ let release;const gate=new Promise(resolve=>{release=resolve;});
+ const provider=fixtureProvider(),analyze=provider.analyze;
+ provider.analyze=async(...args)=>{await gate;return analyze(...args);};
+ let store=createMusicStore(join(root,'cache'),()=>provider);
+ try{
+  const upload=await store.importWav(wav(),'unrelated-upload-name.wav',randomUUID(),first);
+  assert.equal((await store.operations(first))[0].id,upload.id);
+  assert.deepEqual(await store.operations(second),[]);
+  assert.deepEqual(await store.operations(sameName),[]);
+  release();assert.equal((await done(store,upload.id)).status,'completed');
+  const other=await store.importWav(wav(),'newest.wav',randomUUID(),second);
+  await done(store,other.id);
+  store=createMusicStore(join(root,'cache'),()=>provider);
+  assert.deepEqual((await store.list(first)).map(song=>song.id),[upload.musicId]);
+  assert.deepEqual((await store.list(second)).map(song=>song.id),[other.musicId]);
+  assert.deepEqual(await store.list(sameName),[]);
+  await assert.rejects(store.importWav(wav(),'unrelated-upload-name.wav',upload.id,second),/different task/);
+ }finally{release();await rm(root,{recursive:true,force:true});}
+});

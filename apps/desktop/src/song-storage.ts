@@ -46,6 +46,12 @@ export function createSongStorage(userData: string) {
       } catch (error) { await rm(staging, { recursive: true, force: true }); throw error; }
     },
     async prepare(root: string | undefined, name: string, source?: string): Promise<SongLocation> {
+      if (root && name.endsWith('.banger') && name.includes('/')) {
+        const parts=name.split('/');
+        if(parts.some(part=>!part||part.startsWith('.')||/[\\\0]/.test(part)))throw new Error('Choose a song inside this project.');
+        root=await directory(root,parts.slice(0,-1));
+        name=parts.at(-1)!;
+      }
       name = songName(name);
       if (!root) { await directory(userData, ['projects']); root = await directory(userData, ['projects', name]); }
       root = await directory(root);

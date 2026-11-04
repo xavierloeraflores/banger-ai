@@ -39,6 +39,7 @@ export const audioMetadataSchema = z.object({
 });
 export type AudioMetadata = z.infer<typeof audioMetadataSchema>;
 export type MusicVersion = {
+  studioPath?: string;
   beat?: AssociatedBeat;
   id: string; version: number; name: string; songId: string; originalSongId?: string; plan: CompositionPlan; providerPlan?: ProviderPlan;
   audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number; audioMetadata?: AudioMetadata;

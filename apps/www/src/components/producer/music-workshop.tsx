@@ -17,25 +17,31 @@ const mergeHistory=(history:MusicHistory,previous:MusicVersion[]=[])=>[...new Ma
 const audioName=(version:MusicVersion)=>version.audioVersion===1?'Original WAV':`Variation · v${version.audioVersion}`;
 type Pending={id:string;lyrics:string[];upload?:boolean};
 
-export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChange}:{cloud?:CloudMusicContext;studioFile:{name:string;source:string};active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
+export function MusicWorkshop({cloud,studioFile,studioPath,active=true,onConnect,onBeatChange,onEditStateChange}:{cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
   const {languageModel,vocals}=useGenerationAccess();
   const lyricRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>lyricRequest.current?.abort(),[cloud]);
   const [native,setNative]=useState<MusicBackend>();
-  useEffect(()=>{queueMicrotask(()=>setNative(desktopMusic()));},[]);
-  const backend=useMemo(()=>cloud?cloudMusic(cloud):native,[cloud,native]);
+
+  const backend=useMemo(()=>cloud?cloudMusic(cloud,studioPath):native,[cloud,native,studioPath]);
   const [songs,setSongs]=useState<{id:string;name:string;version:number}[]>([]);
   const [head,setHead]=useState<MusicVersion|null>(null),[song,setSong]=useState<MusicVersion|null>(null);
   useEffect(()=>{onBeatChange?.(song?.beat ?? null);},[song,onBeatChange]);
   const [history,setHistory]=useState<MusicVersion[]>([]),[nextBefore,setNextBefore]=useState<number>();
   const [lyrics,setLyrics]=useState<string[]>([]),[indices,setIndices]=useState<number[]>([]),[baseRevision,setBaseRevision]=useState(0);
   const [jobs,setJobs]=useState<MusicOperation[]>([]),[prompt,setPrompt]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
+  useEffect(()=>{
+    let cancelled=false;
+    if(window.bangerMusic)void prepareSong(studioPath).then(token=>{if(!cancelled&&token)setNative(desktopMusic(token));}).catch(error=>{if(!cancelled)setNotice(message(error));});
+    return()=>{cancelled=true;};
+  },[studioPath]);
   const [zoom,setZoom]=useState(1);
   const request=useRef(false),epoch=useRef(0),pending=useRef<Pending|null>(null),identity=useRef('');
   const autoplay=useRef<string|null>(null);
   const fileInput=useRef<HTMLInputElement>(null);
   const current=useRef({song,head,lyrics});useEffect(()=>{current.current={song,head,lyrics};},[song,head,lyrics]);
   const dirty=Boolean(song?.plan.chunks.some((chunk,index)=>lyrics[index]!==lyricsOf(chunk.text)));
+  useEffect(()=>{onEditStateChange?.({dirty,busy});return()=>onEditStateChange?.({dirty:false,busy:false});},[dirty,busy,onEditStateChange]);
   const running=jobs.some(job=>['queued','running'].includes(job.status));
   const blocked=busy||running;
   const {attach:attachAudio,...audio}=useMusicAudio(backend,song,active,history);
@@ -48,7 +54,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChan
   async function load(id:string){if(!backend)return;const [latest,versions]=await Promise.all([backend.get(id),backend.versions(id)]);adopt(latest);setHistory(mergeHistory(versions));setNextBefore(versions.nextBefore);}
   useEffect(()=>{
     if(!backend)return;
-    const key=cloud?`${cloud.url}:${cloud.projectId}:${cloud.token}`:'desktop',changed=identity.current!==key;identity.current=key;
+    const key=cloud?`${cloud.url}:${cloud.projectId}:${studioPath}:${cloud.token}`:studioPath,changed=identity.current!==key;identity.current=key;
     let cancelled=false,polling=false;
     const poll=async()=>{
       if(polling||request.current)return;polling=true;const ticket=epoch.current;
@@ -76,7 +82,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChan
     };
     queueMicrotask(()=>{if(changed){epoch.current++;current.current={song:null,head:null,lyrics:[]};setSong(null);setHead(null);setLyrics([]);setSongs([]);setHistory([]);setJobs([]);pending.current=null;}void poll();});
     const timer=setInterval(()=>void poll(),1500);return()=>{cancelled=true;clearInterval(timer);};
-  },[backend,cloud]);
+  },[backend,cloud,studioPath]);
   useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
   async function action(work:()=>Promise<void>){if(request.current)return;request.current=true;epoch.current++;setBusy(true);setNotice('');try{await work();}catch(error){setNotice(message(error));}finally{request.current=false;setBusy(false);}}
   function track(operation:MusicOperation|null,upload=false){if(!operation)return;pending.current={id:operation.id,lyrics:[...lyrics],upload};setJobs(previous=>[operation,...previous.filter(job=>job.id!==operation.id)]);setNotice(upload?'Analyzing your WAV into chunks…':'Request saved. You can follow its progress here.');}
@@ -142,14 +148,14 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChan
   const editing=history.filter(item=>item.operation==='edit'||item.operation==='lyrics');
   const wavActions=<div className="music-wav-actions" aria-label="Add a WAV">
     <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button></KeyHint>
-    <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioFile.name,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token,studioFile),true);});}}>Use studio WAV</button></KeyHint>
+    <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioPath,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token,studioFile),true);});}}>Use studio WAV</button></KeyHint>
   </div>;
   return <section className="music-workshop" aria-label="Vocal Studio">
     {backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&vocals&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
     <header className="music-heading">
-      <div><h1>{song?.name??'Make the next version.'}</h1></div>
+      <div><h1>{studioFile.name.replace(/\.banger$/i,'')}</h1></div>
       <div className="music-file-tools">
-        {songs.length>0&&<select aria-label="Music project" value={song?.id??''} disabled={blocked} onChange={event=>{const id=event.target.value;if(discard())void action(()=>load(id));}}>{songs.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>}
+        {songs.length>0&&<select aria-label="Vocal take" value={song?.id??''} disabled={blocked} onChange={event=>{const id=event.target.value;if(discard())void action(()=>load(id));}}>{songs.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>}
       </div>
     </header>
     <div className="music-body">
@@ -168,7 +174,7 @@ export function MusicWorkshop({cloud,studioFile,active=true,onConnect,onBeatChan
             </article>)}</div>
             <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><button disabled={blocked||!dirty||invalidLyrics} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)?[]:[{index,lyrics:lyrics[index]??''}])}))}>Save lyrics</button><KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={!vocals||blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></button></KeyHint></div>
             <div className="music-replace-wav"><p>Start from another WAV</p>{wavActions}</div>
-          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>Your song, a new direction.</h2><p>Start with a WAV. Keep the original, write lyrics by chunk, and try new variations.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
+          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>No vocals yet.</h2><p>Add a WAV or use this song’s beat to start its vocals. Your lyrics and variations stay with this song.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
         </div>
         <form className="music-lyric-composer" onSubmit={event=>{event.preventDefault();void writeLyrics();}}>
           <label htmlFor="music-lyric-prompt">Generate lyrics <span>for {indices.length||'selected'} chunks</span></label>

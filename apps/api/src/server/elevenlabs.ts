@@ -54,7 +54,7 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
       if(analyze) {
         const audio=await objects.read(source.pathname);
         const result=await provider().analyze(audio,'source.wav');
-        version={id:musicId,version:1,name:input.beat?.name ?? 'Uploaded song',...(input.beat ? {beat:input.beat} : {}),songId:result.songId,originalSongId:result.songId,plan:result.plan,audioMetadata:result.audioMetadata,audioId:source.id,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
+        version={id:musicId,version:1,...(input.studioPath ? {studioPath:input.studioPath} : {}),name:input.beat?.name ?? 'Uploaded song',...(input.beat ? {beat:input.beat} : {}),songId:result.songId,originalSongId:result.songId,plan:result.plan,audioMetadata:result.audioMetadata,audioId:source.id,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'};
       } else {
         const source=input.action.sourceVersion?(await db().query('SELECT document FROM music_versions WHERE music_id=$1 AND revision=$2',[musicId,input.action.sourceVersion])).rows[0]?.document:session!.current_version;
         if(!source)throw new ApiError(404,'Music version not found.');

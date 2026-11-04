@@ -66,13 +66,13 @@ contextBridge.exposeInMainWorld("bangerStorage", Object.freeze({
 
 contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
   addToLibrary: (id, version) => ipcRenderer.invoke("banger:music-add-library", id, version),
-  list: () => ipcRenderer.invoke("banger:music-list"),
+  list: token => ipcRenderer.invoke("banger:music-list", token),
   get: id => ipcRenderer.invoke("banger:music-get", id),
   versions: (id, before) => ipcRenderer.invoke("banger:music-versions", id, before),
-  operations: () => ipcRenderer.invoke("banger:music-operations"),
+  operations: token => ipcRenderer.invoke("banger:music-operations", token),
   operation: id => ipcRenderer.invoke("banger:music-operation", id),
   act: (id, action, key) => ipcRenderer.invoke("banger:music-act", id, action, key),
-  importWav: key => ipcRenderer.invoke("banger:music-import", key),
+  importWav: (key, token) => ipcRenderer.invoke("banger:music-import", key, token),
   rendered: (bytes, name, key, token, beat) => ipcRenderer.invoke("banger:music-rendered", bytes, name, key, token, beat),
   audio: (id, version) => ipcRenderer.invoke("banger:music-audio", id, version),
   save: (id, version) => ipcRenderer.invoke("banger:music-save", id, version),

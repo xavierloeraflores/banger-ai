@@ -17,7 +17,7 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  let calls=0;const provider:MusicProvider={async analyze(){calls++;return {songId:'uploaded',audioMetadata:originalMetadata,plan};},async lyrics(base){calls++;return {...base,chunks:base.chunks.map(chunk=>({...chunk,text:'[Verse]\nAI lyrics'}))};},async generate(base){calls++;assert.equal(base.originalSongId,'uploaded');return {songId:'generated',audioMetadata:generatedMetadata,plan:base.plan,providerPlan:base.plan,audio:Buffer.from('ID3fixture')};}};
  const run=async(input:unknown)=>{const job=await enqueue(user,project.projectId,'elevenlabs',randomUUID(),input);await runElevenStep((await claim(job.id))!,provider,storage);assert.equal((await getJob(user,job.id)).status,'completed');return job;};
  const beat={name:'song.banger',source};
- const analyze=await run({artifactId:artifact,beat});let song=(await getMusic(user,analyze.id)).current_version!;assert.deepEqual(song.plan,plan);assert.deepEqual(song.audioMetadata,originalMetadata);
+ const analyze=await run({artifactId:artifact,beat,studioPath:"song.banger"});let song=(await getMusic(user,analyze.id)).current_version!;assert.deepEqual(song.plan,plan);assert.deepEqual(song.audioMetadata,originalMetadata);
  await setMember(user,project.projectId,viewer,'viewer');assert.equal((await getMusic(viewer,song.id)).revision,1);await assert.rejects(enqueue(viewer,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:1,indices:[0]}}),/denied/);
  const edit=await run({musicId:song.id,action:{operation:'edit',baseVersion:1,edits:[{index:0,lyrics:'Manual lyrics'}]}});song=(await getMusic(user,song.id)).current_version!;assert.equal(song.version,2);assert.equal(song.audioVersion,1);assert.deepEqual(song.audioMetadata,originalMetadata);assert.equal(calls,1);
  await assert.rejects(enqueue(user,project.projectId,'elevenlabs',randomUUID(),{musicId:song.id,action:{operation:'generate',baseVersion:1,indices:[0]}}),/changed/);
@@ -36,7 +36,7 @@ test('cloud music revisions, permissions, private artifacts, receipt recovery an
  assert.equal((await db().query('SELECT count(*)::int AS count FROM music_versions WHERE music_id=$1',[song.id])).rows[0].count,5);assert.equal((await getJob(user,edit.id)).result?.version,2);
  const branched=await run({musicId:song.id,action:{operation:'generate',baseVersion:5,sourceVersion:1,indices:[1]}});
  const branch=(await getMusic(user,song.id)).current_version!;assert.equal(branch.version,6);assert.equal(branch.parentVersion,1);assert.deepEqual(branch.plan,plan);assert.equal(branch.audioId,branched.id);
- assert.equal(branch.originalSongId,'uploaded');assert.deepEqual(branch.beat,beat);
+ assert.equal(branch.studioPath,'song.banger');assert.equal(branch.originalSongId,'uploaded');assert.deepEqual(branch.beat,beat);
  const unlinked=await run({artifactId:artifact});assert.equal((await getMusic(user,unlinked.id)).current_version!.beat,undefined);
  await setMember(user,project.projectId,viewer,null);await assert.rejects(getMusic(viewer,song.id),/denied/);
 });

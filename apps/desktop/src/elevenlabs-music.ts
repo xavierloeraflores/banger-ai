@@ -38,7 +38,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
         await atomic(receipt, true);
       }
       await atomic(musicPath(version.id),version);
-      const list=await catalog();await atomic(join(root,'catalog.json'),[{id:version.id,name:version.name,version:version.version},...list.filter(item=>item.id!==version.id)].slice(0,100));
+      const list=await catalog();await atomic(join(root,'catalog.json'),[{id:version.id,name:version.name,version:version.version},...list.filter(item=>item.id!==version.id)]);
     });
   }
   async function operation(id:string){
@@ -78,32 +78,41 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       return {...task};
     });
   }
+  async function belongs(id:string, location:SongLocation) {
+    const saved=await read<SongLocation>(join(root,`location-${uuid(id)}.json`)).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return undefined;throw error;});
+    return saved?.root===location.root && saved.name===location.name;
+  }
   return {
-    async list(){return catalog();},get,operation,
+    async list(location?:SongLocation){
+      const list=await catalog();
+      if(!location)return list;
+      const matches=await Promise.all(list.map(async item=>({item,match:await belongs(item.id,location)})));
+      return matches.filter(value=>value.match).map(value=>value.item);
+    },get,operation,
     async versions(id:string,before?:number){
       const current=await get(id);if(before!==undefined&&(!Number.isInteger(before)||before<1))throw new Error('Invalid history cursor.');
       const end=Math.min(current.version,(before??current.version+1)-1),start=Math.max(1,end-49);
       const versions=await Promise.all(Array.from({length:Math.max(0,end-start+1)},(_,index)=>getVersion(id,end-index)));
       return {versions,original:await getVersion(id,1),...(start>1?{nextBefore:start}:{})};
     },
-    async operations(){const ids=await read<string[]>(join(root,'operation-catalog.json')).catch(()=>[]);return Promise.all(ids.map(id=>operation(id)));},
-    async importWav(bytes:Uint8Array,name:string,key:string,location?:SongLocation,beat?:MusicVersion["beat"]) {
+    async operations(location?:SongLocation){const ids=await read<string[]>(join(root,'operation-catalog.json')).catch(()=>[]);const tasks=await Promise.all(ids.map(id=>operation(id)));if(!location)return tasks;const matches=await Promise.all(tasks.map(async task=>({task,match:await belongs(task.musicId,location)})));return matches.filter(value=>value.match).map(value=>value.task);},
+    async importWav(bytes:Uint8Array,name:string,key:string,location?:SongLocation,beat?:MusicVersion["beat"],studioPath?:string) {
       if (beat) beat = associatedBeatSchema.parse(beat);
       const imported = imports.then(async () => {
       uuid(key);validateWav(bytes,false);await mkdir(root,{recursive:true});
-      const hash=fingerprint({name,...(beat ? {beat} : {}),sha:createHash('sha256').update(bytes).digest('hex')});
+      const hash=fingerprint({name,...(location ? {location} : {}),...(studioPath ? {studioPath} : {}),...(beat ? {beat} : {}),sha:createHash('sha256').update(bytes).digest('hex')});
       const existing=await prior(key,hash);
       if(existing)return existing;
       const id=key,audioId=randomUUID();
-      if (location && storage) {
+      if (location) {
         await atomic(join(root, `location-${id}.json`), location);
-        await storage.imported(location, bytes);
+        await storage?.imported(location, bytes);
       }
       validateWav(bytes);
       await writeFile(audioPath(audioId),bytes,{flag:'wx',mode:0o600});
       return launch(id,key,async()=>{
         const result=await (await provider()).analyze(bytes,name);
-        return {version:{id,version:1,name,...(beat ? {beat} : {}),songId:result.songId,originalSongId:result.songId,plan:result.plan,audioMetadata:result.audioMetadata,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
+        return {version:{id,version:1,name,...(studioPath ? {studioPath} : {}),...(beat ? {beat} : {}),songId:result.songId,originalSongId:result.songId,plan:result.plan,audioMetadata:result.audioMetadata,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
       },0,hash);
       });
       imports = imported.catch(() => undefined);
@@ -158,7 +167,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
         if(current?.version===result.version&&current.audioId===result.audioId){task.status='completed';task.progress=100;task.resultVersion=result.version;delete task.error;}
         else if((current?.version??0)===result.version-1){await publish(result,result.version-1);task.status='completed';task.progress=100;task.resultVersion=result.version;delete task.error;}
         else{task.status='conflict';task.error='Another revision is current. The completed result is retained locally.';}
-        if(task.status==='completed')await locked(async()=>{const list=await catalog();await atomic(join(root,'catalog.json'),[{id:result.id,name:result.name,version:result.version},...list.filter(item=>item.id!==result.id)].slice(0,100));});
+        if(task.status==='completed')await locked(async()=>{const list=await catalog();await atomic(join(root,'catalog.json'),[{id:result.id,name:result.name,version:result.version},...list.filter(item=>item.id!==result.id)]);});
         task.stage=task.status;await atomic(operationPath(id),task);
       }
       return task;

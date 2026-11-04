@@ -172,3 +172,15 @@ test('explicit library snapshot preserves current source, lyrics and audio histo
   assert.equal((await readdir(join(root, 'library'))).length, 2);
   assert.equal(await readFile(join(song.root, 'midnight.banger'), 'utf8'), 'tempo 120;');
 });
+
+test('nested songs keep separate vocal storage and reject traversal',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'banger-nested-vocals-'));
+ try{
+  const storage=createSongStorage(root);
+  const first=await storage.prepare(root,'disc-one/song.banger');
+  const second=await storage.prepare(root,'disc-two/song.banger');
+  assert.notEqual(first.root,second.root);
+  assert.equal(first.name,second.name);
+  await assert.rejects(storage.prepare(root,'../escape.banger'),/inside/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

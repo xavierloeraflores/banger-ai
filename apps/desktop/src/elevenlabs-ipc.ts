@@ -24,8 +24,8 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
     return new ElevenMusic(key);
   } : undefined, storage ? musicStorageHooks(storage.storage) : undefined);
   const dialogs=new Set<number>();
-  ipcMain.handle('banger:music-list',event=>{senderWindow(event);return store.list();});
-  ipcMain.handle('banger:music-operations',event=>{senderWindow(event);return store.operations();});
+  ipcMain.handle('banger:music-list',(event,token?:string)=>{const window=senderWindow(event);return store.list(token&&storage?storage.resolve(window,token):undefined);});
+  ipcMain.handle('banger:music-operations',(event,token?:string)=>{const window=senderWindow(event);return store.operations(token&&storage?storage.resolve(window,token):undefined);});
   ipcMain.handle('banger:music-versions',(event,id:string,before?:number)=>{senderWindow(event);return store.versions(id,before);});
   ipcMain.handle('banger:music-get',(event,id:string)=>{senderWindow(event);return store.get(id);});
   ipcMain.handle('banger:music-operation',(event,id:string)=>{senderWindow(event);return store.recover(id);});
@@ -35,13 +35,14 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
     return store.act(id,input,key);
   });
   ipcMain.handle('banger:music-audio',(event,id:string,version?:number)=>{senderWindow(event);return store.audio(id,version);});
-  ipcMain.handle('banger:music-import',async(event,key:string)=>{
+  ipcMain.handle('banger:music-import',async(event,key:string,token?:string)=>{
     const window=senderWindow(event);if(dialogs.has(window.id))throw new Error('A music file dialog is already open.');dialogs.add(window.id);
     try{
+      const location=token&&storage?storage.resolve(window,token):undefined;
       const selected=await dialog.showOpenDialog(window,{title:'Upload WAV to ElevenLabs',filters:[{name:'WAV audio',extensions:['wav']}],properties:['openFile']});
       if(selected.canceled||!selected.filePaths[0])return null;
       const file=await open(selected.filePaths[0],'r');
-      try{const stat=await file.stat();if(!stat.isFile()||stat.size>MAX_WAV_BYTES)throw new Error('Choose a WAV up to 100 MiB.');const bytes=await file.readFile();return store.importWav(bytes,basename(selected.filePaths[0]),key,await storage?.prepare(window,basename(selected.filePaths[0])));}finally{await file.close();}
+      try{const stat=await file.stat();if(!stat.isFile()||stat.size>MAX_WAV_BYTES)throw new Error('Choose a WAV up to 100 MiB.');const bytes=await file.readFile();return store.importWav(bytes,basename(selected.filePaths[0]),key,location ?? await storage?.prepare(window,basename(selected.filePaths[0])));}finally{await file.close();}
     }finally{dialogs.delete(window.id);}
   });
   ipcMain.handle('banger:music-rendered',async(event,bytes:unknown,name:unknown,key:string,token?:string,beat?:MusicVersion["beat"])=>{
