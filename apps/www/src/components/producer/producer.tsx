@@ -93,10 +93,11 @@ function diagnose(cause: unknown) {
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; studio: "beat" | "vocal"; chatId?: string } | null>(null);
-  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [requiredStudio, setRequiredStudio] = useState<"beat" | "vocal" | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [startStudio, setStartStudio] = useState<"beat" | "vocal">("beat");
+  const [startDestination, setStartDestination] = useState<AppDestination>("library");
+  const startStudio = startDestination === "vocal" ? "vocal" : "beat";
   const [savedChats, setSavedChats] = useState<ProjectChat[]>([]);
   useEffect(() => { queueMicrotask(() => setSavedChats(readChats())); }, []);
   const [recentError, setRecentError] = useState("");
@@ -115,9 +116,9 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
     finally { openingRecent.current = false; }
   }
   const toggleSidebar = () => setSidebarExpanded(expanded => !expanded);
-  if (!session && !libraryOpen) return <AppShell chats={savedChats} onChat={id => { const chat = savedChats.find(item => item.id === id); if (chat?.snapshot.folder?.id) void openRecent(chat.snapshot.folder.id, id); }} onOpenRecent={id => void openRecent(id)} active={startStudio} expanded={sidebarExpanded} onToggle={toggleSidebar} onNavigate={next => {
+  if (!session && !libraryOpen) return <AppShell chats={savedChats} onChat={id => { const chat = savedChats.find(item => item.id === id); if (chat?.snapshot.folder?.id) void openRecent(chat.snapshot.folder.id, id); }} onOpenRecent={id => void openRecent(id)} active={startDestination} expanded={sidebarExpanded} onToggle={toggleSidebar} onNavigate={next => {
     if (next === "library") setLibraryOpen(true);
-    else setStartStudio(next);
+    else setStartDestination(next);
   }}><ProjectStart sample={initialFile} onOpenLibrary={() => setLibraryOpen(true)} onStart={(file, saved, folder) => setSession({ file, saved, folder, studio: startStudio })} />{recentError && <p role="alert">{recentError}</p>}{emptyRecent && <FirstSongDialog folder={emptyRecent} onCreated={folder => { if (folder.file) setSession({ file: { name: folder.file.path, source: folder.file.source }, saved: true, folder, studio: startStudio }); setEmptyRecent(null); }} />}</AppShell>;
   return <Studio initialChatId={session?.chatId} key={session ? "project" : "library"} sidebarExpanded={sidebarExpanded} onToggleSidebar={toggleSidebar} initialFile={session?.file ?? initialFile} sample={initialFile} initiallySaved={session?.saved ?? false} initialFolder={session?.folder} initialStudio={session?.studio ?? "library"} onRequireProject={setRequiredStudio}>
     {requiredStudio && <ProjectStart sample={initialFile} requiredStudio={requiredStudio} onCancel={() => setRequiredStudio(null)} onStart={(file, saved, folder) => {
