@@ -66,6 +66,10 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
     manualCameraRef.current = manual; setManualCamera(manual);
     stage.current?.setManualCamera(manual);
   }
+  function close() {
+    onClose?.();
+    dialog.current?.close();
+  }
   function show() {
     onOpen?.();
     manualCameraRef.current = false; setManualCamera(false);
@@ -76,10 +80,10 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8" /></svg>
       Band stage
     </Button>
-    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } }} onClose={() => { setHero(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
+    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else { onClose?.(); } }} onClose={() => { setHero(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
         <div><span className="performance-eyebrow">BANGER / LIVE ROOM</span><h2 id="performance-title">Meet your band<span className={playing ? "performance-live playing" : "performance-live"}>{playing ? "LIVE" : "READY"}</span></h2><p id="performance-description">One little performer for every track. Your music brings them to life.</p></div>
-        <Button variant="secondary" onClick={() => dialog.current?.close()} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
+        <Button variant="secondary" onClick={close} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
       </header>
       <div className="performance-viewport" ref={viewport}>
         {open && status === "loading" && <div className="performance-overlay" role="status">Getting the band together…</div>}

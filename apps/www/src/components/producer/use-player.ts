@@ -96,7 +96,7 @@ export function usePlayer(program: MusicProgram) {
 
   const readPerformance = useCallback(() => {
     const snapshot = player.current?.performance;
-    return { program: snapshot?.state.playing ? snapshot.program : latestProgram.current, state: snapshot?.state ?? idle, fill: snapshot?.fill ?? false };
+    return { program: snapshot?.program ?? latestProgram.current, state: snapshot?.state ?? idle, fill: snapshot?.fill ?? false };
   }, []);
 
   return { state, meters, starting, error, play, stop, fill, setFill, readPerformance };

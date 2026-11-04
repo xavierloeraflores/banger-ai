@@ -147,6 +147,8 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     try { return compileMusic(associatedBeat.source); } catch { return null; }
   }, [associatedBeat]);
   const associatedPlayback = usePlayer(associatedProgram ?? program);
+  const stopAssociatedPlayback = associatedPlayback.stop;
+  useEffect(() => { stopAssociatedPlayback(); }, [associatedBeat?.source, studio, stopAssociatedPlayback]);
   const stageProgram = beatStudio ? program : associatedProgram;
   const stagePlayback = beatStudio ? playback : associatedPlayback;
   const arrangement = useMemo(() => resolveArrangement(audibleProgram), [audibleProgram]);

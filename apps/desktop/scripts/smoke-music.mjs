@@ -232,7 +232,7 @@ async function run(){
    await wait("document.querySelector('.library-card img').naturalWidth===1");
    await click('Band stage');
    await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='1'");
-   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('87 BPM')"),'Saved audio opens its companion beat');
+   assert.match(await evaluate("document.querySelector('.performance-transport').textContent"),/87 BPM/,'Saved audio opens its companion beat');
    assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
    await click('Close band stage');
    await wait("!document.querySelector('#performance-stage')?.open");
