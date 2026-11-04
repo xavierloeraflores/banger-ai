@@ -1,4 +1,4 @@
-import { saveLibraryEntry, readLibraryEntry, generateLibraryArtwork } from '../../../server/library';
+import { saveLibraryEntry, readLibraryEntry, generateLibraryArtwork, renameLibraryRecord, requestArtworkRegeneration } from '../../../server/library';
 import { readSongDraft, saveSongDraft } from '../../../server/song-drafts';
 import { runWebTask } from '../../../server/web-task';
 import { after } from 'next/server';
@@ -61,8 +61,9 @@ async function dispatch(request: Request, path: string[]) {
   const elevenLabsKey = request.headers.get('x-banger-elevenlabs-key');
   if (elevenLabsKey !== null && (!elevenLabsKey || elevenLabsKey.length > 8192 || /[^\x21-\x7e]/.test(elevenLabsKey))) throw new ApiError(400,'Invalid ElevenLabs API key.');
   if(path[0]==='library'){
-    if(path.length===1 && method==='GET')return json({songs:(await db().query(`SELECT l.id,l.name,'audio' AS kind,CASE WHEN l.scope='project' THEN p.name ELSE 'Library' END AS scope,l.song_type AS "songType",r.id AS "recordId",r.name AS "recordName",CASE WHEN r.artwork IS NOT NULL THEN '/api/library/'||r.id::text||'/artwork' ELSE NULL END AS artwork,r.attempts AS "artworkAttempts" FROM library_entries l JOIN library_records r ON r.id=l.record_id JOIN projects p ON p.id=l.project_id WHERE l.user_id=$1 ORDER BY l.created_at DESC LIMIT 1000`,[user])).rows});
+    if(path.length===1 && method==='GET')return json({songs:(await db().query(`SELECT l.id,l.name,'audio' AS kind,CASE WHEN l.scope='project' THEN p.name ELSE 'Library' END AS scope,l.song_type AS "songType",r.id AS "recordId",r.name AS "recordName",CASE WHEN r.artwork IS NOT NULL THEN '/api/library/'||r.id::text||'/artwork?v='||r.artwork_version::text ELSE NULL END AS artwork,r.attempts AS "artworkAttempts",(r.regenerate_artwork AND (r.attempts<3 OR COALESCE(r.lease_until>now(),false))) AS "artworkPending",(r.regenerate_artwork AND r.attempts>=3 AND (r.lease_until IS NULL OR r.lease_until<=now())) AS "artworkError" FROM library_entries l JOIN library_records r ON r.id=l.record_id JOIN projects p ON p.id=l.project_id WHERE l.user_id=$1 ORDER BY l.created_at DESC LIMIT 1000`,[user])).rows});
     if(path.length===1 && method==='POST')return json(await saveLibraryEntry(user,await body(request)),201);
+    if(path.length===3 && path[2]==='record' && method==='PATCH')return json(await renameLibraryRecord(user,id.parse(path[1]),await body(request)));
     if(path.length===3 && path[2]==='artwork' && method==='GET') {
       const recordId=id.parse(path[1]);
       const artwork=(await db().query('SELECT artwork FROM library_records WHERE id=$1 AND user_id=$2',[recordId,user])).rows[0]?.artwork as string | undefined;
@@ -71,10 +72,11 @@ async function dispatch(request: Request, path: string[]) {
       if(!match)throw new ApiError(404,'Record artwork is unavailable.');
       return new Response(Buffer.from(match[2]!, 'base64'),{headers:{'Content-Type':match[1]!, 'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff'}});
     }
-    if(path.length===3 && path[2]==='artwork' && method==='POST') {
+    if(path.length===3 && ['artwork','regenerate'].includes(path[2]!) && method==='POST') {
       const recordId=id.parse(path[1]);
       const credentials=z.object({provider:z.enum(['meta','vercel']),key:z.string().min(1).max(8192).regex(/^[\x21-\x7e]+$/)}).strict().parse(await body(request));
       if(!(await db().query('SELECT 1 FROM library_records WHERE id=$1 AND user_id=$2',[recordId,user])).rowCount)throw new ApiError(404,'Record not found.');
+      if(path[2]==='regenerate')await requestArtworkRegeneration(user,recordId);
       after(()=>generateLibraryArtwork(user,recordId,credentials));
       return json({queued:true},202);
     }

@@ -26,6 +26,7 @@ test('library includes only explicitly saved global and project library entries'
   await writeFile(join(root, 'projects', 'unsaved', 'unsaved.banger'), 'tempo 80;');
   const entries = await library.list(project);
   assert.deepEqual(entries.map(item => item.name), ['Dawn', 'Night']);
+  assert.ok(entries.every(item => item.recordId === undefined), 'standalone songs have no synthetic record');
   assert.match(entries.find(item => item.name === 'Dawn').artwork, /^data:image\/png;base64,/);
   assert.deepEqual((await library.read(entries[0].id)).bytes, wav());
   assert.deepEqual((await library.read(entries[0].id)).beat, { name: 'Dawn.banger', source: 'tempo 90;' });

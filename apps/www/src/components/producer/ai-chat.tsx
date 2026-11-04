@@ -17,7 +17,7 @@ import type { WorkspaceFile } from "@/lib/project-workspace";
 
 type ProjectSnapshot = { source: string; revision: number; activeFile?: string };
 type Props = { chatId: string; projectId?: string; active: boolean; initialHistory?: ChatHistory;
-  onUpdate(id: string, update: Partial<ProjectChat>): void; onNewChat(): void; onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
+  onUpdate(id: string, update: Partial<ProjectChat>): void; onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
   folderName: string; projectEpoch: number; activeFile?: string; projectDirty: boolean;
   onResolveEdits(action: "save" | "discard"): Promise<ProjectSnapshot>;
   onProjectComplete(): void; onProjectFile(file: WorkspaceFile, revision: number): void;
@@ -28,7 +28,7 @@ const suggestions = [
   "Make a rap song with lyrics for the verses and hook",
 ];
 
-export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, onNewChat, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
+export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
   const [permissions, setPermissions] = useState(initialHistory?.permissions ?? { beat: !vocalStudio, lyrics: vocalStudio });
   const [fullSend, setFullSend] = useState(initialHistory?.fullSend ?? false);
   const [progress, setProgress] = useState("");
@@ -53,6 +53,13 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
   const transcript = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const busy = pendingPrompt !== null;
+  const followTranscript = useRef(true);
+  useEffect(() => {
+    const field = input.current;
+    if (!field || !active) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(field.scrollHeight, 180)}px`;
+  }, [prompt, active]);
   useEffect(() => {
     onUpdate(chatId, {
       history: { prompt, turns, targetFile, permissions, fullSend, error },
@@ -117,6 +124,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
   }, []);
 
   useEffect(() => {
+    if (!followTranscript.current) return;
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: "instant" });
   }, [turns, pendingPrompt, error, active, activity]);
 
@@ -132,6 +140,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
       editsDialog.current?.showModal();
       return;
     }
+    followTranscript.current = true;
     const controller = new AbortController();
     request.current = controller;
     setPendingPrompt(text);
@@ -245,16 +254,15 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
   if (!active) return null;
   return <>
     <Panel id="ai-chat-view" className="producer-ai" aria-labelledby="ai-chat-title">
-    <div className="producer-panel-heading">
-      <div><p className="producer-eyebrow">{folderName || fileName}</p><h1 id="ai-chat-title">{turns[0]?.prompt.slice(0, 70) || "New chat"}</h1></div>
-      <div className="ai-chat-heading-actions"><span className="producer-tag">{connection}</span>
-        <Button variant="ghost" onClick={onNewChat}>New chat</Button>
-      </div>
-    </div>
-    <AIModelSelect id="chat-ai" reasoningOnly />
-    <div ref={transcript} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
+    <header className="ai-chat-header">
+      <h1 id="ai-chat-title" className="producer-sr-only">{turns[0]?.prompt.slice(0, 70) || "New chat"}</h1>
+      <AIModelSelect id="chat-ai" mode="model-menu" disabled={busy} />
+      <span className="ai-chat-project" title={folderName || fileName}>{folderName || fileName}</span>
+    </header>
+    <div ref={transcript} onScroll={event => { const element = event.currentTarget; followTranscript.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
       {!turns.length && !busy && <div className="ai-chat-empty">
-        <p>{projectMode ? `Edit songs across ${folderName}. Describe the changes you want, and the agent will compile and save them to your project folder.` : "Create a song or reshape the current one. Preview the files, then load one into the studio or save it."}</p>
+        <span className="ai-chat-empty-mark" aria-hidden="true">♪</span><h2>What are we making?</h2>
+        <p>Start with an idea, or give your song a new direction.</p>
         <div className="ai-chat-suggestions">{suggestions.map(text => <Button key={text} variant="ghost" onClick={() => { setPrompt(text); input.current?.focus(); }}>{text}</Button>)}</div>
       </div>}
       {turns.map((turn, index) => <div className="ai-chat-turn" key={index}>
@@ -275,6 +283,9 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
       </div>)}
       {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{progress || (!permissions.beat && !permissions.lyrics ? "Thinking…" : projectMode ? "Working on your project…" : "Composing and checking your files…")}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
     </div>
+    <div className="ai-chat-composer-area">
+    <details className="ai-chat-controls">
+      <summary>Song controls <span>{[permissions.beat && "Beat", permissions.lyrics && "Lyrics", fullSend && "Full Send"].filter(Boolean).join(" · ") || "Reply only"}</span></summary>
     {permissions.beat && (projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
       <Select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
         <option value="">{fileName} · current editor</option>
@@ -289,18 +300,24 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
       {fullSend && (permissions.beat || permissions.lyrics) && <span>{permissions.lyrics?"Generate vocals with ElevenLabs and add the song to your library.":"Render a WAV and add it to your library."}</span>}
       {!permissions.beat && !permissions.lyrics && <span>Reply only. No files will be edited.</span>}
     </fieldset>
+    </details>
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
       <label className="producer-sr-only" htmlFor="ai-chat-prompt">Message Banger AI</label>
       <Textarea data-autofocus id="ai-chat-prompt" ref={input} rows={2} maxLength={permissions.lyrics && !permissions.beat ? 4000 : projectMode ? 16000 : 4000} value={prompt} disabled={busy}
         placeholder={!permissions.beat && !permissions.lyrics ? "Ask about your song or project…" : permissions.lyrics && !permissions.beat?"Write lyrics, or describe changes to this song’s lyrics…":projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-      {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
-        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy || (fullSend && permissions.lyrics && !vocals)}>Send</Button></KeyHint>}
+      <div className="ai-chat-compose-toolbar">
+      <AIModelSelect id="chat-ai" mode="reasoning-menu" disabled={busy} />
+      {busy ? <IconButton className="ai-chat-send" variant="secondary" aria-label={projectMode ? "Stop task" : "Stop generating"} onClick={stop}><span className="producer-sr-only">{projectMode ? "Stop task" : "Stop generating"}</span><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" /></svg></IconButton>
+        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><IconButton className="ai-chat-send" variant="primary" type="submit" aria-label="Send" disabled={!languageModel || !prompt.trim() || fileBusy || (fullSend && permissions.lyrics && !vocals)}><span className="producer-sr-only">Send</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg></IconButton></KeyHint>}
+      </div>
     </form>
     <div className="ai-chat-footer">
+      <p className="ai-chat-keyboard-hint">Enter to send · Shift + Enter for a new line</p>
       {fullSend && permissions.lyrics && !vocals && <p>Add an ElevenLabs API key in Settings to use Full Send with lyrics.</p>}
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+    </div>
     </div>
     </Panel>
     <Modal ref={editsDialog} className="producer-project-dialog ai-chat-edits-dialog" aria-labelledby="ai-chat-edits-title" aria-describedby="ai-chat-edits-description"

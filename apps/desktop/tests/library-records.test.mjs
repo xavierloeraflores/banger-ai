@@ -41,3 +41,30 @@ test('artwork failures do not block songs and generation retries and IDs are cap
   await writeFile(join(root,'.banger','record.json'),JSON.stringify({id:'a'.repeat(10000),name:'bad'}));
   await assert.rejects(projectRecord(root),/Invalid record metadata/);
 });
+
+test('record edits persist through generation, keep the old cover, and reject duplicate regeneration', async t => {
+  const root = await mkdtemp(join(tmpdir(),'banger-record-options-')); t.after(()=>rm(root,{recursive:true,force:true}));
+  const identity = await projectRecord(root);
+  const old = 'data:image/png;base64,b2xk', replacement = 'data:image/png;base64,bmV3';
+  let resolve, calls = 0;
+  const records = createLibraryRecords(root, async () => ++calls === 1 ? old : new Promise(done => { resolve = done; }));
+  await records.ensure(identity,{name:'Initial'}); await records.settled();
+  await records.rename(identity.id,'  Renamed  ');
+  await records.regenerate(identity.id);
+  for(let i=0;i<100 && !resolve;i++)await new Promise(done=>setTimeout(done,5));
+  await assert.rejects(records.regenerate(identity.id), /already/);
+  assert.equal((await records.get(identity.id)).artwork,old);
+  await records.rename(identity.id,'Changed while generating');
+  resolve(replacement); await records.settled();
+  const saved = await createLibraryRecords(root).get(identity.id);
+  assert.equal(saved.name,'Changed while generating'); assert.equal(saved.artwork,replacement); assert.equal(saved.regenerating,false); assert.equal(calls,2);
+  for(const name of ['', ' '.repeat(10), 'x'.repeat(161)]) await assert.rejects(records.rename(identity.id,name),/name/);
+  const noKey = createLibraryRecords(root,async()=>undefined,async()=>false);
+  await assert.rejects(noKey.regenerate(identity.id),/key/);
+  assert.equal((await noKey.get(identity.id)).artwork,replacement);
+  const failing = createLibraryRecords(root,async()=>{throw new Error('provider');});
+  await failing.regenerate(identity.id); await failing.settled();
+  for(let i=0;i<4;i++){await failing.get(identity.id);await failing.settled();}
+  assert.equal((await failing.get(identity.id)).artwork,replacement);
+  assert.equal((await failing.get(identity.id)).attempts,3);
+});

@@ -65,18 +65,31 @@ async function exercise(window, desktop) {
   })()`);
   await waitFor("document.querySelector('#producer-source')?.value");
   const openChat = async () => {
-    await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
-    await waitFor("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open' && document.querySelector('#ai-chat-dialog')?.getAttribute('aria-modal') === 'true')");
+    await evaluate(`(document.querySelector('.app-sidebar-chat[aria-current="page"]') || [...document.querySelectorAll('.app-sidebar-chat')].at(-1) || document.querySelector('[aria-label="Start a new chat"]')).click()`);
+    await waitFor("document.querySelector('#ai-chat-view')");
   };
   const closeChat = async () => {
-    await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
-    await waitFor("!(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')");
+    await evaluate(`document.querySelector('[aria-label="Beat Studio"]').click()`);
+    await waitFor("!document.querySelector('#ai-chat-view')");
   };
-  assert.equal(await evaluate("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')"), false);
-  assert.equal(await evaluate("getComputedStyle(document.querySelector('.ai-chat-launcher-hint')).position"), "fixed");
-  assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').disabled"),true);
-  await evaluate("document.querySelector('.ai-chat-launcher').click()");
-  assert.equal(await evaluate("(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')"),false);
+  const newChat = () => evaluate(`document.querySelector('[aria-label="New chat"]').click()`);
+  const openMenu = async id => {
+    await evaluate(`document.getElementById(${JSON.stringify(id)}).dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}))`);
+    await waitFor("document.querySelector('[role=menu]')");
+    await delay(150);
+  };
+  const menuChoice = async text => {
+    await evaluate(`([...document.querySelectorAll('[role=menuitemradio]')].find(item => item.textContent.trim() === ${JSON.stringify(text)})).click()`);
+    await waitFor("!document.querySelector('[role=menu]')");
+  };
+  await openChat();
+  assert.equal(await evaluate("document.querySelector('[aria-label=Send]').disabled"), true);
+  assert.equal(await evaluate("document.querySelector('#ai-chat-view button[aria-label=\"New chat\"]')"), null);
+  await openMenu('chat-ai-model');
+  assert.match(await evaluate("document.querySelector('[role=menu]').textContent"), /Add a model/);
+  await evaluate("document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}))");
+  await waitFor("!document.querySelector('[role=menu]')");
+  await closeChat();
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("!document.querySelector('.byok-form fieldset').disabled");
   await input("byok-model", "anthropic/claude-opus-5-5");
@@ -84,25 +97,35 @@ async function exercise(window, desktop) {
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=status]')");
   await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
-  await waitFor("!document.querySelector('.ai-chat-launcher').disabled");
+
   await openChat();
   await waitFor("document.activeElement.id === 'ai-chat-prompt'");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => [input.parentElement.textContent, (input.getAttribute('aria-checked') === 'true')])"), [["Edit beat", true], ["Edit lyrics", false], ["Full Send", false]]);
   assert.equal(await evaluate("!!document.querySelector('[aria-label=\"AI editing target\"]')"), false);
   await input("ai-chat-prompt", "Keep this draft");
-  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
-  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
-  await waitFor("!(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')");
-  await waitFor("document.activeElement.getAttribute('aria-label') === 'Open AI chat'");
+  await closeChat();
   await openChat();
   assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "Keep this draft");
-  // Modal focus cannot escape into the studio controls.
-  for (let index = 0; index < 12; index++) {
-    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
-    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
-    await delay(10);
-    assert.equal(await evaluate("document.activeElement === document.body || document.querySelector('#ai-chat-dialog').contains(document.activeElement)"), true);
-  }
+  await openMenu('chat-ai-model');
+  assert.equal(await evaluate("document.querySelector('[role=menuitemradio]').getAttribute('aria-checked')"), 'true');
+  window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  await waitFor("!document.querySelector('[role=menu]') && document.activeElement.id === 'chat-ai-model'");
+  assert.equal(await evaluate("!!document.querySelector('#ai-chat-view')"), true);
+  await evaluate(`(() => {
+    const key = 'banger.ai-settings.v1';
+    const settings = JSON.parse(sessionStorage.getItem(key));
+    settings.providers.openai = { model: 'gpt-4.1', key: 'unused-fixture-key' };
+    sessionStorage.setItem(key, JSON.stringify(settings));
+    window.dispatchEvent(new Event('banger:ai-settings-changed'));
+  })()`);
+  await openMenu('chat-ai-model');
+  await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.title === 'OpenAI · gpt-4.1').click()");
+  await waitFor("document.querySelector('#chat-ai-model').textContent === 'GPT-4.1' && document.querySelector('#chat-ai-reasoning').disabled");
+  await openMenu('chat-ai-model');
+  await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.title === 'Vercel AI Gateway · anthropic/claude-opus-5-5').click()");
+  await waitFor("document.querySelector('#chat-ai-model').textContent === 'Claude Opus 5.5' && !document.querySelector('#chat-ai-reasoning').disabled");
+  await writeFile(join(tmpdir(), 'banger-chat-empty.png'), (await window.webContents.capturePage()).toPNG());
   if (!desktop) {
     await evaluate(`(() => {
       const fixture = ${chatFixture.toString()};
@@ -128,16 +151,19 @@ async function exercise(window, desktop) {
     })()`);
   }
   await waitFor("!document.querySelector('#chat-ai-reasoning').disabled");
-  assert.equal(await evaluate("document.querySelector('#chat-ai-reasoning').value"), "");
-  assert.deepEqual(await evaluate("[...document.querySelector('#chat-ai-reasoning').options].map(option => option.textContent)"), ["Provider default", "Low", "Medium", "High"]);
+  assert.match(await evaluate("document.querySelector('#chat-ai-reasoning').textContent"), /Default/);
+  await openMenu('chat-ai-reasoning');
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].map(option => option.textContent.trim())"), ["Provider default", "Low", "Medium", "High"]);
+  await menuChoice('Provider default');
   const reasoning = async value => {
-    await evaluate(`(() => { const select = document.querySelector('#chat-ai-reasoning'); select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-    await waitFor(`!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === ${JSON.stringify(value)}`);
+    await openMenu('chat-ai-reasoning');
+    await menuChoice(value === 'high' ? 'High' : 'Provider default');
+    await waitFor(`!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').textContent.includes(${JSON.stringify(value === 'high' ? 'High' : 'Default')})`);
   };
   const latestEffort = () => desktop ? calls.at(-1)?.providerOptions?.anthropic?.effort : evaluate("window.__chatCalls.at(-1)?.providerOptions?.anthropic?.effort");
   await reasoning("high");
   await input("ai-chat-prompt", "Create two loops");
-  await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/claude-opus-5-5'");
+  await waitFor("document.querySelector('#chat-ai-model').textContent === 'Claude Opus 5.5'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 2");
@@ -174,7 +200,8 @@ async function exercise(window, desktop) {
   await openChat();
   await evaluate("document.querySelectorAll('.ai-chat-file button')[3].click()");
   await waitFor("document.querySelector('#producer-tempo').value === '85'");
-  assert.equal(await evaluate("document.querySelector('#chat-ai-reasoning').value"), "high");
+  await openChat();
+  assert.match(await evaluate("document.querySelector('#chat-ai-reasoning').textContent"), /High/);
   await reasoning("");
   await input("ai-chat-prompt", "Make the second loop softer");
   await click("Send");
@@ -222,22 +249,23 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 9");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file strong')[8].textContent"), "warm-loop.banger");
   assert.match(await evaluate("document.querySelectorAll('.ai-chat-file pre')[8].textContent"), /tempo 100;/);
-  assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').scrollHeight === document.querySelector('#ai-chat-dialog').clientHeight"), true);
+  assert.equal(await evaluate("document.querySelector('#ai-chat-view').scrollHeight === document.querySelector('#ai-chat-view').clientHeight"), true);
   await writeFile(join(tmpdir(), desktop ? "banger-chat-desktop.png" : "banger-chat-web.png"), (await window.webContents.capturePage()).toPNG());
   await input("ai-chat-prompt", "slow request");
   await click("Send");
   await waitFor("document.querySelector('.ai-chat-working')");
   await delay(100);
+  assert.equal(await evaluate("document.querySelector('#chat-ai-model').disabled && document.querySelector('#chat-ai-reasoning').disabled"), true);
   await closeChat();
   await openChat();
   assert.equal(await evaluate("Boolean(document.querySelector('.ai-chat-working'))"), true);
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 9);
-  await click("New chat");
+  await newChat();
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
   const beforeReadOnly = await evaluate("document.querySelector('#producer-source').value");
-  await evaluate("document.querySelector('.ai-chat-permissions [role=checkbox]').click()");
+  await evaluate("document.querySelector('.ai-chat-controls summary').click(); document.querySelector('.ai-chat-permissions [role=checkbox]').click()");
   await waitFor("document.querySelector('.ai-chat-permissions').textContent.includes('Reply only')");
   await input("ai-chat-prompt", "Please edit the beat and write lyrics anyway");
   await click("Send");
@@ -255,19 +283,20 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 3");
   const bothCalls = desktop ? calls : await evaluate("window.__chatCalls");
   assert.deepEqual(bothCalls.at(-2).tools.map(tool => tool.name).sort(), ["create_banger_file", "edit_banger_file", "request_lyrics"]);
-  await click("New chat");
-  // The popup stays inside a narrow viewport, and its backdrop dismisses it.
+  await newChat();
+  // Menus, composer, and transcript stay inside a narrow viewport.
   window.setContentSize(390, 700);
   await delay(100);
-  assert.equal(await evaluate(`(() => {
-    const bounds = document.querySelector('#ai-chat-dialog').getBoundingClientRect();
-    return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight;
-  })()`), true);
-  await writeFile(join(tmpdir(), desktop ? "banger-chat-modal-mobile-desktop.png" : "banger-chat-modal-mobile-web.png"), (await window.webContents.capturePage()).toPNG());
-  window.webContents.sendInputEvent({ type: "mouseDown", x: 2, y: 2, button: "left", clickCount: 1 });
-  window.webContents.sendInputEvent({ type: "mouseUp", x: 2, y: 2, button: "left", clickCount: 1 });
-  await waitFor("!(document.querySelector('#ai-chat-dialog')?.getAttribute('data-state') === 'open')");
-  await waitFor("document.activeElement.getAttribute('aria-label') === 'Open AI chat'");
+  const fits = selector => evaluate(`(() => { const bounds = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight; })()`);
+  assert.equal(await fits('#ai-chat-view'), true);
+  assert.equal(await fits('.ai-chat-compose'), true);
+  await writeFile(join(tmpdir(), 'banger-chat-mobile.png'), (await window.webContents.capturePage()).toPNG());
+  await openMenu('chat-ai-reasoning');
+  assert.match(await evaluate("getComputedStyle(document.querySelector('[role=menu]')).fontFamily"), /Arial/);
+  assert.equal(await fits('[role=menu]'), true);
+  await writeFile(join(tmpdir(), 'banger-chat-mobile-menu.png'), (await window.webContents.capturePage()).toPNG());
+  await menuChoice('High');
+
 }
 
 async function run(desktop) {
@@ -277,7 +306,7 @@ async function run(desktop) {
     const web = new BrowserWindow({ width: 1100, height: 900, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
     await web.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await exercise(web, false);
-    console.log("Chat smoke passed on static web: modal opening, Escape, focus containment and restoration, draft and request persistence, mobile bounds, backdrop dismissal, missing key, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
+    console.log("Chat smoke passed on static web: dedicated view, menu keyboard navigation and focus restoration, draft and request persistence, mobile bounds, missing key, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally {
     clearTimeout(timeout);

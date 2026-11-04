@@ -36,7 +36,7 @@ async function run(window) {
   async function wait(code) { for (let i = 0; i < 300; i++) { if (await evaluate(`Boolean(${code})`)) return; await delay(25); } throw new Error(`Missing: ${code}\n${await evaluate("document.body.innerText.slice(-1800)")}`); }
   const click = label => evaluate(`(() => { const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === ${JSON.stringify(label)} && item.checkVisibility()); if (!button || button.disabled) throw new Error('Unavailable: ' + ${JSON.stringify(label)}); button.click(); })()`);
   const input = (id, value) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', {bubbles:true})); })()`);
-  const close = () => evaluate(`document.querySelector('[aria-label="Close AI chat"]')?.click()`);
+  const close = () => evaluate(`document.querySelector('[aria-label="Beat Studio"]')?.click()`);
   const chooseChat = index => evaluate(`document.querySelectorAll('.app-sidebar-chat')[${index}].click()`);
   try {
     await wait("document.querySelector('.producer-start')");
@@ -59,7 +59,7 @@ async function run(window) {
     assert.equal(await readFile(join(directory, 'Project B', 'song.banger'), 'utf8'), source);
     await chooseChat(0); await wait("document.querySelector('.ai-chat-answer')?.textContent.includes('Saved Project A')");
     assert.match(await evaluate("document.querySelector('#producer-source').value"), /tempo 101/);
-    await click('New chat'); await wait("document.querySelectorAll('.app-sidebar-chat').length === 3 && !document.querySelector('.ai-chat-answer')");
+    await evaluate(`document.querySelector('[aria-label="New chat"]').click()`); await wait("document.querySelectorAll('.app-sidebar-chat').length === 3 && !document.querySelector('.ai-chat-answer')");
     await input('ai-chat-prompt', 'fresh chat'); await click('Send');
     await wait("document.querySelector('.ai-chat-answer')?.textContent.includes('Fresh reply')");
     assert.equal(calls.at(-1).prompt.filter(message => message.role === 'user').length, 1);

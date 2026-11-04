@@ -5,7 +5,7 @@ import { join, relative, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { songStorage } from '@banger/harness';
 
-type Entry = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; recordId?: string; recordName?: string; artwork?: string };
+type Entry = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string };
 type File = { root: string; path: string; kind: Entry['kind'] };
 const absent = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 async function safeRead(root: string, path: string) {
@@ -67,7 +67,7 @@ export function createSongLibrary(userData: string, records = createLibraryRecor
           const record = recordId ? await recordCache.get(recordId) : undefined;
           const recordName = record?.name ?? (typeof metadata?.record?.name === 'string' ? metadata.record.name.slice(0, 160) : name);
           if (recordId) artwork = record?.artwork;
-          next.set(id, { root, path, kind }); entries.push({ id, name, kind, scope, artwork, songType, recordId: recordId ?? id, recordName });
+          next.set(id, { root, path, kind }); entries.push({ id, name, kind, scope, artwork, songType, recordId, recordName: recordId ? recordName : undefined, artworkPending: Boolean(record?.regenerating && (record.attempts < 3 || record.generating)), artworkError: Boolean(record?.regenerating && record.attempts >= 3 && !record.generating) });
           if (entries.length > 1000) throw new Error('The library has more than 1,000 songs. Open a smaller project.');
         }
       }

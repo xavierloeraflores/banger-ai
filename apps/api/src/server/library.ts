@@ -39,13 +39,27 @@ export async function readLibraryEntry(user: string, entry: string) {
 export async function generateLibraryArtwork(user: string, recordId: string, credentials: ArtworkCredentials, generate = generateRecordArtwork) {
   const lease = randomUUID();
   const row = (await db().query(`UPDATE library_records SET lease_token=$3,lease_until=now()+interval '5 minutes',attempts=attempts+1
-    WHERE id=$1 AND user_id=$2 AND artwork IS NULL AND attempts<3 AND (lease_until IS NULL OR lease_until<now()) RETURNING context`, [recordId,user,lease])).rows[0];
+    WHERE id=$1 AND user_id=$2 AND (artwork IS NULL OR regenerate_artwork) AND attempts<3 AND (lease_until IS NULL OR lease_until<now()) RETURNING context,name`, [recordId,user,lease])).rows[0];
   if (!row) return;
   try {
-    const artwork = await generate(row.context, credentials);
-    await db().query('UPDATE library_records SET artwork=$3,lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2', [recordId,lease,artwork]);
+    const artwork = await generate({ ...row.context, name: row.name }, credentials);
+    await db().query('UPDATE library_records SET artwork=$3,lease_until=NULL,lease_token=NULL,regenerate_artwork=false,artwork_version=artwork_version+1 WHERE id=$1 AND lease_token=$2', [recordId,lease,artwork]);
   } catch {
     // Keep the song available and bound retries. Never persist provider errors or keys.
     await db().query('UPDATE library_records SET lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2', [recordId,lease]);
   }
+}
+
+export async function renameLibraryRecord(user: string, recordId: string, value: unknown) {
+  const { name } = z.object({ name: z.string().trim().min(1).max(160) }).strict().parse(value);
+  if (!(await db().query('UPDATE library_records SET name=$3 WHERE id=$1 AND user_id=$2', [recordId,user,name])).rowCount) throw new ApiError(404, 'Record not found.');
+  return { name };
+}
+export async function requestArtworkRegeneration(user: string, recordId: string) {
+  await transaction(async client => {
+    const row = (await client.query('SELECT * FROM library_records WHERE id=$1 AND user_id=$2 FOR UPDATE', [recordId,user])).rows[0];
+    if (!row) throw new ApiError(404, 'Record not found.');
+    if ((row.lease_until && new Date(row.lease_until).getTime()>Date.now()) || (row.regenerate_artwork && row.attempts<3)) throw new ApiError(409, 'Artwork is already being generated.');
+    await client.query('UPDATE library_records SET regenerate_artwork=true,attempts=0 WHERE id=$1', [recordId]);
+  });
 }
