@@ -227,3 +227,13 @@ metadata retains this ID, and a shared cover is stored in the user's `records`
 directory. Browser folder projects use their persistent project ID and an
 IndexedDB records store. Old local exports without project identity remain
 individual records because their original project cannot be recovered reliably.
+
+`008_record_options.sql` adds artwork regeneration state and a cover version.
+Apply it before deploying record options. Record owners can rename through
+`PATCH /api/library/:recordId/record` and regenerate through
+`POST /api/library/:recordId/regenerate` with their Meta or Vercel credentials.
+Names are trimmed and limited to 160 characters. Regeneration preserves the
+current cover until the replacement succeeds, rejects duplicate active requests,
+and keeps the existing three-attempt limit. A new cover version changes its URL
+so open libraries display the replacement. Songs without an explicit record
+remain standalone cover cards.

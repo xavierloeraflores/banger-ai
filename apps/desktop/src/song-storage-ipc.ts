@@ -6,8 +6,8 @@ import { createSongLibrary } from './song-library.js';
 import { randomUUID } from 'node:crypto';
 import { createSongStorage, type SongLocation, type LibrarySelection } from './song-storage.js';
 
-export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => BrowserWindow, generate?: (context: ArtworkContext) => Promise<string | undefined>) {
-  const records = createLibraryRecords(app.getPath('userData'), generate);
+export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => BrowserWindow, generate?: (context: ArtworkContext) => Promise<string | undefined>, canGenerate?: () => Promise<boolean>) {
+  const records = createLibraryRecords(app.getPath('userData'), generate, canGenerate);
   const storage = createSongStorage(app.getPath('userData'), records);
   const roots = new Map<number, string>();
   const bindings = new Map<string, { window: number; song: SongLocation }>();
@@ -32,6 +32,12 @@ export function installSongStorage(senderWindow: (event: IpcMainInvokeEvent) => 
     if (!library) { library = createSongLibrary(app.getPath('userData'), records); libraries.set(window.id, library); }
     return library.list(roots.get(window.id));
   });
+  async function recordAction(action: () => Promise<void>) {
+    try { await action(); return { ok: true }; }
+    catch (error) { return { ok: false, error: error instanceof Error && !('code' in error) ? error.message : 'Could not update the record. Try again.' }; }
+  }
+  ipcMain.handle('banger:record-rename', (event, id: string, name: string) => { senderWindow(event); return recordAction(() => records.rename(id, name)); });
+  ipcMain.handle('banger:record-regenerate', (event, id: string) => { senderWindow(event); return recordAction(() => records.regenerate(id)); });
   ipcMain.handle('banger:library-read', (event, id: string) => {
     const library = libraries.get(senderWindow(event).id);
     if (!library) throw new Error('Open the library first.');

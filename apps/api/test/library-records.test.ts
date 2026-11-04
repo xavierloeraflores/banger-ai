@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {db} from '../src/server/db';
 import {createProject,setMember} from '../src/server/projects';
-import {saveLibraryEntry,readLibraryEntry,generateLibraryArtwork} from '../src/server/library';
+import {saveLibraryEntry,readLibraryEntry,generateLibraryArtwork,renameLibraryRecord,requestArtworkRegeneration} from '../src/server/library';
 const enabled=Boolean(process.env.DATABASE_URL);
 test('library records group a project, isolate accounts, and lease one asynchronous cover',{skip:!enabled},async()=>{
  const user=`records-${randomUUID()}`, other=`records-${randomUUID()}`;
@@ -27,6 +27,19 @@ test('library records group a project, isolate accounts, and lease one asynchron
  await generateLibraryArtwork(user,entries[0].recordId,{provider:'meta',key:'fixture'},generate);assert.equal(calls,1);
  const rows=(await db().query('SELECT r.artwork FROM library_entries l JOIN library_records r ON r.id=l.record_id WHERE l.user_id=$1',[user])).rows;
  assert.equal(rows.length,2);assert.ok(rows.every(row=>row.artwork==='data:image/png;base64,aW1hZ2U='));
+
+ await assert.rejects(renameLibraryRecord(other,entries[0].recordId,{name:'Wrong account'}),/not found/);
+ await assert.rejects(requestArtworkRegeneration(other,entries[0].recordId),/not found/);
+ await renameLibraryRecord(user,entries[0].recordId,{name:'  New name  '});
+ await requestArtworkRegeneration(user,entries[0].recordId);
+ await assert.rejects(requestArtworkRegeneration(user,entries[0].recordId),/already/);
+ let replace!:()=>void;const replacementGate=new Promise<void>(resolve=>{replace=resolve;});
+ const replacing=generateLibraryArtwork(user,entries[0].recordId,{provider:'meta',key:'fixture'},async context=>{assert.equal(context.name,'New name');await replacementGate;return 'data:image/png;base64,bmV3';});
+ for(let i=0;i<100;i++){if((await db().query('SELECT lease_token FROM library_records WHERE id=$1',[entries[0].recordId])).rows[0].lease_token)break;await new Promise(resolve=>setTimeout(resolve,5));}
+ assert.equal((await db().query('SELECT artwork FROM library_records WHERE id=$1',[entries[0].recordId])).rows[0].artwork,'data:image/png;base64,aW1hZ2U=');
+ await renameLibraryRecord(user,entries[0].recordId,{name:'Renamed during generation'});replace();await replacing;
+ const changed=(await db().query('SELECT * FROM library_records WHERE id=$1',[entries[0].recordId])).rows[0];
+ assert.equal(changed.name,'Renamed during generation');assert.equal(changed.artwork,'data:image/png;base64,bmV3');assert.equal(changed.artwork_version,2);assert.equal(changed.regenerate_artwork,false);
  const fail=async()=>{throw new Error('secret provider error');};
  for(let i=0;i<5;i++)await generateLibraryArtwork(other,separate.recordId,{provider:'meta',key:'fixture'},fail);
  assert.equal((await db().query('SELECT attempts FROM library_records WHERE id=$1',[separate.recordId])).rows[0].attempts,3);

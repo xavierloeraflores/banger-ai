@@ -131,3 +131,9 @@ Record grouping and delayed artwork use
 This checks native and IndexedDB records, one square cover per record, automatic
 cover refresh, uninterrupted playback, and narrow layouts. Run `smoke-sing-along.mjs`
 as well when changing the library song list.
+
+`pnpm --filter @banger/desktop exec electron scripts/smoke-library-options.mjs`
+checks standalone cover cards and record menus, keyboard and dialog focus,
+persistent native and browser renaming, and asynchronous artwork regeneration
+with fixture provider responses. It also verifies that the previous cover stays
+visible during regeneration and that a concurrent rename survives completion.

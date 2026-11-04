@@ -5,7 +5,8 @@ import { Button, Select } from "@banger/shadcn";
 import './audio-worklet';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 import './song-library.css';
-import { browserLibrarySongs } from '@/lib/browser-library';
+import { RecordOptions } from './record-options';
+import { browserLibrarySongs, renameBrowserRecord, regenerateBrowserArtwork } from '@/lib/browser-library';
 import { readSingAlong, type SingAlongData } from '@/lib/sing-along';
 import type { StageRecording } from './recorded-stage';
 import { SingAlong } from './sing-along';
@@ -17,14 +18,16 @@ import { renderWav } from '@banger/engine';
 
 import { clockTime } from './music-audio';
 
-type SavedSong = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; recordId?: string; recordName?: string; artworkAttempts?: number; artwork?: string };
+type SavedSong = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; recordId?: string; recordName?: string; artworkAttempts?: number; artworkPending?: boolean; artworkError?: boolean; artwork?: string };
 type Beat = { name: string; source: string };
 type LoadedSong = { url: string; beat?: Beat; lyrics?: unknown };
-type Song = SavedSong & { load(): Promise<LoadedSong> };
+type Song = SavedSong & { recordKey?: string; renameRecord?(name: string): Promise<void>; regenerateArtwork?(): Promise<void>; load(): Promise<LoadedSong> };
 declare global {
   interface Window {
     bangerLibrary?: {
       list(): Promise<SavedSong[]>;
+      renameRecord?(id: string, name: string): Promise<void>;
+      regenerateArtwork?(id: string): Promise<void>;
       read(id: string): Promise<{ source?: string; bytes?: Uint8Array; contentType?: string; beat?: Beat; lyrics?: unknown }>;
     };
   }
@@ -47,14 +50,14 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
       const sources: Promise<Song[]>[] = [];
       if (window.bangerLibrary) {
         const library = window.bangerLibrary;
-        sources.push(library.list().then(items => items.map(item => ({ ...item, id: `saved:${item.id}`, load: async () => {
+        sources.push(library.list().then(items => items.map(item => ({ ...item, id: `saved:${item.id}`, recordKey: item.recordId ? `saved:${item.recordId}` : undefined, renameRecord: item.recordId && library.renameRecord ? (name: string) => library.renameRecord!(item.recordId!, name) : undefined, regenerateArtwork: item.recordId && library.regenerateArtwork ? () => library.regenerateArtwork!(item.recordId!) : undefined, load: async () => {
           const file = await library.read(item.id);
           if (file.source !== undefined) return { url: await beatUrl(file.source), beat: { name: item.name, source: file.source } };
           if (!file.bytes) throw new Error('This song has no audio.');
           return { url: audioUrl(file.bytes, file.contentType), beat: file.beat, lyrics: file.lyrics };
         } }))));
       }
-      sources.push(browserLibrarySongs().then(items => items.map(item => ({ id: item.id, name: item.name, recordId: item.recordId, recordName: item.recordName, artwork: item.artwork, kind: 'audio' as const, scope: 'Library', songType: item.songType ?? librarySongType(item.files['lyrics.json']), load: async () => ({ url: audioUrl(item.wav), beat: item.beat, lyrics: item.files['lyrics.json'] }) }))));
+      sources.push(browserLibrarySongs().then(items => items.map(item => ({ id: item.id, name: item.name, recordId: item.recordId, recordName: item.recordName, artwork: item.artwork, artworkPending: item.artworkPending, artworkError: item.artworkError, recordKey: item.recordId ? `browser:${item.recordId}` : undefined, renameRecord: item.recordId ? (name: string) => renameBrowserRecord(item.recordId!, name) : undefined, regenerateArtwork: item.recordId ? () => regenerateBrowserArtwork(item.recordId!) : undefined, kind: 'audio' as const, scope: 'Library', songType: item.songType ?? librarySongType(item.files['lyrics.json']), load: async () => ({ url: audioUrl(item.wav), beat: item.beat, lyrics: item.files['lyrics.json'] }) }))));
       const results = await Promise.allSettled(sources);
       if (cancelled) return;
       const items = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
@@ -110,24 +113,37 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
     } catch (cause) { if (generation.current === ticket) setError(message(cause)); }
     finally { if (generation.current === ticket) setPending(false); }
   }
-  const records = [...songs.reduce((groups, song) => {
-    const id = song.recordId ?? song.id;
+  const singles = songs.filter(song => !song.recordId);
+  const records = [...songs.filter(song => song.recordId).reduce((groups, song) => {
+    const id = song.recordKey!;
     const group = groups.get(id) ?? { id, name: song.recordName ?? song.name, artwork: song.artwork, songs: [] as Song[] };
     group.artwork ??= song.artwork; group.songs.push(song); groups.set(id, group); return groups;
   }, new Map<string, {id:string;name:string;artwork?:string;songs:Song[]}>()).values()];
   return <section className="song-library" data-sing-along={singAlong && !!selected} aria-labelledby={singAlong && selected ? "sing-along-title" : "library-title"}>
-    {(!singAlong || !selected) && <header className="library-heading"><div><p>Your collection</p><h1 id="library-title">Library</h1><span>{loading ? 'Loading songs…' : `${records.length} ${records.length === 1 ? 'record' : 'records'} · ${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`}</span></div><div><Button disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div></header>}
+    {(!singAlong || !selected) && <header className="library-heading"><div><p>Your collection</p><h1 id="library-title">Library</h1><span>{loading ? 'Loading songs…' : `${records.length ? `${records.length} ${records.length === 1 ? 'record' : 'records'} · ` : ''}${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`}</span></div><div><Button disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div></header>}
     {error && <p className="library-error" role="alert">{error}</p>}
     {singAlong && <div className="library-sing-controls"><Button onClick={onCloseSingAlong}>← Collection</Button><Select aria-label="Lyrics song" value={selected?.id ?? ''} onChange={event => { const song = songs.find(item => item.id === event.target.value); if (song) void choose(song); }}><option value="" disabled>Choose a song</option>{songs.map(song => <option key={song.id} value={song.id}>{song.name}</option>)}</Select></div>}
     {singAlong && selected && <SingAlong instrumental={selected.songType === 'instrumental'} name={selected.name} data={lyricData} position={position} duration={duration} pending={pending} onSeek={seek} />}
     {singAlong && !selected && <p className="library-help">Choose a song to see its waveform and lyrics.</p>}
-    {(!singAlong || !selected) && <div className="library-grid" aria-label="Records" aria-busy={loading}>
+    {(!singAlong || !selected) && <div className="library-grid" aria-label="Songs and records" aria-busy={loading}>
+      {singles.map((song, index) => <Button key={song.id} className="library-card library-single" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
+        <span className={`library-art library-art-${index % 4}`}>
+          <span className="library-art-fallback" aria-hidden="true">♫</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {song.artwork && <img key={song.artwork} src={song.artwork} alt="" onError={event => { event.currentTarget.style.display = 'none'; }} />}
+          <span className="library-card-play" aria-hidden="true">{selected?.id === song.id && pending ? '…' : selected?.id === song.id && playing ? 'Ⅱ' : '▶'}</span>
+        </span>
+        <strong>{song.name}</strong><span className="library-card-detail"><span>{song.scope}</span><span className="library-song-tag" data-song-type={song.songType}>{song.songType === 'vocal' ? 'Vocal' : 'Instrumental'}</span></span>
+      </Button>)}
       {records.map((record, index) => <section className="library-record" key={record.id} aria-label={`Record: ${record.name}`}>
+        {record.songs[0]?.renameRecord && record.songs[0]?.regenerateArtwork && <RecordOptions name={record.name} generating={record.songs.some(song => song.artworkPending)} rename={record.songs[0].renameRecord} regenerate={record.songs[0].regenerateArtwork} onChange={() => setRefresh(value => value + 1)} />}
         {record.artwork && <div className={`library-art library-art-${index % 4}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={record.artwork} alt={`${record.name} record cover`} onError={event => { event.currentTarget.style.display = 'none'; }} />
+          <img key={record.artwork} src={record.artwork} alt={`${record.name} record cover`} onError={event => { event.currentTarget.style.display = 'none'; }} />
         </div>}
         <h2>{record.name}</h2><p className="library-record-count">{record.songs.length} {record.songs.length === 1 ? 'song' : 'songs'}</p>
+        {record.songs.some(song => song.artworkPending) && <p className="library-record-notice" role="status">Generating new artwork…</p>}
+        {record.songs.some(song => song.artworkError) && <p className="library-record-notice" role="status">Artwork could not be regenerated. Try again from the record menu.</p>}
         <ol className="library-record-songs">{record.songs.map(song => <li key={song.id}>
           <Button className="library-card" aria-label={`${selected?.id === song.id && playing ? 'Pause' : 'Play'} ${song.name}`} aria-pressed={selected?.id === song.id} onClick={() => void choose(song)}>
             <span className="library-song-play" aria-hidden="true">{selected?.id === song.id && pending ? '…' : selected?.id === song.id && playing ? 'Ⅱ' : '▶'}</span>

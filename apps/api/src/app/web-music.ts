@@ -142,9 +142,15 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
     async addToLibrary(id, number) { const song = await version(id, number); return saveToLibrary( { name: song.name, artifactId: song.audioId, musicId: song.id, version: song.version }); },
   };
   window.bangerLibrary = {
+    async renameRecord(id, name) { await request(`/library/${id}/record`, 'PATCH', { name }); },
+    async regenerateArtwork(id) {
+      const credentials = browserArtworkCredentials();
+      if (!credentials) throw new Error('Add a Meta or Vercel key in AI settings to regenerate artwork.');
+      await request(`/library/${id}/regenerate`, 'POST', credentials);
+    },
     list: async () => {
       const { songs } = await request<{songs:Awaited<ReturnType<NonNullable<Window['bangerLibrary']>['list']>>}>('/library');
-      for (const recordId of new Set(songs.filter(song => !song.artwork && (song.artworkAttempts ?? 0) < 3).map(song => song.recordId))) if(recordId)queueArtwork(recordId);
+      for (const recordId of new Set(songs.filter(song => (!song.artwork || song.artworkPending) && (song.artworkAttempts ?? 0) < 3).map(song => song.recordId))) if(recordId)queueArtwork(recordId);
       return songs;
     },
     async read(id) { const entry = await request<{artifactId:string;beat?:{name:string;source:string};lyrics?:unknown}>(`/library/${id}`); return { ...await audio(entry.artifactId), beat: entry.beat, lyrics: entry.lyrics }; },

@@ -6,8 +6,8 @@ import { generateRecordArtwork, artworkContext, type ArtworkContext } from '@ban
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 
 export type LibraryRecord = { id: string; name: string; prompt?: string };
-type StoredRecord = LibraryRecord & { context: ArtworkContext; attempts: number; leaseUntil?: number; artwork?: string };
-export type LibraryBundle = { id: string; name: string; recordId?: string; recordName?: string; artwork?: string; songType?: LibrarySongType; wav: ArrayBuffer; files: Record<string, ArrayBuffer | string>; beat?: { name: string; source: string } };
+type StoredRecord = LibraryRecord & { context: ArtworkContext; attempts: number; leaseUntil?: number; regenerating?: boolean; artwork?: string };
+export type LibraryBundle = { id: string; name: string; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string; songType?: LibrarySongType; wav: ArrayBuffer; files: Record<string, ArrayBuffer | string>; beat?: { name: string; source: string } };
 export function captureLibraryRecord(name: string): LibraryRecord {
   const project = browserProjectIdentity();
   const chat = project ? readChats().find(chat => chat.snapshot.folder?.id === project.id) : undefined;
@@ -39,7 +39,7 @@ function resumeArtwork(key: string, id: string) {
         const request = store.get(id); let claimed: StoredRecord | undefined;
         request.onsuccess = () => {
           const value = request.result as StoredRecord | undefined;
-          if(value && !value.artwork && value.attempts < 3 && (value.leaseUntil ?? 0) < Date.now()) {
+          if(value && (!value.artwork || value.regenerating) && value.attempts < 3 && (value.leaseUntil ?? 0) < Date.now()) {
             claimed = { ...value, attempts: value.attempts + 1, leaseUntil: Date.now() + 300000 }; store.put(claimed);
           }
         };
@@ -47,10 +47,14 @@ function resumeArtwork(key: string, id: string) {
       });
       if (!record) return;
       let artwork: string | undefined;
-      try { artwork = await generateRecordArtwork(record.context, credentials); } catch { /* Keep songs available without a cover. */ }
+      try { artwork = await generateRecordArtwork({ ...record.context, name: record.name }, credentials); } catch { /* Keep songs available without a cover. */ }
       await new Promise<void>((resolve,reject) => {
         const tx = db.transaction('records','readwrite');
-        tx.objectStore('records').put({ ...record, artwork, leaseUntil: 0 });
+        const store = tx.objectStore('records'), request = store.get(id);
+        request.onsuccess = () => {
+          const current = request.result as StoredRecord | undefined;
+          if (current?.leaseUntil === record.leaseUntil) store.put({ ...current, ...(artwork ? { artwork, regenerating: false } : {}), leaseUntil: 0 });
+        };
         tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
       });
     } finally { db.close(); }
@@ -80,7 +84,41 @@ export async function browserLibrarySongs(): Promise<LibraryBundle[]> {
       new Promise<StoredRecord[]>((resolve,reject) => { const r=db.transaction('records').objectStore('records').getAll(); r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error); }),
     ]);
     const byId = new Map(records.map(record=>[record.id,record]));
-    for(const record of records)if(!record.artwork && record.attempts<3)resumeArtwork(key,record.id);
-    return songs.map(song=>({ ...song, recordId: song.recordId ?? song.id, recordName: byId.get(song.recordId ?? '')?.name ?? song.name, artwork: byId.get(song.recordId ?? '')?.artwork }));
+    for(const record of records)if((!record.artwork || record.regenerating) && record.attempts<3)resumeArtwork(key,record.id);
+    return songs.map(song => {
+      const record = byId.get(song.recordId ?? '');
+      return { ...song, recordName: record?.name, artwork: record?.artwork ?? song.artwork, artworkPending: Boolean(record?.regenerating && (record.attempts<3 || (record.leaseUntil ?? 0)>Date.now())), artworkError: Boolean(record?.regenerating && record.attempts>=3 && (record.leaseUntil ?? 0)<=Date.now()) };
+    });
   } finally { db.close(); }
+}
+
+async function updateRecord(key: string, id: string, update: (value: StoredRecord) => StoredRecord) {
+  if (!/^[a-zA-Z0-9-]{1,80}$/.test(id)) throw new Error('Invalid record ID.');
+  const db = await database(key);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('records', 'readwrite'), store = tx.objectStore('records'), request = store.get(id);
+      let error: unknown;
+      request.onsuccess = () => {
+        try {
+          if (!request.result) throw new Error('Record not found.');
+          store.put(update(request.result));
+        } catch (cause) { error = cause; tx.abort(); }
+      };
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(error ?? tx.error); tx.onabort = () => reject(error ?? tx.error);
+    });
+  } finally { db.close(); }
+}
+export async function renameBrowserRecord(id: string, name: string) {
+  if (!name.trim() || name.trim().length>160) throw new Error('Enter a record name from 1 to 160 characters.');
+  await updateRecord(browserStorageKey('banger-library'), id, value => ({ ...value, name: name.trim() }));
+}
+export async function regenerateBrowserArtwork(id: string) {
+  if (!browserArtworkCredentials()) throw new Error('Add a Meta or Vercel key in AI settings to regenerate artwork.');
+  const key = browserStorageKey('banger-library');
+  await updateRecord(key, id, value => {
+    if ((value.leaseUntil ?? 0)>Date.now() || (value.regenerating && value.attempts<3)) throw new Error('Artwork is already being generated.');
+    return { ...value, attempts: 0, regenerating: true };
+  });
+  resumeArtwork(key, id);
 }

@@ -31,9 +31,16 @@ async function readProjectRecord(root: string, prompt?: string): Promise<RecordI
   const saved = await readRegular(join(folder, 'record-prompt.txt')).catch(error => { if (absent(error)) return undefined; throw error; });
   return { id: value.id, name: value.name, prompt: typeof value.prompt === 'string' ? value.prompt.slice(0, 16000) : saved?.toString().slice(0, 16000) };
 }
-type SavedRecord = { id: string; name: string; context: ArtworkContext; artwork?: string; attempts: number };
-export function createLibraryRecords(userData: string, generate?: (context: ArtworkContext) => Promise<string | undefined>) {
+type SavedRecord = { id: string; name: string; context: ArtworkContext; artwork?: string; attempts: number; regenerating?: boolean };
+export function createLibraryRecords(userData: string, generate?: (context: ArtworkContext) => Promise<string | undefined>, canGenerate = async () => Boolean(generate)) {
   const pending = new Map<string, Promise<void>>();
+  const writes = new Map<string, Promise<unknown>>();
+  function locked<T>(id: string, action: () => Promise<T>): Promise<T> {
+    const task = (writes.get(id) ?? Promise.resolve()).catch(() => {}).then(action);
+    writes.set(id, task);
+    void task.finally(() => { if(writes.get(id) === task) writes.delete(id); }).catch(() => {});
+    return task;
+  }
   async function path(id: string) {
     if (!validRecordId(id)) throw new Error('Invalid record ID.');
     return join(await directory(userData, ['records']), `${id}.json`);
@@ -55,14 +62,21 @@ export function createLibraryRecords(userData: string, generate?: (context: Artw
   function resume(id: string) {
     if (!generate || pending.has(id)) return;
     const task = (async () => {
-      const value = await read(id);
-      if (!value || value.artwork || value.attempts >= 3) return;
-      // Persist attempts before calling the provider so restart loops are bounded.
-      await save({ ...value, attempts: value.attempts + 1 });
+      const value = await locked(id, async () => {
+        const current = await read(id);
+        if (!current || (current.artwork && !current.regenerating) || current.attempts >= 3) return;
+        await save({ ...current, attempts: current.attempts + 1 });
+        return current;
+      });
+      if (!value) return;
       try {
-        const artwork = await generate(value.context);
-        await save({ ...value, attempts: artwork ? value.attempts + 1 : value.attempts, ...(artwork ? { artwork: validateArtwork(artwork) } : {}) });
-      } catch { /* Song remains playable; a later refresh retries up to the cap. */ }
+        const artwork = await generate({ ...value.context, name: value.name });
+        await locked(id, async () => {
+          const current = await read(id);
+          if (!current) return;
+          await save({ ...current, ...(artwork ? { artwork: validateArtwork(artwork), regenerating: false } : { attempts: value.attempts }) });
+        });
+      } catch { /* Preserve the current cover and allow bounded retries. */ }
     })().catch(() => {}).finally(() => { pending.delete(id); });
     pending.set(id, task);
   }
@@ -72,7 +86,25 @@ export function createLibraryRecords(userData: string, generate?: (context: Artw
       await writeFile(file, JSON.stringify({ id: record.id, name: record.name, context: artworkContext({ ...context, prompt: record.prompt ?? context.prompt }), attempts: 0 }), { flag: 'wx', mode: 0o600 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
       resume(record.id);
     },
-    async get(id: string) { const value = await read(id); resume(id); return value; },
+    async rename(id: string, name: string) {
+      if (typeof name !== 'string' || !name.trim() || name.trim().length > 160) throw new Error('Enter a record name from 1 to 160 characters.');
+      await locked(id, async () => {
+        const value = await read(id);
+        if (!value) throw new Error('Record not found.');
+        await save({ ...value, name: name.trim() });
+      });
+    },
+    async regenerate(id: string) {
+      if (!await canGenerate()) throw new Error('Add a Meta or Vercel key in AI settings to regenerate artwork.');
+      await locked(id, async () => {
+        const value = await read(id);
+        if (!value) throw new Error('Record not found.');
+        if (pending.has(id) || (value.regenerating && value.attempts < 3)) throw new Error('Artwork is already being generated.');
+        await save({ ...value, attempts: 0, regenerating: true });
+      });
+      resume(id);
+    },
+    async get(id: string) { const value = await read(id); if(value && (!value.artwork || value.regenerating) && value.attempts<3) resume(id); return value ? { ...value, generating: pending.has(id) } : undefined; },
     async settled() { await Promise.all(pending.values()); },
   };
 }

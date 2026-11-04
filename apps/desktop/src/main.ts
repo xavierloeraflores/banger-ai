@@ -183,7 +183,7 @@ void app.whenReady().then(() => {
   songStorage = installSongStorage(senderWindow, async context => {
     const credentials = await aiSettings.artworkCredentials();
     return credentials ? generateRecordArtwork(context, credentials) : undefined;
-  });
+  }, async () => Boolean(await aiSettings.artworkCredentials()));
   installMusicHandlers(senderWindow, undefined, songStorage, () => aiSettings.elevenLabsKey());
   const chatgpt = createChatGPTAuth(join(app.getPath("userData"), "chatgpt-accounts.enc"), encryption, { openExternal: url => shell.openExternal(url) });
   app.on("before-quit", () => chatgpt.dispose());
