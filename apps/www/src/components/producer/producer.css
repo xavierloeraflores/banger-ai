@@ -472,7 +472,7 @@ body { margin: 0; background: #141415; }
 .producer-track-editor { position: sticky; left: 0; width: calc(100cqw - 32px); }
 .producer .producer-help-button { align-self: center; width: 26px; height: 26px; min-height: 26px; padding: 4px; color: var(--producer-dim); }
 .producer .producer-help-button:hover, .producer .producer-help-button:focus-visible { color: var(--producer-text); background: var(--producer-border); }
-.producer-help-button .project-icon { width: 16px; height: 16px; }
+.producer-help-button span { font-size: 16px; font-weight: 700; line-height: 1; }
 .producer-help-tooltip { z-index: 60; max-width: min(340px, 80vw); padding: 10px 12px; border: 1px solid #666; border-radius: 8px; background: #18181b; color: #fafafa; font: 12px/1.5 Arial, Helvetica, sans-serif; box-shadow: 0 4px 16px #0006; }
 .producer-help-tooltip p { margin: 0; }
 .producer-help-tooltip p + p { margin-top: 8px; }
