@@ -51,7 +51,7 @@ async function run(){
     return json({clientToken:'vercel_blob_client_fixture_'+Buffer.from('signature.'+payload).toString('base64')});
    }
    if(url.pathname.endsWith('/complete')){assert.ok(uploaded?.length);return json({id:artifactId,status:'ready'});}
-   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');return json(job(await store.importWav(uploaded,'Uploaded song',body().idempotencyKey,undefined,body().input?.beat)),202);}
+   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');return json(job(await store.importWav(uploaded,body().input?.beat?.name??'Uploaded song',body().idempotencyKey,undefined,body().input?.beat)),202);}
    if(url.pathname.endsWith('/resume'))return json({});
    if(url.pathname.endsWith('/actions')){const input=body();if(input.action.operation==='generate')assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');else assert.equal(request.headers['x-banger-elevenlabs-key'],undefined);return json(job(await store.act(url.pathname.split('/')[3],input.action,input.idempotencyKey)),202);}
    if(url.pathname.endsWith('/versions')){const history=await store.versions(url.pathname.split('/')[3],url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined);return json({...history,versions:history.versions.map(document=>({revision:document.version,document}))});}
