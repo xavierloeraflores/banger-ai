@@ -266,11 +266,17 @@ async function exercise(window, desktop) {
   await delay(100);
   assert.equal(await evaluate("document.querySelector('#chat-ai-model').disabled && document.querySelector('#chat-ai-reasoning').disabled"), true);
   await closeChat();
+  await waitFor("document.querySelector('.producer-agent-banner')");
+  assert.equal(await evaluate("document.querySelector('#producer-tempo').disabled && document.querySelector('#producer-source').readOnly"), true);
+  assert.equal(await evaluate("document.querySelector('.producer-play').disabled"), false);
   await openChat();
   assert.equal(await evaluate("Boolean(document.querySelector('.ai-chat-working'))"), true);
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 9);
+  await closeChat();
+  await waitFor("!document.querySelector('.producer-agent-banner') && !document.querySelector('#producer-source').readOnly");
+  await openChat();
   await newChat();
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
   const beforeReadOnly = await evaluate("document.querySelector('#producer-source').value");

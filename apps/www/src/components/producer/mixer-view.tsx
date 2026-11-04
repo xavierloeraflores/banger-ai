@@ -9,8 +9,8 @@ import { AutomationEditor } from "./automation-editor";
 const gainText = (gain: number) => gain > 0 ? `${(20 * Math.log10(gain)).toFixed(1)} dB` : "−∞ dB";
 type Channel = { kind: "track" | "bus"; name: string } | { kind: "master" };
 
-function Fader({ name, gain, onChange }: { name: string; gain: number; onChange: (gain: number) => unknown }) {
-  return <label className="studio-mixer-fader"><output>{gainText(gain)}</output><Range aria-label={`Mixer ${name} gain`} aria-orientation="vertical" min={0} max={1} step={.01} value={gain} aria-valuetext={gainText(gain)} onChange={event => onChange(Number(event.target.value))} /><span>Level</span></label>;
+function Fader({ disabled, name, gain, onChange }: { disabled: boolean; name: string; gain: number; onChange: (gain: number) => unknown }) {
+  return <label className="studio-mixer-fader"><output>{gainText(gain)}</output><Range disabled={disabled} aria-label={`Mixer ${name} gain`} aria-orientation="vertical" min={0} max={1} step={.01} value={gain} aria-valuetext={gainText(gain)} onChange={event => onChange(Number(event.target.value))} /><span>Level</span></label>;
 }
 
 export function MixerView({ program, disabled, meters, onTrackChange, onChange }: {
@@ -48,7 +48,7 @@ export function MixerView({ program, disabled, meters, onTrackChange, onChange }
     <div className="studio-song-heading"><h2 id="mixer-title">Mixer</h2><span>{program.tracks.length} tracks · {buses.length} buses</span><span className="studio-mixer-hint">Select a channel to edit its effects and routing.</span></div>
     <div className="studio-mixer-workspace">
       <div className="studio-mixer-console">
-        <fieldset disabled={disabled} className="studio-mixer-bank" aria-label="Mixer channels">
+        <fieldset className="studio-mixer-bank" aria-label="Mixer channels">
           <div className="studio-mixer-strips" tabIndex={0} role="region" aria-label="Track channels, scroll horizontally for more">
             {program.tracks.map((item, index) => {
               const pan = item.pan ?? 0, panText = pan === 0 ? "Center" : `${Math.round(Math.abs(pan) * 100)}% ${pan < 0 ? "left" : "right"}`;
@@ -57,9 +57,9 @@ export function MixerView({ program, disabled, meters, onTrackChange, onChange }
                 <Button className="studio-mixer-channel" variant="ghost" aria-label={`Select ${item.name} channel`} aria-pressed={active} aria-controls="mixer-detail" onClick={() => setSelection({ kind: "track", name: item.name })}><span>{String(index + 1).padStart(2, "0")}</span><strong title={item.name}>{item.name}</strong></Button>
                 <div className="studio-mixer-chips"><Button variant="ghost" title={`Output: ${item.output ?? "Master"}`} aria-label={`${item.name} output: ${item.output ?? "Master"}. Inspect routing`} aria-controls="mixer-detail" onClick={() => inspect({ kind: "track", name: item.name })}>{item.output ?? "Master"}</Button><Button variant="ghost" aria-label={`${item.name}: ${item.effects?.length ?? 0} effects. Inspect effects`} aria-controls="mixer-detail" onClick={() => inspect({ kind: "track", name: item.name })}>{item.effects?.length ?? 0} FX</Button></div>
                 <LevelMeter name={item.name} level={meters.tracks[item.name]?.peak} />
-                <Fader name={item.name} gain={item.gain} onChange={gain => onTrackChange(index, { ...item, gain })} />
-                <label className="studio-mixer-pan"><span>Pan <output>{pan === 0 ? "C" : `${pan < 0 ? "L" : "R"} ${Math.round(Math.abs(pan) * 100)}`}</output></span><Range aria-label={`Mixer ${item.name} pan`} min={-1} max={1} step={.01} value={pan} aria-valuetext={panText} onChange={event => onTrackChange(index, { ...item, pan: Number(event.target.value) })} /></label>
-                <div className="studio-mixer-switches"><Button variant={item.muted ? "primary" : "secondary"} aria-label={`Mixer mute ${item.name}`} title={`Mute ${item.name}`} aria-pressed={!!item.muted} onClick={() => onTrackChange(index, { ...item, muted: !item.muted })}>M</Button><Button variant={item.solo ? "primary" : "secondary"} aria-label={`Mixer solo ${item.name}`} title={`Solo ${item.name}`} aria-pressed={!!item.solo} onClick={() => onTrackChange(index, { ...item, solo: !item.solo })}>S</Button></div>
+                <Fader disabled={disabled} name={item.name} gain={item.gain} onChange={gain => onTrackChange(index, { ...item, gain })} />
+                <label className="studio-mixer-pan"><span>Pan <output>{pan === 0 ? "C" : `${pan < 0 ? "L" : "R"} ${Math.round(Math.abs(pan) * 100)}`}</output></span><Range disabled={disabled} aria-label={`Mixer ${item.name} pan`} min={-1} max={1} step={.01} value={pan} aria-valuetext={panText} onChange={event => onTrackChange(index, { ...item, pan: Number(event.target.value) })} /></label>
+                <div className="studio-mixer-switches"><Button disabled={disabled} variant={item.muted ? "primary" : "secondary"} aria-label={`Mixer mute ${item.name}`} title={`Mute ${item.name}`} aria-pressed={!!item.muted} onClick={() => onTrackChange(index, { ...item, muted: !item.muted })}>M</Button><Button disabled={disabled} variant={item.solo ? "primary" : "secondary"} aria-label={`Mixer solo ${item.name}`} title={`Solo ${item.name}`} aria-pressed={!!item.solo} onClick={() => onTrackChange(index, { ...item, solo: !item.solo })}>S</Button></div>
               </section>;
             })}
             {!program.tracks.length && <p>Add a track in the Sequencer to start mixing.</p>}
@@ -68,12 +68,12 @@ export function MixerView({ program, disabled, meters, onTrackChange, onChange }
             <Button ref={masterButton} className="studio-mixer-channel" variant="ghost" aria-pressed={masterSelected} aria-controls="mixer-detail" onClick={() => setSelection({ kind: "master" })}><span>OUT</span><strong>Master</strong></Button>
             <span className="studio-mixer-output">Stereo out</span>
             <LevelMeter name="Master mix" level={meters.master.peak} />
-            <Fader name="Master" gain={program.masterGain ?? 1} onChange={masterGain => onChange({ ...program, masterGain })} />
+            <Fader disabled={disabled} name="Master" gain={program.masterGain ?? 1} onChange={masterGain => onChange({ ...program, masterGain })} />
             <span className="studio-mixer-master-note">Full mix</span>
           </section>
         </fieldset>
-        <fieldset disabled={disabled} className="studio-mixer-buses" aria-label="Mixer buses">
-          <div className="studio-mixer-bus-heading"><h3>Buses <span>{buses.length} / 8</span></h3><Button variant="secondary" disabled={buses.length >= 8} onClick={addBus}>+ Add bus</Button></div>
+        <fieldset className="studio-mixer-buses" aria-label="Mixer buses">
+          <div className="studio-mixer-bus-heading"><h3>Buses <span>{buses.length} / 8</span></h3><Button variant="secondary" disabled={disabled || buses.length >= 8} onClick={addBus}>+ Add bus</Button></div>
           <div className="studio-mixer-bus-list">{buses.map((item, index) => <div key={item.name} className="studio-mixer-bus-card"><Button className="studio-mixer-bus-chip" variant="ghost" aria-label={`Select ${item.name} bus`} aria-pressed={busIndex === index} aria-controls="mixer-detail" onClick={() => setSelection({ kind: "bus", name: item.name })}><strong>{item.name}</strong><span>{gainText(item.gain)}</span><span>{item.effects?.length ?? 0} FX</span></Button><LevelMeter name={`${item.name} bus`} level={meters.buses[item.name]?.peak} /></div>)}</div>
           {!buses.length && <p>Add a bus to group tracks or receive sends.</p>}
         </fieldset>

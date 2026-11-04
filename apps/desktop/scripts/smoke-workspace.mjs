@@ -163,13 +163,17 @@ async function run(window) {
     await wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Stop task')");
     await wait("document.querySelector('[aria-label=\"Project agent activity\"]')?.textContent.includes('Saved chorus.banger')");
     await closeChat();
+    await wait("document.querySelector('#producer-source').readOnly");
+    const agentSource = await evaluate("document.querySelector('#producer-source').value");
     await input("producer-source", source + "\n// newer studio draft");
+    assert.equal(await evaluate("document.querySelector('#producer-source').value"), agentSource, 'Agent editing blocks studio writes');
     await openChat();
     assert.equal(await evaluate("Boolean(document.querySelector('.ai-chat-working'))"), true);
     await click("Stop task");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('stopped')");
     await wait("!document.querySelector('.ai-chat-working')");
-    assert.match(await evaluate("document.querySelector('#producer-source').value"), /newer studio draft/);
+    assert.match(await evaluate("document.querySelector('#producer-source').value"), /gain 0.1/);
+    assert.equal(await evaluate("document.querySelector('#producer-source').readOnly"), false);
     assert.match(await readFile(join(directory, "chorus.banger"), "utf8"), /gain 0.1/);
     await closeChat();
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");

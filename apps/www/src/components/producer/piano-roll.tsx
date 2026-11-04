@@ -84,7 +84,7 @@ export function PianoRoll({ track, disabled, visible, playing, phase, beats = 4,
       }))}>Quantize notes</Button>
       <label>New velocity <Range aria-label={`${track.name} new note velocity`} min={0} max={1} step={.01} value={velocity} disabled={disabled} onChange={e => setVelocity(Number(e.target.value))} /></label>
       <span>{Math.round(velocity * 100)}%</span>
-      <Select aria-label={`${track.name} selected note`} value={selected ?? ""} disabled={disabled} onChange={e => setSelected(e.target.value === "" ? null : Number(e.target.value))}>
+      <Select aria-label={`${track.name} selected note`} value={selected ?? ""} onChange={e => setSelected(e.target.value === "" ? null : Number(e.target.value))}>
         <option value="">Select a note</option>
         {notes.map((note, i) => <option key={i} value={i}>{i + 1}. {pitchName(note.midi)} at {Number(note.start.toFixed(3))}</option>)}
       </Select>
@@ -110,10 +110,11 @@ export function PianoRoll({ track, disabled, visible, playing, phase, beats = 4,
           const pointer = { onPointerMove: move, onPointerUp: finish, onPointerCancel: () => setGesture(null), onLostPointerCapture: () => setGesture(null) };
           return <div className="piano-note" key={index} data-selected={selected === index} data-midi={note.midi} data-start={note.start} data-duration={note.duration} data-velocity={note.velocity}
             style={{ top: (127 - note.midi) * ROW + 1, left: `${note.start / beats * 100}%`, width: `${note.duration / beats * 100}%`, opacity: .45 + note.velocity * .55 }}>
-            <button type="button" className="piano-note-body" aria-label={label} aria-pressed={selected === index} disabled={disabled}
+            <button type="button" className="piano-note-body" aria-label={label} aria-pressed={selected === index} aria-disabled={disabled}
               {...pointer} onPointerDown={e => begin(e, index, "move")} onClick={() => setSelected(index)}
               onKeyDown={event => {
                 if (event.key === "Escape") { setGesture(null); return; }
+                if (disabled) return;
                 if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); remove(index); return; }
                 const horizontal = event.key === "ArrowRight" ? snap : event.key === "ArrowLeft" ? -snap : 0;
                 const vertical = event.key === "ArrowUp" ? 1 : event.key === "ArrowDown" ? -1 : 0;

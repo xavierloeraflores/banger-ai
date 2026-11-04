@@ -1,7 +1,7 @@
 import type { MusicTrack } from "@banger/compiler";
 import { Button, Input, Range, Select } from "@banger/shadcn";
 
-export function PatternControls({ hidePicker = false, track, selected, onSelect, onRename, onRemove, onChange }: { hidePicker?: boolean; track: MusicTrack; selected: string; onSelect: (name: string) => void; onRename: (oldName: string, name: string) => unknown; onRemove: (name: string) => unknown; onChange: (track: MusicTrack) => unknown }) {
+export function PatternControls({ disabled = false, hidePicker = false, track, selected, onSelect, onRename, onRemove, onChange }: { disabled?: boolean; hidePicker?: boolean; track: MusicTrack; selected: string; onSelect: (name: string) => void; onRename: (oldName: string, name: string) => unknown; onRemove: (name: string) => unknown; onChange: (track: MusicTrack) => unknown }) {
   const pattern = track.patterns?.find(item => item.name === selected);
   const phrase = pattern ?? track;
   const changeBars = (bars: number) => {
@@ -9,7 +9,7 @@ export function PatternControls({ hidePicker = false, track, selected, onSelect,
     if (phrase.pianoRoll?.some(note => note.start + note.duration > bars * 4)) return;
     onChange(pattern ? { ...track, patterns: track.patterns!.map(item => item === pattern ? { ...item, bars } : item) } : { ...track, bars });
   };
-  return <div className="studio-pattern-controls">
+  return <fieldset disabled={disabled} className="studio-pattern-controls producer-edit-fields">
     {!hidePicker && <label>Pattern <Select aria-label={`${track.name} pattern`} value={pattern?.name ?? ""} onChange={e => onSelect(e.target.value)}><option value="">Base pattern</option>{track.patterns?.map(item => <option key={item.name}>{item.name}</option>)}</Select></label>}
     {pattern && <><label>Name <Input key={pattern.name} aria-label={`${track.name} pattern name`} defaultValue={pattern.name} onBlur={event => {
       if (event.target.value === pattern.name) return;
@@ -32,5 +32,5 @@ export function PatternControls({ hidePicker = false, track, selected, onSelect,
     <label>Swing <Range aria-label={`${track.name} swing`} min={0} max={.49} step={.01} value={track.groove?.swing ?? 0} onChange={e => onChange({ ...track, groove: { ...track.groove, swing: Number(e.target.value) } })} /></label>
     <label>Humanize <Range aria-label={`${track.name} humanize`} min={0} max={.1} step={.005} value={track.groove?.humanize ?? 0} onChange={e => onChange({ ...track, groove: { ...track.groove, humanize: Number(e.target.value), seed: track.groove?.seed ?? 42 } })} /></label>
     <label>Seed <Input aria-label={`${track.name} humanize seed`} type="number" min={0} max={2147483647} value={track.groove?.seed ?? 42} onChange={e => onChange({ ...track, groove: { ...track.groove, seed: Number(e.target.value) } })} /></label>
-  </div>;
+  </fieldset>;
 }
