@@ -124,15 +124,14 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
     <div className="muse-vignette" />
     <canvas ref={canvas} className="muse-highway" aria-label="Five fret lanes. Press A, S, D, F or G as notes reach the glowing line. Hold long notes until their tails finish." />
     <header className="muse-heading">
-      <h1><span className="muse-mark">m</span> muse<span>hero</span><small>YOUR MUSIC. YOUR STAGE.</small></h1>
-      <div className="muse-song"><span>{active ? autoplay ? 'PRACTICE AUTOPLAY' : 'ON STAGE' : 'LOADED FROM .BANGER'}</span><strong>{title}</strong><small>{program.tempo} BPM <i /> {program.tracks.length} tracks <i /> {clockLabel(chart.duration)}</small></div>
+      {active && <div className="muse-song"><span>{autoplay ? 'PRACTICE AUTOPLAY' : 'ON STAGE'}</span><strong>{title}</strong><small>{program.tempo} BPM <i /> {program.tracks.length} tracks <i /> {clockLabel(chart.duration)}</small></div>}
       <button ref={backButton} className="muse-exit" onClick={onClose} aria-label="Hide Muse Hero">Back to band <kbd>esc</kbd></button>
     </header>
     <div className="muse-score muse-glass"><span>SCORE</span><strong>{display.score.toLocaleString().padStart(6, '0')}</strong><small>{autoplay ? 'PRACTICE RUN' : `${chart.notes.length} NOTES IN YOUR CHART`}</small></div>
     <div className="muse-energy"><div className="muse-stars" aria-label={`${Math.min(5, Math.floor(progress / 20 * display.accuracy / 100))} of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <span key={index} className={progress / 20 * display.accuracy / 100 >= index + 1 ? 'earned' : ''}>★</span>)}</div><div className="muse-progress" role="progressbar" aria-label="Song progress" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress}%` }} /></div><small>{clockLabel(display.time)} <span>/ {clockLabel(chart.duration)}</span></small></div>
-    <div className="muse-combo"><div><span>COMBO</span><strong>{display.combo}<small> streak</small></strong></div><b>×{display.multiplier}</b></div>
+    {phase === 'playing' && <div className="muse-combo"><div><span>COMBO</span><strong>{display.combo}<small> streak</small></strong></div><b>×{display.multiplier}</b></div>}
     {phase === 'countdown' && <div className="muse-countdown" role="status"><strong>{display.countdown}</strong><span>GET READY</span></div>}
-    {phase === 'playing' && display.judgment && <div className={`muse-judgment ${display.judgment === 'Miss' || display.judgment === 'Hold lost' ? 'miss' : ''}`}>{display.judgment}<small>{display.combo > 1 ? `${display.combo} NOTE STREAK` : 'KEEP THE RHYTHM'}</small></div>}
+    {phase === 'playing' && display.judgment && <div className={`muse-judgment ${display.judgment === 'Miss' || display.judgment === 'Hold lost' ? 'miss' : ''}`}>{display.judgment}{display.combo > 1 && <small>{display.combo} NOTE STREAK</small>}</div>}
     {!active && <section className="muse-menu muse-glass" aria-label={phase === 'finished' ? 'Run results' : 'Game setup'}>
       <span className="muse-eyebrow">{phase === 'finished' ? display.time >= chart.duration ? 'SET COMPLETE' : 'RUN ENDED' : 'STEP INTO THE SPOTLIGHT'}</span>
       <h2>{phase === 'finished' ? 'Your encore awaits.' : 'Play your banger.'}</h2>
@@ -143,7 +142,7 @@ export function MuseHero({ program, fileName, readPerformance, play, stop, start
       {!chart.notes.length && <p role="status">No audible notes in this chart. Choose another track or unmute tracks in the studio.</p>}
     </section>}
     <div className="muse-frets" aria-label="Fret controls">{HERO_KEYS.map((key, lane) => <button key={key} style={{ '--fret': HERO_COLORS[lane] } as CSSProperties} aria-label={`Fret ${lane + 1}, ${key.slice(-1)}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!event.repeat) press(lane); } }} onKeyUp={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); release(lane); } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); press(lane); }} onPointerUp={() => release(lane)} onPointerCancel={() => release(lane)} onLostPointerCapture={() => release(lane)}><kbd>{key.slice(-1)}</kbd></button>)}</div>
-    <footer className="muse-footer"><span>HIT <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd> <i /> HOLD FOR SUSTAINS</span>{active && <button onClick={end}>End run</button>}<span className="muse-footer-right">{autoplay ? 'AUTOPLAY' : 'FIVE FRETS. ONE BAND.'}</span></footer>
+    {active && <footer className="muse-footer"><button onClick={end}>End run</button></footer>}
     <aside className="muse-stats muse-glass" aria-label="Performance"><span>PERFORMANCE <b>{display.accuracy.toFixed(1)}%</b></span>{(['perfect', 'great', 'good', 'miss'] as const).map(label => <div key={label} className={label}><span>{label}</span><b>{display[label]}</b></div>)}</aside>
     {error && <p className="muse-error" role="alert">{error}</p>}
   </div>;
