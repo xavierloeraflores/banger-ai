@@ -26,3 +26,29 @@ export function chatFixture(body) {
   const reason = last.role === "tool" ? "stop" : "tool-calls";
   return { content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] };
 }
+
+// Gateway streams the provider's typed chunks as SSE. Delay answer chunks so
+// browser checks can observe an unfinished reply before files become available.
+export function gatewayFixtureResponse(result, options) {
+  if (new Headers(options.headers).get('ai-language-model-streaming') !== 'true') return Response.json(result);
+  const parts = [{ type: 'stream-start', warnings: [] }];
+  for (const item of result.content) {
+    if (item.type !== 'text') { parts.push(item); continue; }
+    parts.push({ type: 'text-start', id: 'answer' });
+    const middle = Math.max(1, Math.floor(item.text.length / 2));
+    parts.push({ type: 'text-delta', id: 'answer', delta: item.text.slice(0, middle) });
+    parts.push({ type: 'text-delta', id: 'answer', delta: item.text.slice(middle) });
+    parts.push({ type: 'text-end', id: 'answer' });
+  }
+  parts.push({ type: 'finish', finishReason: result.finishReason, usage: result.usage });
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream({
+    async pull(output) {
+      const part = parts.shift();
+      if (!part) { output.close(); return; }
+      if (part.type === 'text-delta' || part.type === 'text-end') await new Promise(resolve => setTimeout(resolve, 180));
+      if (options.signal?.aborted) { output.error(options.signal.reason); return; }
+      output.enqueue(encoder.encode(`data: ${JSON.stringify(part)}\n\n`));
+    },
+  }), { headers: { 'Content-Type': 'text/event-stream' } });
+}

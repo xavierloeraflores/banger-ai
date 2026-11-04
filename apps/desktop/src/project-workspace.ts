@@ -155,18 +155,24 @@ export function installWorkspaceHandlers(options: {
     try { return await current.workspace.write(path, source, expected); }
     catch (error) { throw new Error(safeError(error, "Could not save the file. Reload it to check for external changes.")); }
   });
-  ipcMain.handle("banger:workspace-cancel", (event, id: unknown, threadId: unknown) => {
+  const requestIds = new WeakMap<AbortController, string>();
+  ipcMain.handle("banger:workspace-cancel", (event, id: unknown, threadId: unknown, requestId: unknown) => {
     const current = state(options.senderWindow(event), id);
-    if (typeof threadId === 'string') current.controllers.get(threadId)?.abort();
+    if (typeof threadId === 'string') {
+      const controller = current.controllers.get(threadId);
+      if (controller && (requestId === undefined || requestIds.get(controller) === requestId)) controller.abort();
+    }
     else for (const controller of current.controllers.values()) controller.abort();
   });
-  ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown, resetHistory: unknown, permissions: unknown, id: unknown, threadId: unknown, history: unknown) => {
+  ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown, resetHistory: unknown, permissions: unknown, id: unknown, threadId: unknown, history: unknown, requestId: unknown) => {
     const window = options.senderWindow(event);
     const current = state(window, id);
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16000 || (activeFile !== undefined && typeof activeFile !== "string")) return { ok: false, error: "Enter a task under 16,000 characters and choose a music file." };
     const thread = typeof threadId === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(threadId) ? threadId : "default";
     if (current.controllers.has(thread) || opening.has(window.id)) return { ok: false, error: "A project operation is already running." };
+    if (requestId !== undefined && (typeof requestId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(requestId))) return { ok: false, error: "Invalid request ID." };
     const controller = new AbortController();
+    if (typeof requestId === "string") requestIds.set(controller, requestId);
     current.controllers.set(thread, controller);
     if (resetHistory === true) current.sessions.delete(thread);
     try {
@@ -177,7 +183,7 @@ export function installWorkspaceHandlers(options: {
       let session = current.sessions.get(thread);
       if (!session) { session = new ProjectSession({ workspace: current.workspace, selected, history: Array.isArray(history) ? history.slice(-10).filter(item => item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string").map(item => ({ role: item.role as "user" | "assistant", content: item.content.slice(0, 16000) })) : undefined, onEvent: event => send(window, event, current.id, thread) }); current.sessions.set(thread, session); }
       else Object.assign(session.selected, { timeoutMs: undefined, providerOptions: undefined, ...selected });
-      return { ok: true, reply: await session.run(prompt, { signal: controller.signal, activeFile, permissions: permissions as EditPermissions | undefined }) };
+      return { ok: true, reply: await session.run(prompt, { requestId: typeof requestId === "string" ? requestId : undefined, signal: controller.signal, activeFile, permissions: permissions as EditPermissions | undefined }) };
     } catch (error) {
       return { ok: false, error: controller.signal.aborted ? "Project task stopped. Completed saves are kept." : (options.modelError?.(error) ?? "Project task failed. Check the selected model and connection.") };
     } finally { current.controllers.delete(thread); }

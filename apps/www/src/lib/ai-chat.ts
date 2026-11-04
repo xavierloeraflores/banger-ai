@@ -1,12 +1,12 @@
 "use client";
 
 import { compileMusic } from "@banger/compiler";
-import type { ChatOutcome, ChatReply, ChatRequest, LyricRequest, LyricOutcome, LyricEdit } from "@banger/agent/protocol";
+import type { ChatEvent, ChatOutcome, ChatReply, ChatRequest, LyricRequest, LyricOutcome, LyricEdit } from "@banger/agent/protocol";
 import { browserCredentials } from "./ai-providers";
 
 declare global {
   interface Window {
-    bangerChat?: { lyrics(request: LyricRequest): Promise<LyricOutcome>; send(request: ChatRequest): Promise<ChatOutcome>; cancel(): Promise<void> };
+    bangerChat?: { lyrics(request: LyricRequest): Promise<LyricOutcome>; send(request: ChatRequest): Promise<ChatOutcome>; cancel(requestId?: string): Promise<void>; onEvent?(callback: (event: ChatEvent) => void): () => void };
   }
 }
 
@@ -23,15 +23,18 @@ function checkedReply(value: unknown): ChatReply {
   return reply;
 }
 
-export async function sendChat(request: ChatRequest, signal: AbortSignal): Promise<ChatReply> {
+export async function sendChat(request: ChatRequest, signal: AbortSignal, onEvent?: (event: ChatEvent) => void): Promise<ChatReply> {
+  request = { ...request, requestId: request.requestId ?? crypto.randomUUID() };
+  const emit = (event: ChatEvent) => { if (!signal.aborted && event.requestId === request.requestId) onEvent?.(event); };
   let result: ChatOutcome;
   signal.throwIfAborted();
   if (window.bangerChat) {
     const bridge = window.bangerChat;
-    const cancel = () => { void bridge.cancel().catch(() => {}); };
+    const cancel = () => { void bridge.cancel(request.requestId).catch(() => {}); };
     signal.addEventListener("abort", cancel, { once: true });
+    const unsubscribe = bridge.onEvent?.(emit);
     try { result = await bridge.send(request); }
-    finally { signal.removeEventListener("abort", cancel); }
+    finally { unsubscribe?.(); signal.removeEventListener("abort", cancel); }
   } else {
     if (window.location.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) {
       throw new Error("Open Banger over HTTPS to use AI chat.");
@@ -40,7 +43,7 @@ export async function sendChat(request: ChatRequest, signal: AbortSignal): Promi
     if (!credentials) throw new Error("Add a provider key and model in Settings → BYOK to start chatting.");
     const { selectModel, runBangerAgent, publicAIError } = await import("@banger/agent");
     try {
-      result = { ok: true, reply: await runBangerAgent(request, selectModel(credentials), signal) };
+      result = { ok: true, reply: await runBangerAgent(request, selectModel(credentials), signal, emit) };
     } catch (error) {
       if (signal.aborted) throw error;
       throw new Error(`${publicAIError(error)} If this provider blocks browser requests, use the desktop app.`);

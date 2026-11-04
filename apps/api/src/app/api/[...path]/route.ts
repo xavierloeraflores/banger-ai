@@ -57,7 +57,23 @@ async function dispatch(request: Request, path: string[]) {
   const user = await authenticate(request);
   const expectedAccount=request.headers.get('x-banger-account');
   if(expectedAccount && expectedAccount!==user)throw new ApiError(409,'The signed-in account changed. Reload the app before continuing.');
-  if (method === 'POST' && path.length === 1 && (path[0] === 'chat' || path[0] === 'lyrics')) return json(await browserGeneration(user, path[0], await body(request), request.signal));
+  if (method === 'POST' && path.length === 1 && (path[0] === 'chat' || path[0] === 'lyrics')) {
+    const input = await body(request);
+    if (path[0] !== 'chat' || request.headers.get('accept') !== 'application/x-ndjson') return json(await browserGeneration(user, path[0], input, request.signal));
+    const controller = new AbortController();
+    const signal = AbortSignal.any([request.signal, controller.signal]);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(output) {
+        const send = (value: unknown) => { if (!signal.aborted) output.enqueue(encoder.encode(JSON.stringify(value) + '\n')); };
+        try { send({ result: await browserGeneration(user, 'chat', input, signal, undefined, event => send({ event })) }); }
+        catch (error) { send({ result: { ok: false, error: error instanceof ApiError ? error.message : 'Could not complete generation.' } }); }
+        finally { if (!controller.signal.aborted) output.close(); }
+      },
+      cancel() { controller.abort(); },
+    });
+    return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson', 'X-Accel-Buffering': 'no' } });
+  }
   const elevenLabsKey = request.headers.get('x-banger-elevenlabs-key');
   if (elevenLabsKey !== null && (!elevenLabsKey || elevenLabsKey.length > 8192 || /[^\x21-\x7e]/.test(elevenLabsKey))) throw new ApiError(400,'Invalid ElevenLabs API key.');
   if(path[0]==='library'){
@@ -106,12 +122,14 @@ async function dispatch(request: Request, path: string[]) {
     if(path[2]==='task' && path.length===3 && method==='POST'){
       const input=await body(request);
       if(request.headers.get('accept')!=='application/x-ndjson')return json(await runWebTask(user,project,input,request.signal));
+      const taskController = new AbortController();
+      const taskSignal = AbortSignal.any([request.signal, taskController.signal]);
       const stream=new ReadableStream({async start(controller){
         const send=(value:unknown)=>{try{controller.enqueue(new TextEncoder().encode(JSON.stringify(value)+'\n'));}catch{/* Disconnected browser; validated saves still finish. */}};
-        try{const result=await runWebTask(user,project,input,request.signal,undefined,event=>send({event}));send({reply:result.reply});}
+        try{const result=await runWebTask(user,project,input,taskSignal,undefined,event=>send({event}));send({reply:result.reply});}
         catch(error){send({error:error instanceof ApiError?error.message:'The project task could not finish.'});}
         finally{try{controller.close();}catch{/* Already disconnected. */}}
-      }});
+      }, cancel() { taskController.abort(); }});
       return new Response(stream,{headers:{'Content-Type':'application/x-ndjson','X-Accel-Buffering':'no'}});
     }
     if(path[2]==='draft' && path.length===3){

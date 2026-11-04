@@ -1,4 +1,6 @@
-import { generateText, isStepCount, tool, APICallError, type LanguageModel } from "ai";
+import { generateAnswer } from "./generation.js";
+export { generateAnswer } from "./generation.js";
+import { isStepCount, tool, APICallError, type LanguageModel } from "ai";
 import { createGateway } from "@ai-sdk/gateway";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -6,7 +8,7 @@ import { createXai } from "@ai-sdk/xai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { compileMusic, serializeMusic, BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
-import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, REASONING_LEVELS, reasoningOptions, canEditSong, type EditPermissions, type BangerFile, type ChatReply, type ChatRequest, type Credentials } from "./protocol.js";
+import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, REASONING_LEVELS, reasoningOptions, canEditSong, type EditPermissions, type BangerFile, type ChatReply, type ChatRequest, type Credentials, type ChatEvent } from "./protocol.js";
 export * from "./protocol.js";
 
 const fileSchema = z.object({ name: z.string().min(1).max(100), source: z.string().max(65536), operation: z.enum(["create", "edit"]).optional() }).strict();
@@ -15,6 +17,7 @@ export function editingInstructions(permissions: EditPermissions): string {
   return `Record controls: ${permissions.songs === undefined ? "All existing songs may be edited." : `Only these existing songs and their companion lyrics or drafts may be edited: ${JSON.stringify(permissions.songs)}. All other songs are read-only.`} ${permissions.allowNewSongs === false ? "Do not create new songs." : "New songs may be created when requested."}\nEnabled editing permissions are an upper bound, not a request to rewrite everything. The user's explicit scope takes precedence. If asked to change only a particular track, section, bar, note, lyric verse, line, or word, change only that part and preserve everything else exactly. Do not polish, rewrite, or regenerate unrelated parts. Pass these scope restrictions and the original user wording to any delegated lyric request. Editing permissions for this request: beat ${permissions.beat ? "enabled" : "disabled"}; lyrics ${permissions.lyrics ? "enabled" : "disabled"}. ${permissions.beat ? "You may edit music files when requested." : "Do not create or edit music files."} ${permissions.lyrics ? "You may write or revise lyrics when requested." : "Do not generate or revise lyrics, including in prose."} ${!permissions.beat && !permissions.lyrics ? "Reply only. Do not edit any files." : "Only use the enabled editing tools."}`;
 }
 export const chatRequestSchema = z.object({
+  requestId: z.string().uuid().optional(),
   permissions: editPermissionsSchema.optional(),
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(4000) }).strict()).min(1).max(12),
   currentFile: fileSchema,
@@ -83,7 +86,12 @@ export function validateGeneratedFile(name: string, source: string): BangerFile 
   return { name, source: serializeMusic(program) };
 }
 
-export async function runBangerAgent(request: ChatRequest, selected: SelectedModel, signal?: AbortSignal): Promise<ChatReply> {
+export async function runBangerAgent(request: ChatRequest, selected: SelectedModel, signal?: AbortSignal, onEvent?: (event: ChatEvent) => void): Promise<ChatReply> {
+  signal?.throwIfAborted();
+  const requestId = request.requestId ?? crypto.randomUUID();
+  const emit = (event: ChatEvent) => { if (!signal?.aborted) onEvent?.(event); };
+  const activity = (message: string) => emit({ requestId, type: "activity", message, at: Date.now() });
+  activity("Reading project context");
   const input = parseChatRequest(request);
   const permissions = input.permissions ?? { beat: true, lyrics: true };
   const files = new Map<string, BangerFile>();
@@ -96,10 +104,11 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
   }
   if (input.targetFile && !knownFiles.has(input.targetFile)) throw new Error("The selected file is no longer in this chat. Select it again.");
   let rejectedFiles = false;
+  let repairPending = false;
   let lyricPrompt: string | undefined;
   const abortSignal = AbortSignal.any([AbortSignal.timeout(selected.timeoutMs ?? 90_000), ...(signal ? [signal] : [])]);
   abortSignal.throwIfAborted();
-  const result = await generateText({
+  const result = await generateAnswer({
     model: selected.model, providerOptions: selected.providerOptions,
     system: `${SYSTEM}\n${editingInstructions(permissions)}`,
     activeTools: [...(permissions.beat ? ["edit_banger_file", "create_banger_file"] as const : []), ...(permissions.lyrics ? ["request_lyrics"] as const : [])],
@@ -111,6 +120,7 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
     maxRetries: 0,
     abortSignal,
     stopWhen: isStepCount(5),
+    prepareStep: () => { activity(repairPending ? "Requesting a repair for rejected output" : "Requesting generation"); repairPending = false; return {}; },
     tools: {
       request_lyrics: tool({ description: "Request original lyrics or revisions for the active song. Include the user's lyrical requirements and vocal performance descriptions. Explicitly preserve sung words for style-only requests. The app saves a draft or fits edits to composition chunks after this response.", inputSchema: z.object({ prompt: z.string().trim().min(1).max(4000) }).strict(), execute: async ({prompt}) => { if (!permissions.lyrics || !canEditSong(permissions, input.currentFile.name)) return {ok:false,message:"Lyrics editing is disabled for the current song."}; lyricPrompt=prompt; return {ok:true,message:"Lyric request prepared. The app will generate and save it next."}; } }),
       edit_banger_file: tool({
@@ -131,13 +141,17 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
               source = source.slice(0, offset) + edit.newText + source.slice(offset + edit.oldText.length);
               if (source.length > 65536) throw new Error("Keep edited files under 65,536 characters.");
             }
+            activity(`Validating ${name}`);
             if (!compileMusic(source).tracks.length) throw new Error("Keep at least one track.");
             const file: BangerFile = { name, source, operation: "edit" };
             knownFiles.set(name, file);
             files.set(name, file);
             return { ok: true, name, source, message: "Revision compiled. The user can apply it to the same file." };
           } catch (error) {
+            abortSignal.throwIfAborted();
             rejectedFiles = true;
+            repairPending = true;
+            activity("Output rejected. A correction is needed");
             return { ok: false, error: error instanceof Error ? error.message.slice(0, 300) : "Invalid edit. Fix it and retry." };
           }
         },
@@ -152,18 +166,22 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
             if (!files.has(name) && files.size >= 4) throw new Error("Only four files can be created per reply.");
             if (knownFiles.has(name)) throw new Error("This file already exists. Use edit_banger_file to revise it.");
             if (!canEditSong(permissions, name, false)) throw new Error("Creating songs is disabled in Record controls.");
+            activity(`Validating ${name}`);
             const file = validateGeneratedFile(name, source);
             files.set(file.name, { ...file, operation: "create" });
             knownFiles.set(file.name, file);
             return { ok: true, name: file.name, source: file.source, message: "Compiled successfully. The user can preview, load, or save this file." };
           } catch (error) {
+            abortSignal.throwIfAborted();
             rejectedFiles = true;
+            repairPending = true;
+            activity("Output rejected. A correction is needed");
             return { ok: false, error: error instanceof Error ? error.message.slice(0, 300) : "Invalid file. Fix the source and retry." };
           }
         },
       }),
     },
-  });
+  }, onEvent ? { requestId, emit } : undefined);
   abortSignal.throwIfAborted();
   const text = result.text.trim().slice(0, 4000) || (files.size ? "Your files are ready to preview." : "I couldn't finish that request. Try a simpler pattern.");
   return { ...(lyricPrompt ? {lyricPrompt} : {}), text: rejectedFiles && !files.size ? `${text}\n\nNo playable file was produced. Try asking for a simpler pattern.` : text, files: [...files.values()], model: selected.name };

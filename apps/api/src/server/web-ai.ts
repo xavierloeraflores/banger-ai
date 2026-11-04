@@ -1,9 +1,9 @@
-import { credentialsSchema, generateLyrics, lyricRequestSchema, parseChatRequest, publicAIError, runBangerAgent, selectModel } from '@banger/agent';
+import { type ChatEvent, credentialsSchema, generateLyrics, lyricRequestSchema, parseChatRequest, publicAIError, runBangerAgent, selectModel } from '@banger/agent';
 import { z } from 'zod';
 import { ApiError } from './domain';
 import { db } from './db';
 
-export async function browserGeneration(user: string, kind: 'chat' | 'lyrics', body: unknown, signal: AbortSignal, fetcher?: typeof fetch) {
+export async function browserGeneration(user: string, kind: 'chat' | 'lyrics', body: unknown, signal: AbortSignal, fetcher?: typeof fetch, emit?: (event: ChatEvent) => void) {
   if (Buffer.byteLength(JSON.stringify(body)) > 280 * 1024) throw new ApiError(413, 'The conversation is too large. Start a new chat.');
   const input = z.object({ credentials: credentialsSchema, request: z.unknown() }).strict().safeParse(body);
   // Do not return schema diagnostics for credentials or provider errors.
@@ -18,7 +18,7 @@ export async function browserGeneration(user: string, kind: 'chat' | 'lyrics', b
   try {
     const selected = selectModel(input.data.credentials, fetcher);
     return kind === 'chat'
-      ? { ok: true, reply: await runBangerAgent(request as ReturnType<typeof parseChatRequest>, selected, signal) }
+      ? { ok: true, reply: await runBangerAgent(request as ReturnType<typeof parseChatRequest>, selected, signal, emit) }
       : { ok: true, edits: await generateLyrics(request as z.infer<typeof lyricRequestSchema>, selected, signal) };
   } catch (error) { return { ok: false, error: publicAIError(error) }; }
 }

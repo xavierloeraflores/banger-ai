@@ -735,3 +735,11 @@ body:has(.producer-project-dialog[data-state="open"]) { overflow: hidden; }
 .producer-agent-banner { padding: 12px 18px; border: 1px solid var(--producer-accent); border-radius: 8px; font-size: 13px; }
 .producer-step[aria-disabled="true"] { cursor: default; opacity: .65; }
 .producer-source-editor textarea[readonly] { cursor: text; }
+
+.ai-chat-activity { margin-block: 8px; }
+.ai-chat-activity summary { padding-block: 4px; }
+.ai-chat-activity summary:focus-visible { outline: 2px solid var(--producer-accent); outline-offset: 3px; }
+.ai-chat-elapsed { margin-left: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ai-chat-activity ol { max-height: 180px; overflow-y: auto; padding-left: 20px; }
+.ai-chat-activity li { padding-block: 3px; }
+.ai-chat-activity time { margin-left: 10px; font-variant-numeric: tabular-nums; }

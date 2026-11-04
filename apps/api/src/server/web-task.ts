@@ -14,7 +14,7 @@ import { projectObjects } from './project-objects';
 import { saveSongDraft } from './song-drafts';
 import { claimAgentFile, releaseAgentFiles } from './agent-file-claims';
 
-const inputSchema = z.object({ thread: id, baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional(), permissions: editPermissionsSchema.optional(), credentials: credentialsSchema }).strict();
+const inputSchema = z.object({ requestId: z.string().uuid().optional(), thread: id, baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional(), permissions: editPermissionsSchema.optional(), credentials: credentialsSchema }).strict();
 type Sidecar = { path: string; source: string; songPath: string; music?: MusicVersion };
 async function saveLyrics(user: string, project: string, before: MusicVersion, source: string) {
   const document = JSON.parse(source) as MusicVersion;
@@ -87,10 +87,10 @@ export async function runWebTask(user: string, project: string, body: unknown, s
       claimFile: path => claimAgentFile(project, path, input.thread, lease),
       onEvent(event) {
       if (event.type === 'file-changed') changes.set(event.file.path, event.file.source);
-      else if (events.length < 160) { events.push(event); if (!['complete','stopped'].includes(event.type)) emit?.(event); }
+      else { if (event.type !== 'text-delta' && event.type !== 'text-reset' && events.length < 160) events.push(event); if (!['complete','stopped'].includes(event.type)) emit?.(event); }
     } });
     try {
-      const result = await session.run(input.prompt, { activeFile: input.activeFile, permissions: input.permissions, signal });
+      const result = await session.run(input.prompt, { requestId: input.requestId, activeFile: input.activeFile, permissions: input.permissions, signal });
       reply = { text: result.text, status: result.status, changedPaths: saved };
     } catch (error) { reply.text = publicAIError(error); }
     // Keep validated writes after cancellation, like desktop. Publication still
@@ -98,6 +98,7 @@ export async function runWebTask(user: string, project: string, body: unknown, s
     const musicChanges = [...changes].filter(([path]) => path.endsWith('.banger')).map(([path, source]) => ({ path, source }));
     if (musicChanges.length) {
       for (const file of musicChanges) await claimAgentFile(project, file.path, input.thread, lease);
+      emit?.({ type: 'activity', requestId: input.requestId ?? '', message: 'Saving changes to the project', at: Date.now() });
       await saveChanges(user, project, snapshot.revision, musicChanges);
       saved.push(...musicChanges.map(file => file.path));
     }

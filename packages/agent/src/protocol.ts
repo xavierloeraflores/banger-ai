@@ -66,7 +66,18 @@ export function songPath(path: string): string {
 export function canEditSong(permissions: EditPermissions, path: string, existing = true): boolean {
   return existing ? permissions.songs === undefined || permissions.songs.includes(songPath(path)) : permissions.allowNewSongs !== false;
 }
+// Only operational messages and answer text cross this boundary. Tool inputs and
+// provider reasoning are deliberately absent.
+export type ChatEvent = { requestId: string } & (
+  | { type: "activity"; message: string; at: number }
+  | { type: "text-delta"; text: string }
+  | { type: "text-reset" }
+);
+export type ChatActivity = { message: string; at: number };
+export type ChatRun = { requestId: string; startedAt: number; endedAt?: number; status: "running" | "completed" | "failed" | "stopped"; activity: ChatActivity[] };
+
 export type ChatRequest = {
+  requestId?: string;
   permissions?: EditPermissions;
   messages: ChatMessage[];
   currentFile: BangerFile;

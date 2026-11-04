@@ -20,6 +20,7 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
   let project: CloudSnapshot | undefined;
   let activePath: string | undefined;
   const tasks = new Map<string, AbortController>();
+  const requestIds = new WeakMap<AbortController, string>();
   const snapshots = new Map<string, CloudSnapshot>();
   const recentKey = `banger.recent-projects.v1:${accountId}`;
   function recents(): RecentProject[] { try { const value = JSON.parse(localStorage.getItem(recentKey) ?? "[]"); return Array.isArray(value) ? value.filter(item => typeof item?.id === "string" && typeof item.name === "string" && Number.isFinite(item.openedAt)).slice(0, 30) : []; } catch { return []; } }
@@ -67,7 +68,7 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
       await refresh();
       activePath = path; return { path, source };
     },
-    async run(prompt, activeFile, resetHistory, permissions, projectId, threadId) {
+    async run(prompt, activeFile, resetHistory, permissions, projectId, threadId, _history, requestId = crypto.randomUUID()) {
       const id = projectId ?? current().projectId;
       const taskKey = `${id}:${threadId ?? thread}`;
       if (tasks.has(taskKey)) return { ok: false, error: 'A project task is already running.' };
@@ -77,11 +78,12 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
       const taskThread = threadId ?? thread;
       const controller = new AbortController();
       tasks.set(taskKey, controller);
+      requestIds.set(controller, requestId);
       try {
         const next = await refresh(id);
         const response = await fetch(`/api/projects/${next.projectId}/task`, { method: 'POST', redirect: 'error', signal: controller.signal,
           headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson', 'X-Banger-Account': accountId },
-          body: JSON.stringify({ thread: taskThread, prompt, activeFile, permissions, credentials, baseRevision: next.revision }) });
+          body: JSON.stringify({ requestId, thread: taskThread, prompt, activeFile, permissions, credentials, baseRevision: next.revision }) });
         if (!response.ok) throw new Error((await response.json()).error ?? 'Could not start the project task.');
         const reader = response.body?.getReader();
         if (!reader) throw new Error('The project task did not return a response.');
@@ -96,7 +98,7 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
             while ((newline = pending.indexOf('\n')) !== -1) {
               const item = JSON.parse(pending.slice(0, newline)); pending = pending.slice(newline + 1);
               if (item.error) throw new Error(item.error);
-              if (item.event) for (const listener of listeners) listener({ ...item.event, projectId: id, threadId: taskThread });
+              if (item.event) for (const listener of listeners) listener({ ...item.event, projectId: id, threadId: taskThread, requestId });
               if (item.reply) reply = item.reply;
             }
             if (chunk.done) break;
@@ -108,7 +110,7 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
       } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Could not complete the project task.' }; }
       finally { tasks.delete(taskKey); }
     },
-    cancel: async (id, threadId) => { for (const [key, task] of tasks) if ((!id || key.startsWith(`${id}:`)) && (!threadId || key === `${id}:${threadId}`)) task.abort(); },
+    cancel: async (id, threadId, requestId) => { for (const [key, task] of tasks) if ((!id || key.startsWith(`${id}:`)) && (!threadId || key === `${id}:${threadId}`) && (!requestId || requestIds.get(task) === requestId)) task.abort(); },
     onEvent(callback) { listeners.add(callback); return () => { listeners.delete(callback); }; },
   };
   window.bangerWorkspace = workspace;

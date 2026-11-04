@@ -35,3 +35,22 @@ test('record song permissions persist per chat, including an empty selection', (
   store.writeChats([{ ...fixture, history: { ...fixture.history, permissions: { ...permissions, songs: 'song.banger' } } }]);
   assert.equal(store.readChats().length, 0);
 });
+
+test('activity survives reopen and older turns remain readable; interrupted streams stop without files', () => {
+  const store = sessions();
+  const old = {prompt:'Old question', revision:0, reply:{text:'Old reply',model:'fixture',files:[]},activity:['Saved song.banger']};
+  const live = {...old,run:{requestId:'first',startedAt:100,status:'running',activity:[{message:'Requesting generation',at:200}]},reply:{...old.reply,text:'Partial reply'}};
+  store.writeChats([{...fixture,history:{...fixture.history,turns:[old,live]}}]);
+  const turns = store.readChats()[0].history.turns;
+  assert.equal(turns[0].activity[0], 'Saved song.banger');
+  assert.equal(turns[0].run, undefined);
+  assert.equal(turns[1].run.status, 'stopped');
+  assert.equal(turns[1].run.endedAt, 200);
+  assert.equal(turns[1].reply.text, 'Partial reply');
+  assert.equal(turns[1].run.activity[0].message, 'Requesting generation');
+  const completed = {...live,run:{...live.run,status:'completed',endedAt:500}};
+  store.writeChats([{...fixture,status:'done',history:{...fixture.history,turns:[completed]}}]);
+  assert.equal(store.readChats()[0].history.turns[0].run.endedAt,500);
+  store.writeChats([{...fixture,history:{...fixture.history,turns:[{...live,run:{...live.run,activity:[null]}}]}}]);
+  assert.equal(store.readChats().length,0);
+});

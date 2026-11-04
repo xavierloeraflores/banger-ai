@@ -1,3 +1,4 @@
+import { gatewayFixtureResponse } from "./chat-fixture.mjs";
 import { enterStudio, smokeStartup } from "./smoke-startup.mjs";
 import { songStorage } from "@banger/harness";
 import { app, BrowserWindow, dialog } from "electron";
@@ -41,7 +42,7 @@ globalThis.fetch = async (url, options) => {
   else if (tools.length === 1) content = [call("edit_file", { path: "verse.banger", search: "tempo 120;", replacement: "tempo 110;" }), call("edit_file", { path: "chorus.banger", search: "gain 0.5;", replacement: "gain 0.4;" })];
   else content = [{ type: "text", text: "Updated verse and chorus." }];
   const reason = content[0].type === "text" ? "stop" : "tool-calls";
-  return Response.json({ content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] });
+  return gatewayFixtureResponse({ content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] }, options);
 };
 const timeout = setTimeout(() => { console.error("Workspace smoke timed out."); app.exit(1); }, 60000);
 app.on("before-quit", event => event.preventDefault());
@@ -136,7 +137,7 @@ async function run(window) {
     assert.match(await readFile(join(directory, "verse.banger"), "utf8"), /tempo 110/);
     assert.match(await readFile(join(directory, "chorus.banger"), "utf8"), /gain 0.4/);
     assert.match(await evaluate("document.querySelector('#producer-source').value"), /gain 0.4/);
-    assert.ok(await evaluate("document.querySelector('.ai-chat-activity').textContent.includes('Saved verse.banger')"));
+    assert.ok(await evaluate("[...document.querySelectorAll('.ai-chat-activity')].some(panel => panel.textContent.includes('Saved verse.banger'))"));
     // An unchanged song starts immediately without another dialog.
     assert.equal(await evaluate("(document.querySelector('.ai-chat-edits-dialog')?.getAttribute('data-state') === 'open')"), false);
     assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"File to edit\"]'))"), false);
@@ -161,7 +162,7 @@ async function run(window) {
     await input("ai-chat-prompt", "slow task");
     await click("Send");
     await wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Stop task')");
-    await wait("document.querySelector('[aria-label=\"Project agent activity\"]')?.textContent.includes('Saved chorus.banger')");
+    await wait("document.querySelector('.ai-chat-working')?.textContent.includes('Saved chorus.banger')");
     await closeChat();
     await wait("document.querySelector('#producer-source').readOnly");
     const agentSource = await evaluate("document.querySelector('#producer-source').value");

@@ -312,3 +312,36 @@ test("ChatGPT reasoning persists per account and reaches subsequent Responses re
   assert.equal((await f.saved()).accounts[0].reasoningLevel, undefined);
   await assert.rejects(f.auth.setReasoning("high"), /supported reasoning/);
 });
+
+
+test("ChatGPT answer deltas arrive without buffering the completed response", { timeout: 5000 }, async t => {
+  const f = await fixture(t);
+  await f.auth.signIn();
+  let output;
+  let ready;
+  const connected = new Promise(resolve => { ready = resolve; });
+  const encoder = new TextEncoder();
+  const emit = event => output.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+  f.configure({ inference: init => {
+    assert.equal(JSON.parse(init.body).stream, true);
+    return new Response(new ReadableStream({ start(controller) { output = controller; ready(); } }), { headers: { 'Content-Type': 'text/event-stream' } });
+  } });
+  const selected = await f.auth.model();
+  const streaming = selected.model.doStream({ prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }] });
+  await connected;
+  emit({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg', role: 'assistant', content: [] } });
+  emit({ type: 'response.output_text.delta', item_id: 'msg', output_index: 0, content_index: 0, delta: 'Live reply' });
+  const result = await streaming;
+  const reader = result.stream.getReader();
+  let delta;
+  while (!delta) {
+    const part = await reader.read();
+    assert.equal(part.done, false);
+    if (part.value.type === 'error') throw part.value.error;
+    if (part.value.type === 'text-delta') delta = part.value;
+  }
+  assert.equal(delta.delta, 'Live reply');
+  emit({ type: 'response.completed', response: { id: 'resp', status: 'completed', created_at: 1, model: 'test-model', output: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } });
+  output.close();
+  while (!(await reader.read()).done) { /* consume the completed stream */ }
+});

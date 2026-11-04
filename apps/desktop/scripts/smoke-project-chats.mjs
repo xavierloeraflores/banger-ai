@@ -1,3 +1,4 @@
+import { gatewayFixtureResponse } from "./chat-fixture.mjs";
 import { app, BrowserWindow, dialog } from 'electron';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -26,7 +27,7 @@ globalThis.fetch = async (_url, options) => {
   const call = (name, input) => ({ type: 'tool-call', toolCallId: `${name}-${calls.length}`, toolName: name, input: JSON.stringify(input) });
   const content = user.includes('fresh chat') ? [{ type: 'text', text: 'Fresh reply.' }] : !tools.length ? [call('read_file', { path: 'song.banger' })] : tools.length === 1 ? [call('edit_file', { path: 'song.banger', search: 'tempo 120;', replacement: 'tempo 101;' })] : [{ type: 'text', text: 'Saved Project A.' }];
   const reason = content[0].type === 'text' ? 'stop' : 'tool-calls';
-  return Response.json({ content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] });
+  return gatewayFixtureResponse({ content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] }, options);
 };
 const timeout = setTimeout(() => { console.error('Project chats smoke timed out'); app.exit(1); }, 90000);
 app.on('before-quit', event => event.preventDefault());
@@ -45,7 +46,7 @@ async function run(window) {
     await click('Open Project');
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 120')");
     await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fixture-key')");
-    await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed')); document.querySelector('[aria-label=\"Expand sidebar\"]').click()");
+    await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed')); document.querySelector('[aria-label=\"Expand sidebar\"]')?.click()");
     await wait("!document.querySelector('.ai-chat-launcher').disabled && document.querySelectorAll('.app-sidebar-chat').length === 1");
     await chooseChat(0); await input('ai-chat-prompt', 'background A'); await click('Send');
     await wait("document.querySelector('.app-chat-indicator[data-status=running]')");
@@ -65,6 +66,7 @@ async function run(window) {
     await evaluate(`document.querySelector('[aria-label="New chat"]').click()`); await wait("document.querySelectorAll('.app-sidebar-chat').length === 3 && !document.querySelector('.ai-chat-answer')");
     await input('ai-chat-prompt', 'fresh chat'); await click('Send');
     await wait("document.querySelector('.ai-chat-answer')?.textContent.includes('Fresh reply')");
+    await wait("!document.querySelector('.ai-chat-working')");
     assert.equal(calls.at(-1).prompt.filter(message => message.role === 'user').length, 1);
     await close(); await chooseChat(0); await wait("document.querySelector('.ai-chat-answer')?.textContent.includes('Saved Project A')");
     await close(); await chooseChat(1); await wait("document.querySelector('#producer-source')?.value.includes('B draft')");

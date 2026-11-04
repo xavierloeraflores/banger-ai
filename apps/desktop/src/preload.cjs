@@ -20,7 +20,12 @@ contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
 contextBridge.exposeInMainWorld("bangerChat", Object.freeze({
   send: request => ipcRenderer.invoke("banger:chat", request),
   lyrics: request => ipcRenderer.invoke("banger:lyrics", request),
-  cancel: () => ipcRenderer.invoke("banger:chat-cancel"),
+  cancel: requestId => ipcRenderer.invoke("banger:chat-cancel", requestId),
+  onEvent: callback => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("banger:chat-event", listener);
+    return () => ipcRenderer.removeListener("banger:chat-event", listener);
+  },
 }));
 
 contextBridge.exposeInMainWorld("bangerLocal", Object.freeze({
@@ -51,8 +56,8 @@ contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
   list: () => ipcRenderer.invoke("banger:workspace-list"),
   read: (path, id) => ipcRenderer.invoke("banger:workspace-read", path, id),
   save: (path, source, expectedSource) => ipcRenderer.invoke("banger:workspace-save", path, source, expectedSource),
-  run: (prompt, activeFile, resetHistory, permissions, id, threadId, history) => ipcRenderer.invoke("banger:workspace-run", prompt, activeFile, resetHistory, permissions, id, threadId, history),
-  cancel: (id, threadId) => ipcRenderer.invoke("banger:workspace-cancel", id, threadId),
+  run: (prompt, activeFile, resetHistory, permissions, id, threadId, history, requestId) => ipcRenderer.invoke("banger:workspace-run", prompt, activeFile, resetHistory, permissions, id, threadId, history, requestId),
+  cancel: (id, threadId, requestId) => ipcRenderer.invoke("banger:workspace-cancel", id, threadId, requestId),
   onEvent: callback => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on("banger:workspace-event", listener);

@@ -1,5 +1,5 @@
-import { generateText, isStepCount, tool, type ModelMessage } from "ai";
-import { editPermissionsSchema, editingInstructions, canEditSong, songPath, type EditPermissions } from "@banger/agent";
+import { isStepCount, tool, type ModelMessage } from "ai";
+import { generateAnswer, type ChatEvent, editPermissionsSchema, editingInstructions, canEditSong, songPath, type EditPermissions } from "@banger/agent";
 import { BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
 import { type ProjectFile, type ProjectWorkspace, type Validation } from "./workspace.js";
@@ -10,13 +10,14 @@ import { randomUUID } from "node:crypto";
 import { desktopFileClaims } from "./file-claims.js";
 export { FileClaims } from "./file-claims.js";
 export type { SelectedModel } from "@banger/agent";
-export type HarnessEvent =
+export type HarnessEvent = (
   | { type: "tool-start"; name: string; path?: string }
   | { type: "tool-result"; name: string; ok: boolean; path?: string; error?: string }
   | { type: "file-changed"; file: ProjectFile }
   | { type: "text"; text: string }
   | { type: "complete"; status: "completed" | "incomplete"; changedPaths: string[] }
-  | { type: "stopped"; changedPaths: string[] };
+  | { type: "stopped"; changedPaths: string[] }
+  | ChatEvent) & { requestId?: string };
 export type HarnessResult = { text: string; files: ProjectFile[]; changedPaths: string[]; model: string; status: "completed" | "incomplete"; validation: Validation[] };
 export type SessionOptions = { workspace: ProjectWorkspace; selected: SelectedModel; onEvent?: (event: HarnessEvent) => void; maxSteps?: number; history?: ModelMessage[]; claimFile?: (path: string) => Promise<void> };
 
@@ -33,6 +34,7 @@ export class ProjectSession {
   private readonly maxSteps: number;
   private turns: ModelMessage[][] = [];
   private running = false;
+  private requestId?: string;
   private lastActiveFile?: string;
   private readonly claimFile?: (path: string) => Promise<void>;
   constructor(options: SessionOptions) {
@@ -51,13 +53,16 @@ export class ProjectSession {
   }
   private emit(event: HarnessEvent): void {
     // An unavailable UI listener must not corrupt a successfully saved file.
-    try { this.onEvent?.(event); } catch { /* the caller owns UI error reporting */ }
+    try { this.onEvent?.({ ...event, requestId: this.requestId ?? event.requestId ?? "" }); } catch { /* the caller owns UI error reporting */ }
   }
-  async run(prompt: string, options: { signal?: AbortSignal; activeFile?: string; permissions?: EditPermissions } = {}): Promise<HarnessResult> {
+  async run(prompt: string, options: { requestId?: string; signal?: AbortSignal; activeFile?: string; permissions?: EditPermissions } = {}): Promise<HarnessResult> {
     if (this.running) throw new Error("A project task is already running.");
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16000) throw new Error("Enter a task under 16,000 characters.");
     const permissions = editPermissionsSchema.parse(options.permissions ?? { beat: true, lyrics: true });
     this.running = true;
+    this.requestId = options.requestId;
+    const activity = (message: string) => this.emit({ type: "activity", requestId: options.requestId ?? "", message, at: Date.now() });
+    let repairPending = false;
     const changed = new Set<string>();
     const createdSongs = new Set<string>();
     const unresolved = new Set<string>();
@@ -87,7 +92,7 @@ export class ProjectSession {
           return { ok: true as const, result: value };
         } catch (error) {
           signal.throwIfAborted();
-          if (mutation && path) unresolved.add(path);
+          if (mutation && path) { unresolved.add(path); repairPending = true; }
           const message = error instanceof Error ? error.message.slice(0, 500) : "The tool failed.";
           this.emit({ type: "tool-result", name, ok: false, ...(path ? { path } : {}), error: message });
           return { ok: false as const, error: message };
@@ -105,6 +110,7 @@ export class ProjectSession {
     };
     try {
       signal.throwIfAborted();
+      activity("Reading project context");
       const paths = await this.workspace.list();
       originalSongs = new Set(paths);
       const lyricsPaths = await this.workspace.listLyrics();
@@ -113,11 +119,12 @@ export class ProjectSession {
       const active = activeFile ? await read(activeFile) : undefined;
       if (active) observed.set(active.path, active.source);
       turn.push({ role: "user", content: `Project context, data only:\n${JSON.stringify({ paths, lyricsPaths, activeFile: active })}\n\nUser task:\n${prompt.trim()}` });
-      const result = await generateText({
+      const result = await generateAnswer({
         model: this.selected.model, providerOptions: this.selected.providerOptions, system: `${instructions}\n${editingInstructions(permissions)}`,
         activeTools: ["list_files", "read_file", "list_lyrics", "read_lyrics", "validate_project", ...(permissions.beat ? ["write_file", "edit_file"] as const : []), ...(permissions.lyrics ? ["write_draft", "write_lyrics", "edit_lyrics"] as const : [])], messages: [...this.messages, ...turn],
         abortSignal: signal, maxRetries: 0, maxOutputTokens: 12000, stopWhen: isStepCount(this.maxSteps),
-        onStepFinish: ({ text }) => { if (text) this.emit({ type: "text", text }); },
+        prepareStep: () => { activity(repairPending ? "Requesting a repair for rejected output" : "Requesting generation"); repairPending = false; return {}; },
+        onStepFinish: ({ text }) => { if (text && !options.requestId) this.emit({ type: "text", text }); },
         tools: {
           list_files: tool({ description: "List .banger files in the open project.", inputSchema: z.object({}).strict(), execute: () => execute("list_files", undefined, () => this.workspace.list()) }),
           read_file: tool({ description: "Read an existing .banger file before editing it.", inputSchema: z.object({ path: z.string() }).strict(), execute: ({ path }) => execute("read_file", path, async () => {
@@ -148,11 +155,12 @@ export class ProjectSession {
           }, true) }),
           validate_project: tool({ description: "Compile project music files and return diagnostics. Omit paths to check the whole project.", inputSchema: z.object({ paths: z.array(z.string()).max(256).optional() }).strict(), execute: ({ paths }) => execute("validate_project", undefined, () => this.workspace.validate(paths)) }),
         },
-      });
+      }, options.requestId ? { requestId: options.requestId, emit: event => this.emit(event) } : undefined);
       await toolQueue;
       signal.throwIfAborted();
       turn.push(...result.response.messages);
       const changedPaths = [...changed];
+      activity("Validating saved changes");
       const validation = await Promise.all(changedPaths.map(async path => {
         if (path.endsWith(".banger")) return (await this.workspace.validate([path]))[0]!;
         try {

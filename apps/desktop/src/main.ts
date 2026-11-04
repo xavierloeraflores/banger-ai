@@ -311,7 +311,11 @@ void app.whenReady().then(() => {
     senderWindow(event);
     return changeAISettings(async () => { cancelAI(); await aiSettings.remove(provider); return loadAISettings(); });
   }
-  ipcMain.handle("banger:chat-cancel", event => { pendingChats.get(senderWindow(event).id)?.abort(); });
+  const chatRequestIds = new Map<number, string | undefined>();
+  ipcMain.handle("banger:chat-cancel", (event, requestId: unknown) => {
+    const id = senderWindow(event).id;
+    if (requestId === undefined || chatRequestIds.get(id) === requestId) pendingChats.get(id)?.abort();
+  });
   ipcMain.handle("banger:chat", async (event, request: unknown) => {
     const window = senderWindow(event);
     if (pendingChats.has(window.id)) return { ok: false, error: "A reply is already being generated." };
@@ -319,23 +323,27 @@ void app.whenReady().then(() => {
     pendingChats.set(window.id, controller);
     try {
       const input = parseChatRequest(request);
+      chatRequestIds.set(window.id, input.requestId);
+      const emit = (value: import("@banger/agent").ChatEvent) => {
+        if (!window.isDestroyed() && !controller.signal.aborted && pendingChats.get(window.id) === controller) window.webContents.send("banger:chat-event", value);
+      };
       if ((await localModel.status()).selected) {
         try {
           const { port, token } = localModel.connection();
-          return { ok: true, reply: await runBangerAgent(input, selectLocalModel(port, token), controller.signal) };
+          return { ok: true, reply: await runBangerAgent(input, selectLocalModel(port, token), controller.signal, emit) };
         } catch {
           return { ok: false, error: controller.signal.aborted ? "Generation stopped." :
             "Local generation failed. Check that Muse Glimmer is running in AI settings, then try a smaller request." };
         }
       }
       if ((await chatgpt.status()).selected) {
-        try { return { ok: true, reply: await runBangerAgent(input, await chatgpt.model(), controller.signal) }; }
+        try { return { ok: true, reply: await runBangerAgent(input, await chatgpt.model(), controller.signal, emit) }; }
         catch (error) { return { ok: false, error: controller.signal.aborted ? "Generation stopped." : publicChatGPTError(error) }; }
       }
       const credentials = await aiSettings.credentials();
       if (!credentials) return { ok: false, error: "Add a provider key and model in BYOK to start chatting." };
       const selected = selectModel(credentials);
-      try { return { ok: true, reply: await runBangerAgent(input, selected, controller.signal) }; }
+      try { return { ok: true, reply: await runBangerAgent(input, selected, controller.signal, emit) }; }
       catch (error) { return { ok: false, error: publicAIError(error) }; }
     } catch {
       return { ok: false, error: controller.signal.aborted ? "Generation stopped." : "Could not start AI chat. Check your settings and connection." };

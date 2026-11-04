@@ -252,6 +252,7 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
       const authorizedFetch: typeof fetch = async (input, init) => {
         if (String(input) !== `${RESOURCE}/responses` || init?.method !== "POST") throw new Error("Unsupported ChatGPT inference endpoint.");
         const controller = new AbortController(); requests.add(controller);
+        let streaming = false;
         try {
           const token = await serialize(async () => {
             const saved = await read();
@@ -281,14 +282,28 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
             if (response.status === 403) throw new ChatGPTError("access", diagnostics);
             throw new ChatGPTError("unavailable", diagnostics);
           }
+          if (body.stream === true && response.body) {
+            const reader = response.body.getReader();
+            streaming = true;
+            return new Response(new ReadableStream({
+              async pull(output) {
+                try {
+                  const chunk = await reader.read();
+                  if (chunk.done) { requests.delete(controller); reader.releaseLock(); output.close(); }
+                  else output.enqueue(chunk.value);
+                } catch (error) { requests.delete(controller); output.error(error); }
+              },
+              async cancel() { controller.abort(); requests.delete(controller); await reader.cancel(); },
+            }), { headers: response.headers });
+          }
           const output = await completedResponse(response);
           return new Response(JSON.stringify(output), { status: 200, headers: { "Content-Type": "application/json" } });
-        } finally { requests.delete(controller); }
+        } finally { if (!streaming) requests.delete(controller); }
       };
       const base = createOpenAI({ apiKey: "managed-by-chatgpt-auth", fetch: authorizedFetch }).responses(selection.model);
       // Tell the SDK that items are not stored so follow-up tool steps include content, not remote references.
       const model = new Proxy(base, { get(target, property, receiver) {
-        if (property === "doGenerate") return (args: Parameters<typeof base.doGenerate>[0]) => target.doGenerate({ ...args,
+        if (property === "doGenerate" || property === "doStream") return (args: Parameters<typeof base.doGenerate>[0]) => target[property]({ ...args,
           tools: args.tools?.map(tool => tool.type === "function" ? { ...tool, providerOptions: { ...tool.providerOptions,
             openai: { ...tool.providerOptions?.openai, namespace: { name: "banger", description: "Read, edit, and validate Banger music projects." } } } } : tool),
           providerOptions: { ...args.providerOptions, openai: { ...args.providerOptions?.openai, store: false, systemMessageMode: "developer" } } });

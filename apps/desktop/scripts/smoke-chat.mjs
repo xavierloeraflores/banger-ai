@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { serveApp } from "../dist/static-app.js";
-import { chatFixture } from "./chat-fixture.mjs";
+import { chatFixture, gatewayFixtureResponse } from "./chat-fixture.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "banger-chat-smoke-"));
 app.setPath("userData", directory);
@@ -27,7 +27,7 @@ globalThis.fetch = async (url, options) => {
       else options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
     });
   }
-  return Response.json(chatFixture(body));
+  return gatewayFixtureResponse(chatFixture(body), options);
 };
 const server = createServer(async (request, response) => {
   const result = await serveApp(new Request(`banger://app${request.url}`), fileURLToPath(new URL("../dist/web/", import.meta.url)));
@@ -136,6 +136,7 @@ async function exercise(window, desktop) {
   if (!desktop) {
     await evaluate(`(() => {
       const fixture = ${chatFixture.toString()};
+      const streamResponse = ${gatewayFixtureResponse.toString()};
       window.__chatCalls = [];
       window.__downloads = [];
       const originalCreateURL = URL.createObjectURL;
@@ -153,7 +154,7 @@ async function exercise(window, desktop) {
             else options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
           });
         }
-        return Response.json(fixture(body));
+        return streamResponse(fixture(body), options);
       };
     })()`);
   }
@@ -178,10 +179,16 @@ async function exercise(window, desktop) {
   await openMenu('chat-ai-model');
   await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.title === 'Vercel AI Gateway · anthropic/claude-opus-5-5').click()");
   await waitFor("document.querySelector('#chat-ai-model').textContent === 'Claude Opus 5.5' && document.querySelector('#chat-ai-reasoning').textContent.includes('High')");
+  if (desktop) await evaluate("window.__chatEvents = []; window.bangerChat.onEvent(event => window.__chatEvents.push(event)); void 0");
   await input("ai-chat-prompt", "Create two loops");
   await waitFor("document.querySelector('#chat-ai-model').textContent === 'Claude Opus 5.5'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");
+  await waitFor("document.querySelector('.ai-chat-answer')?.textContent.includes('Two loops') && document.querySelector('.ai-chat-working')");
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0, 'No proposals while the answer is streaming');
+  assert.match(await evaluate("document.querySelector('.ai-chat-activity').textContent"), /Reading project context/);
+  await evaluate("document.querySelector('.ai-chat-activity summary').click()");
+  await writeFile(join(tmpdir(), 'banger-chat-live-activity.png'), (await window.webContents.capturePage()).toPNG());
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 2");
   assert.equal(await latestEffort(), "high");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource);
@@ -284,6 +291,7 @@ async function exercise(window, desktop) {
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 9);
+  assert.match(await evaluate("[...document.querySelectorAll('.ai-chat-activity summary')].at(-1).textContent"), /Stopped/);
   await leaveChat();
   await waitFor("!document.querySelector('.producer-agent-banner') && !document.querySelector('#producer-source').readOnly");
   await openChat();
@@ -294,7 +302,13 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('.ai-chat-permissions').textContent.includes('Reply only')");
   await input("ai-chat-prompt", "Please edit the beat and write lyrics anyway");
   await click("Send");
+  if (desktop) {
+    const staleId = await evaluate("window.__chatEvents[0].requestId");
+    window.webContents.send('banger:chat-event', { requestId: staleId, type: 'text-delta', text: 'STALE ANSWER' });
+  }
   await waitFor("document.querySelector('.ai-chat-answer')?.textContent.includes('Your song is unchanged')");
+  assert.doesNotMatch(await evaluate("document.querySelector('.ai-chat-transcript').textContent"), /STALE ANSWER/);
+  await waitFor("!document.querySelector('.ai-chat-working')");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), beforeReadOnly);
   const readOnlyCalls = desktop ? calls : await evaluate("window.__chatCalls");
@@ -326,7 +340,22 @@ async function exercise(window, desktop) {
 
 async function run(desktop) {
   try {
-    // Desktop project chat is covered by smoke:workspace. This exercises the browser proposal fallback.
+    // Exercise the regular desktop bridge as well as the browser proposal UI.
+    const native = await desktop.webContents.executeJavaScript(`(async () => {
+      await window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-chat-key');
+      const events = [];
+      const unsubscribe = window.bangerChat.onEvent(event => events.push(event));
+      const requestId = crypto.randomUUID();
+      try {
+        const result = await window.bangerChat.send({ requestId, messages: [{ role: 'user', content: 'Create two loops' }], previousFiles: [], currentFile: { name: 'song.banger', source: '' } });
+        return { result, events, requestId };
+      } finally { unsubscribe(); }
+    })()`);
+    assert.equal(native.result.ok, true);
+    assert.equal(native.result.reply.files.length, 2);
+    assert.ok(native.events.some(event => event.type === 'text-delta'));
+    assert.ok(native.events.every(event => event.requestId === native.requestId));
+    // Desktop project chat UI is covered by smoke:workspace.
     desktop.hide();
     const web = new BrowserWindow({ width: 1100, height: 900, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
     await web.loadURL(`http://127.0.0.1:${server.address().port}/`);

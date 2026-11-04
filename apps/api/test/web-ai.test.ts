@@ -31,6 +31,17 @@ test('web generation uses the selected provider server-side and redacts upstream
   assert.ok(!JSON.stringify(failure).includes(credentials.key));
   await assert.rejects(browserGeneration(user, 'chat', { credentials: { ...credentials, baseURL: 'http://internal/' }, request }, signal, fetcher), /AI settings/);
   assert.equal(calls, 2);
+  const requestId = randomUUID();
+  const events: import('@banger/agent').ChatEvent[] = [];
+  const streamed = await browserGeneration(user, 'chat', { credentials, request: { ...request, requestId } }, signal, async (_url, init) => {
+    assert.equal(JSON.parse(String(init?.body)).stream, true);
+    const chunks = ['Live ', 'reply'].map(content => ({ id: 'fixture', object: 'chat.completion.chunk', created: 1, model: 'fixture', choices: [{ index: 0, delta: { content }, finish_reason: null }] }));
+    return new Response(chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+  }, event => events.push(event));
+  assert.ok(streamed.ok && 'reply' in streamed && streamed.reply?.text === 'Live reply');
+  assert.equal(events.filter(event => event.type === 'text-delta').map(event => event.text).join(''), 'Live reply');
+  assert.ok(events.every(event => event.requestId === requestId));
+  assert.ok(!JSON.stringify(events).includes(credentials.key));
   await db().query('UPDATE web_auth_limits SET attempts=20 WHERE bucket=$1', [`ai:${user}`]);
   await assert.rejects(browserGeneration(user, 'chat', { credentials, request }, signal, fetcher), /Too many generation/);
   assert.equal(calls, 2);
