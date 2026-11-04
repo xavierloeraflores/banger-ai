@@ -40,7 +40,6 @@ import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
 import { TrackEditorTabs, type TrackEditorTab } from "./track-editor-tabs";
 import { usePlayer } from "./use-player";
-import { SettingsMenu } from "./settings-menu";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import type { FullSend } from "@/lib/full-send";
 import { AIChat } from "./ai-chat";
@@ -567,13 +566,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           {beatStudio && <AudioExport compact program={program} fileName={fileName} source={source} disabled={draft || fileBusy || workspaceBusy} />}
           <div ref={setVocalExportTarget} hidden={!vocalStudio} />
-          <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => navigateStudio(event.target.value as AppDestination)}>
-            <option value="vocal">Vocal Studio</option>
-            <option value="beat">Beat Studio</option>
-            <option value="library">Library</option>
-          </Select>
         </div>
-        <SettingsMenu />
       </header>
 
       {hasProject && <Modal ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">

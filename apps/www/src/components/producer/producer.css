@@ -496,8 +496,6 @@ body:has(.producer-settings-dialog[data-state="open"]) { overflow: hidden; }
 .producer-settings-tabs .muse-hero-settings { margin-bottom: 26px; }
 .producer-settings-dialog .byok-settings { border: 0; }
 @media (max-width: 900px) {
-  .producer-header { position: relative; padding-right: 52px; }
-  .producer-settings { position: absolute; top: 16px; right: 0; }
   .producer-settings-heading { padding-inline: 20px; }
 }
 

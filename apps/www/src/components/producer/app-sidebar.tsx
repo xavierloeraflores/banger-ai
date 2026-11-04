@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import "./app-sidebar.css";
+import { SettingsMenu } from "./settings-menu";
 
 export type AppDestination = "beat" | "vocal" | "library";
 
@@ -18,6 +19,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, children }: {
   onNavigate(destination: AppDestination): void;
   children: ReactNode;
 }) {
+  const [settingsTarget, setSettingsTarget] = useState<HTMLDivElement | null>(null);
   const navigationId = useId();
   const toggleLabel = expanded ? "Collapse sidebar" : "Expand sidebar";
 
@@ -37,7 +39,8 @@ export function AppShell({ active, expanded, onToggle, onNavigate, children }: {
           <span hidden={!expanded}>{destination.label}</span>
         </button>)}
       </nav>
+      <div className="app-sidebar-footer" ref={setSettingsTarget} />
     </aside>
-    <div className="app-shell-content">{children}</div>
+    <div className="app-shell-content">{children}<div className="producer app-settings-host"><SettingsMenu triggerContainer={settingsTarget} expanded={expanded} /></div></div>
   </div>;
 }
