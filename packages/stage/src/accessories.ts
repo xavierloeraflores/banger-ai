@@ -48,6 +48,21 @@ export function createAccessories(rig: CharacterRig, options: { random?: () => n
   const oval = (parent: Group, scale: [number, number, number], surface: MeshStandardMaterial, x = 0, y = 0, z = 0) => {
     const result = mesh(parent, new SphereGeometry(1, 24, 16), surface, x, y, z); result.scale.set(...scale); return result;
   };
+  const crown = (parent: Group, scale: [number, number, number]) => {
+    // An open hemisphere seats around the hood instead of burying an oval in it.
+    const result = mesh(parent, new SphereGeometry(1, 40, 24, 0, Math.PI * 2, 0, Math.PI / 2), cloth);
+    result.scale.set(...scale); return result;
+  };
+  const shoeVolume = (parent: Group, scale: [number, number, number], surface: MeshStandardMaterial, y: number, roundness: number) => {
+    // Match the plush foot's broad, rounded corners rather than an ellipsoid.
+    const geometry = new SphereGeometry(1, 40, 28), positions = geometry.getAttribute('position');
+    const round = (value: number) => Math.sign(value) * Math.pow(Math.abs(value), roundness);
+    for (let index = 0; index < positions.count; index++) {
+      positions.setXYZ(index, round(positions.getX(index)) * scale[0], round(positions.getY(index)) * scale[1], round(positions.getZ(index)) * scale[2]);
+    }
+    geometry.computeVertexNormals();
+    return mesh(parent, geometry, surface, 0, y, .055);
+  };
   const cord = (parent: Group, points: number[][], radius: number, surface: MeshStandardMaterial) => {
     const curve = new CatmullRomCurve3(points.map(([x, y, z]) => new Vector3(x!, y!, z!)));
     return mesh(parent, new TubeGeometry(curve, 28, radius, 6, false), surface);
@@ -55,30 +70,34 @@ export function createAccessories(rig: CharacterRig, options: { random?: () => n
 
   if (selection.hat !== 'none') {
     const hat = group(selection.hat, rig.sockets.head);
-    // The crown socket is at the top of the hood. The lower rim hugs its slope.
-    hat.position.y = -.12;
+    // Seat the opening above the face, wide enough for the hood and its fleece.
+    hat.position.y = -.10;
     if (selection.hat === 'beanie') {
-      oval(hat, [.48, .27, .38], cloth, 0, .08);
-      const cuff = mesh(hat, new TorusGeometry(.39, .075, 10, 40), cloth, 0, -.045);
-      cuff.rotation.x = Math.PI / 2; cuff.scale.set(1.16, .92, 1);
-      oval(hat, [.115, .115, .115], trim, 0, .34);
+      crown(hat, [.59, .36, .44]);
+      const cuff = mesh(hat, new TorusGeometry(.545, .055, 12, 48), cloth, 0, .015);
+      cuff.rotation.x = Math.PI / 2; cuff.scale.y = .745;
+      oval(hat, [.115, .115, .115], trim, 0, .43);
       for (let index = 0; index < 12; index++) {
         const angle = index * Math.PI / 6;
-        cord(hat, [[Math.cos(angle) * .435, -.02, Math.sin(angle) * .345], [Math.cos(angle) * .40, .17, Math.sin(angle) * .31], [Math.cos(angle) * .16, .32, Math.sin(angle) * .13]], .008, trim);
+        const points = Array.from({ length: 13 }, (_, step) => {
+          const latitude = step / 12 * Math.PI / 2;
+          return [Math.cos(angle) * .598 * Math.cos(latitude), .366 * Math.sin(latitude), Math.sin(angle) * .448 * Math.cos(latitude)];
+        });
+        cord(hat, points, .008, trim);
       }
     } else if (selection.hat === 'cap') {
-      oval(hat, [.49, .23, .38], cloth, 0, .045);
-      oval(hat, [.43, .035, .28], cloth, 0, -.08, .35);
-      oval(hat, [.07, .07, .015], trim, 0, .07, .375);
-      oval(hat, [.045, .025, .045], trim, 0, .28);
-      hat.rotation.z = -.12;
+      crown(hat, [.59, .33, .44]);
+      oval(hat, [.52, .035, .32], cloth, 0, .005, .40);
+      oval(hat, [.07, .07, .018], trim, 0, .12, .415);
+      oval(hat, [.045, .025, .045], trim, 0, .34);
+      hat.rotation.z = -.08;
     } else {
-      const crown = mesh(hat, new CylinderGeometry(.32, .47, .30, 32), cloth, 0, .06);
-      crown.scale.z = .81;
-      const brim = mesh(hat, new CylinderGeometry(.48, .60, .085, 40), cloth, 0, -.13);
-      brim.scale.z = .82;
-      const band = mesh(hat, new CylinderGeometry(.454, .478, .06, 32), trim, 0, -.055);
-      band.scale.z = .815;
+      const top = mesh(hat, new CylinderGeometry(.40, .57, .32, 40), cloth, 0, .16);
+      top.scale.z = .76;
+      const brim = mesh(hat, new CylinderGeometry(.59, .70, .085, 48), cloth, 0, .005);
+      brim.scale.z = .76;
+      const band = mesh(hat, new CylinderGeometry(.545, .577, .06, 40), trim, 0, .04);
+      band.scale.z = .765;
     }
   }
 
@@ -121,11 +140,11 @@ export function createAccessories(rig: CharacterRig, options: { random?: () => n
 
   if (selection.boots) for (const [leg, side] of [[rig.leftLeg, 'left'], [rig.rightLeg, 'right']] as const) {
     const boot = group(`${side}-boot`, leg);
-    oval(boot, [.29, .22, .35], cloth, 0, -.34, .045);
-    oval(boot, [.295, .055, .355], dark, 0, -.515, .05);
-    const cuff = mesh(boot, new TorusGeometry(.245, .04, 8, 28), trim, 0, -.19);
-    cuff.rotation.x = Math.PI / 2; cuff.scale.y = 1.18;
-    for (const y of [-.27, -.34]) cord(boot, [[-.085, y, .345], [0, y - .01, .39], [.085, y, .345]], .012, trim);
+    shoeVolume(boot, [.315, .285, .395], cloth, -.275, .62);
+    shoeVolume(boot, [.325, .045, .405], dark, -.525, .30);
+    const cuff = mesh(boot, new TorusGeometry(.29, .028, 10, 40), trim, 0, -.10, .055);
+    cuff.rotation.x = Math.PI / 2; cuff.scale.y = 1.25;
+    for (const y of [-.21, -.29]) cord(boot, [[-.10, y, .435], [0, y - .01, .455], [.10, y, .435]], .014, trim);
   }
 
   let disposed = false;
