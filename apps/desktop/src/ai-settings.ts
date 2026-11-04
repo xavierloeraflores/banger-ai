@@ -1,9 +1,9 @@
-import { checkedReasoningLevel, reasoningLevels, type ReasoningLevel } from "@banger/agent/protocol";
+import { normalizeProvider, saveProviderModel, selectProviderModel, removeProviderModel, setProviderReasoning, type SavedProvider } from "@banger/agent/protocol";
 import { readFile, rename, writeFile } from "node:fs/promises";
 
 const PROVIDERS = ["vercel", "anthropic", "openai", "meta", "grok"] as const;
 type Provider = typeof PROVIDERS[number];
-type Settings = { elevenLabsKey?: string; activeProvider: Provider | null; providers: Partial<Record<Provider, { model: string; reasoningLevel?: ReasoningLevel; key: string }>> };
+type Settings = { elevenLabsKey?: string; activeProvider: Provider | null; providers: Partial<Record<Provider, SavedProvider>> };
 type Encryption = { isAvailable(): boolean | Promise<boolean>; encrypt(value: string): Buffer | Promise<Buffer>; decrypt(value: Buffer): string | Promise<string> };
 
 function providerId(value: unknown): Provider {
@@ -15,7 +15,7 @@ function summary(settings: Settings) {
   return {
     elevenLabsConfigured: Boolean(settings.elevenLabsKey),
     activeProvider: settings.activeProvider,
-    providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, reasoningLevel: value.reasoningLevel, configured: true }])),
+    providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, models: value.models, reasoningLevel: value.reasoningLevel, configured: true }])),
   };
 }
 
@@ -44,7 +44,7 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       const providers: Settings["providers"] = {};
       for (const id of PROVIDERS) {
         const value = parsed.providers[id];
-        if (value && typeof value.model === "string" && typeof value.key === "string" && value.key) providers[id] = value;
+        if (value && typeof value.model === "string" && typeof value.key === "string" && value.key) providers[id] = normalizeProvider(id, value);
       }
       return { elevenLabsKey: typeof parsed.elevenLabsKey === "string" ? parsed.elevenLabsKey : undefined, providers, activeProvider: PROVIDERS.includes(parsed.activeProvider as Provider) && providers[parsed.activeProvider!]
         ? parsed.activeProvider : null };
@@ -60,19 +60,20 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
   }
   return {
     load: () => serialize(async () => summary(await read())),
-    select: (provider: unknown) => serialize(async () => {
+    select: (provider: unknown, model?: unknown) => serialize(async () => {
       const id = providerId(provider);
       const settings = await read();
       if (!settings.providers[id]) throw new Error("Configure this provider before selecting it.");
+      selectProviderModel(settings.providers[id]!, model);
       settings.activeProvider = id;
       return persist(settings);
     }),
-    setReasoning: (provider: unknown, level: unknown) => serialize(async () => {
+    setReasoning: (provider: unknown, level: unknown, model?: unknown) => serialize(async () => {
       const id = providerId(provider);
       const settings = await read();
       const value = settings.providers[id];
       if (!value) throw new Error("Configure this provider first.");
-      value.reasoningLevel = checkedReasoningLevel(id, value.model, level);
+      setProviderReasoning(id, value, level, model);
       return persist(settings);
     }),
     elevenLabsKey: () => serialize(async () => (await read()).elevenLabsKey ?? null),
@@ -99,7 +100,7 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       const settings = await read();
       const provider = settings.activeProvider;
       const value = provider ? settings.providers[provider] : undefined;
-      return provider && value ? { provider, ...value } : null;
+      return provider && value ? { provider, model: value.model, key: value.key, ...(value.reasoningLevel ? { reasoningLevel: value.reasoningLevel } : {}) } : null;
     }),
     save: (provider: unknown, model: unknown, key: unknown) => serialize(async () => {
       const id = providerId(provider);
@@ -112,8 +113,16 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       const settings = await read();
       const nextKey = key.trim() || settings.providers[id]?.key;
       if (!nextKey) throw new Error("Enter an API key for this provider.");
-      settings.providers[id] = { model: model.trim(), key: nextKey, reasoningLevel: reasoningLevels(id, model.trim()).includes(settings.providers[id]?.reasoningLevel as ReasoningLevel) ? settings.providers[id]?.reasoningLevel : undefined };
+      settings.providers[id] = saveProviderModel(id, settings.providers[id], model.trim(), nextKey);
       settings.activeProvider = id;
+      return persist(settings);
+    }),
+    removeModel: (provider: unknown, model: unknown) => serialize(async () => {
+      const id = providerId(provider);
+      const settings = await read();
+      const value = settings.providers[id];
+      if (!value) throw new Error("Configure this provider first.");
+      removeProviderModel(value, model);
       return persist(settings);
     }),
     remove: (provider: unknown) => serialize(async () => {

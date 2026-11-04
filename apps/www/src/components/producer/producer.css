@@ -231,6 +231,12 @@ body { margin: 0; background: #141415; }
 .byok-form input#byok-model { margin-bottom: 18px; }
 .byok-key-field { display: flex; gap: 6px; }
 .byok-storage { font-size: 11px; margin: 12px 0 20px; }
+.byok-models { margin: 16px 0; font-size: 12px; }
+.byok-models p { margin: 0 0 8px; }
+.byok-models ul { padding-left: 18px; overflow-wrap: anywhere; }
+.byok-model-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.byok-model-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.byok-model-row button { flex-shrink: 0; }
 .byok-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .byok-feedback { font-size: 12px; min-height: 26px; margin-top: 16px; }
 .byok-feedback p { margin: 0; }

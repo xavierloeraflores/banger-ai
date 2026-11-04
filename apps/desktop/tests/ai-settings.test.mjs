@@ -18,7 +18,7 @@ function browser(storage = new Map(), native) {
     getItem: key => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value),
   } } });
-  return { bridge: exports.aiSettingsBridge(), providers: exports.AI_PROVIDERS, hasLanguageModel: exports.hasLanguageModel };
+  return { bridge: exports.aiSettingsBridge(), providers: exports.AI_PROVIDERS, hasLanguageModel: exports.hasLanguageModel, credentials: exports.browserCredentials };
 }
 
 async function lifecycle(bridge) {
@@ -197,5 +197,61 @@ test("reasoning preference persists with the model in browser and encrypted desk
       assert.equal((await bridge.load()).providers.openai.reasoningLevel, undefined);
       await assert.rejects(bridge.setReasoning("openai", "high"), /supported reasoning/);
     }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("multiple models share one key, preserve effort, migrate and remove independently", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "banger-model-list-"));
+  const encryption = cipher();
+  const path = join(directory, "settings.enc");
+  const legacy = { activeProvider: "meta", providers: { meta: { model: "custom-legacy", key: "legacy-key", reasoningLevel: undefined } } };
+  const storage = new Map([["banger.ai-settings.v1", JSON.stringify(legacy)]]);
+  await writeFile(path, encryption.encrypt(JSON.stringify(legacy)));
+  try {
+    const native = () => createAISettingsStore(path, encryption);
+    for (const reload of [() => browser(storage).bridge, native]) {
+      const bridge = reload();
+      const migrated = (await bridge.load()).providers.meta;
+      assert.equal(migrated.model, "custom-legacy");
+      assert.deepEqual(Array.from(migrated.models, entry => entry.model), ["muse-wonder-1.0", "muse-spark-1.3", "custom-legacy"]);
+      for (const [provider, defaults] of Object.entries(protocol.DEFAULT_PROVIDER_MODELS)) {
+        if (provider !== "meta") await bridge.save(provider, defaults[0], "shared-key");
+        const saved = (await reload().load()).providers[provider];
+        for (const model of defaults) assert.ok(saved.models.some(entry => entry.model === model));
+        await bridge.select(provider, defaults[0]);
+        await bridge.setReasoning(provider, "high", defaults[0]);
+        await bridge.select(provider, defaults[1]);
+        assert.equal((await reload().load()).providers[provider].reasoningLevel, undefined);
+        await bridge.setReasoning(provider, "low", defaults[1]);
+        await bridge.select(provider, defaults[0]);
+        assert.equal((await reload().load()).providers[provider].reasoningLevel, "high");
+        await bridge.save(provider, "custom-model", "");
+        await bridge.save(provider, "custom-model", "replacement-key");
+        assert.equal((await reload().load()).providers[provider].models.filter(entry => entry.model === "custom-model").length, 1);
+        await bridge.select(provider, defaults[1]);
+        assert.equal((await reload().load()).providers[provider].reasoningLevel, "low");
+        const credentials = reload === native ? await native().credentials() : browser(storage).credentials();
+        assert.equal(credentials.provider, provider);
+        assert.equal(credentials.model, defaults[1]);
+        assert.equal(credentials.key, "replacement-key");
+        assert.equal(credentials.reasoningLevel, "low");
+        assert.equal(credentials.models, undefined);
+        await assert.rejects(bridge.select(provider, "missing"), /Add this model/);
+        await assert.rejects(bridge.setReasoning(provider, "high", "missing"), /saved model/);
+        await bridge.removeModel(provider, defaults[1]);
+        const removed = (await reload().load()).providers[provider];
+        assert.equal(removed.model, defaults[0]);
+        assert.equal(removed.reasoningLevel, "high");
+        assert.ok(!removed.models.some(entry => entry.model === defaults[1]));
+        assert.equal(JSON.stringify(removed).includes("replacement-key"), false);
+        for (const entry of removed.models.slice(1)) await bridge.removeModel(provider, entry.model);
+        await assert.rejects(bridge.removeModel(provider, defaults[0]), /at least one model/);
+      }
+    }
+    const credentials = await native().credentials();
+    assert.equal(credentials.model, "grok-4.7");
+    assert.equal(credentials.key, "replacement-key");
+    assert.equal(credentials.reasoningLevel, "high");
+    assert.equal(credentials.models, undefined);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

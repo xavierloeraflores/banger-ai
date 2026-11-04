@@ -1,5 +1,60 @@
 export const PROVIDER_IDS = ["vercel", "anthropic", "openai", "meta", "grok"] as const;
 export type ProviderId = typeof PROVIDER_IDS[number];
+export const DEFAULT_PROVIDER_MODELS: Record<ProviderId, readonly [string, string]> = {
+  vercel: ["meta/muse-wonder-1.0", "meta/muse-spark-1.3"],
+  anthropic: ["claude-opus-5-5", "claude-sonnet-5-5"],
+  openai: ["gpt-6-astra", "gpt-6.1-sol"],
+  meta: ["muse-wonder-1.0", "muse-spark-1.3"],
+  grok: ["grok-4.7", "grok-4.3"],
+};
+export type SavedModel = { model: string; reasoningLevel?: ReasoningLevel };
+export type SavedProvider = SavedModel & { key: string; models: SavedModel[] };
+
+// Migrate single-model settings without changing the selected model or its effort.
+// An existing list is authoritative, so deleted defaults do not reappear on reload.
+export function normalizeProvider(provider: ProviderId, value: SavedModel & { key: string; models?: SavedModel[] }): SavedProvider {
+  const models: SavedModel[] = [];
+  const entries: SavedModel[] = value.models ?? DEFAULT_PROVIDER_MODELS[provider].map(model => ({ model }));
+  for (const entry of entries) {
+    if (entry && typeof entry.model === "string" && entry.model && !models.some(item => item.model === entry.model)) {
+      models.push({ model: entry.model, reasoningLevel: reasoningLevels(provider, entry.model).includes(entry.reasoningLevel as ReasoningLevel) ? entry.reasoningLevel : undefined });
+    }
+  }
+  if (!models.some(entry => entry.model === value.model)) models.push({ model: value.model, reasoningLevel: value.reasoningLevel });
+  const selected = models.find(entry => entry.model === value.model)!;
+  if (!value.models) selected.reasoningLevel = value.reasoningLevel;
+  return { key: value.key, models, ...selected };
+}
+
+export function selectProviderModel(value: SavedProvider, model: unknown = value.model) {
+  const selected = value.models.find(entry => entry.model === model);
+  if (!selected) throw new Error("Add this model before selecting it.");
+  value.model = selected.model;
+  value.reasoningLevel = selected.reasoningLevel;
+}
+
+export function saveProviderModel(provider: ProviderId, previous: SavedProvider | undefined, model: string, key: string): SavedProvider {
+  const value = previous ?? normalizeProvider(provider, { model, key });
+  value.key = key;
+  if (!value.models.some(entry => entry.model === model)) value.models.push({ model });
+  selectProviderModel(value, model);
+  return value;
+}
+
+export function removeProviderModel(value: SavedProvider, model: unknown) {
+  if (!value.models.some(entry => entry.model === model)) throw new Error("Choose a saved model.");
+  if (value.models.length === 1) throw new Error("Keep at least one model, or remove the provider key.");
+  value.models = value.models.filter(entry => entry.model !== model);
+  if (value.model === model) selectProviderModel(value, value.models[0]!.model);
+}
+
+export function setProviderReasoning(provider: ProviderId, value: SavedProvider, level: unknown, model: unknown = value.model) {
+  const selected = value.models.find(entry => entry.model === model);
+  if (!selected) throw new Error("Choose a saved model.");
+  selected.reasoningLevel = checkedReasoningLevel(provider, selected.model, level);
+  if (value.model === selected.model) value.reasoningLevel = selected.reasoningLevel;
+}
+
 export type Credentials = { provider: ProviderId; model: string; key: string; reasoningLevel?: ReasoningLevel };
 export type BangerFile = { name: string; source: string; operation?: "create" | "edit" };
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -45,7 +100,7 @@ export function reasoningLevels(provider: string, model: string): readonly Reaso
   if (provider === "anthropic" && /^claude-(?:opus-(?:5|4-[5678])|sonnet-(?:5|4-6)|haiku-5|fable-5)(?:-|$)/.test(model)) return ["low", "medium", "high"];
   if (provider === "grok") {
     if (/^grok-4\.[67](?:-|$)/.test(model)) return ["low", "medium", "high", "xhigh"];
-    if (/^grok-4\.5(?:-|$)/.test(model)) return ["low", "medium", "high"];
+    if (/^grok-4\.[35](?:-|$)/.test(model)) return ["low", "medium", "high"];
     if (/^grok-3-mini(?:-fast)?(?:-|$)/.test(model)) return ["low", "high"];
   }
   return [];

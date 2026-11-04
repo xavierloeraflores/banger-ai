@@ -107,7 +107,7 @@ async function exercise(window, desktop) {
   await openChat();
   assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "Keep this draft");
   await openMenu('chat-ai-model');
-  assert.equal(await evaluate("document.querySelector('[role=menuitemradio]').getAttribute('aria-checked')"), 'true');
+  assert.equal(await evaluate(`document.querySelector('[role=menuitemradio][title="Vercel AI Gateway · anthropic/claude-opus-5-5"]').getAttribute('aria-checked')`), 'true');
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
   await waitFor("!document.querySelector('[role=menu]') && document.activeElement.id === 'chat-ai-model'");
@@ -162,6 +162,15 @@ async function exercise(window, desktop) {
   };
   const latestEffort = () => desktop ? calls.at(-1)?.providerOptions?.anthropic?.effort : evaluate("window.__chatCalls.at(-1)?.providerOptions?.anthropic?.effort");
   await reasoning("high");
+  await openMenu('chat-ai-model');
+  await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.title === 'Vercel AI Gateway · meta/muse-spark-1.3').click()");
+  await waitFor("document.querySelector('#chat-ai-model').textContent === 'Muse Spark 1.3' && !document.querySelector('#chat-ai-reasoning').disabled");
+  assert.match(await evaluate("document.querySelector('#chat-ai-reasoning').textContent"), /Default/);
+  await openMenu('chat-ai-reasoning');
+  await menuChoice('Low');
+  await openMenu('chat-ai-model');
+  await evaluate("[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.title === 'Vercel AI Gateway · anthropic/claude-opus-5-5').click()");
+  await waitFor("document.querySelector('#chat-ai-model').textContent === 'Claude Opus 5.5' && document.querySelector('#chat-ai-reasoning').textContent.includes('High')");
   await input("ai-chat-prompt", "Create two loops");
   await waitFor("document.querySelector('#chat-ai-model').textContent === 'Claude Opus 5.5'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");

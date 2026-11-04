@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DEFAULT_PROVIDER_MODELS } from "@banger/agent/protocol";
 import { Button, Input } from "@banger/shadcn";
 import { AI_PROVIDERS, aiSettingsBridge, type AISettings, type ProviderId } from "@/lib/ai-providers";
 
@@ -59,6 +60,19 @@ export function ByokSettings() {
     return () => { active = false; window.removeEventListener("banger:ai-settings-changed", refresh); };
   }, []);
 
+  async function changeModel(model: string, remove = false) {
+    if (pending.current || provider === "local" || provider === "chatgpt") return;
+    pending.current = true; setBusy(true); setError(null); setNotice("");
+    try {
+      const bridge = aiSettingsBridge();
+      const next = await (remove ? bridge.removeModel(provider, model) : bridge.select(provider, model));
+      setSettings(next); setModel(providerModel(provider, next));
+      window.dispatchEvent(new Event("banger:ai-settings-changed"));
+      setNotice(remove ? "Model removed. Your API key is still saved." : "Model selected.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not update this model."); }
+    finally { pending.current = false; setBusy(false); }
+  }
+
   async function update(remove = false) {
     if (pending.current || provider === "local" || provider === "chatgpt") return;
     pending.current = true;
@@ -100,7 +114,18 @@ export function ByokSettings() {
           <h3>{selected.name}</h3>
           <p className="byok-hint">{selected.hint}</p>
           <fieldset disabled={busy || !loaded}>
-            <label htmlFor="byok-model">Model ID</label>
+            {saved ? <div className="byok-models" aria-label="Saved models">
+              <p>Models using this key</p>
+              {settings.providers[selected.id]!.models.map(entry => <div className="byok-model-row" key={entry.model}>
+                <span>{entry.model}</span>
+                <Button type="button" aria-label={`Use ${entry.model}`} aria-pressed={!settings.localSelected && !settings.chatgpt?.selected && settings.activeProvider === provider && settings.providers[selected.id]!.model === entry.model} onClick={() => void changeModel(entry.model)}>Use</Button>
+                <Button type="button" aria-label={`Remove ${entry.model}`} disabled={settings.providers[selected.id]!.models.length === 1} onClick={() => void changeModel(entry.model, true)}>Remove</Button>
+              </div>)}
+            </div> : <div className="byok-models">
+              <p>Saving your key adds both models automatically.</p>
+              <ul>{DEFAULT_PROVIDER_MODELS[selected.id].map((id, index) => <li key={id}>{id} · {index === 0 ? "Strong" : "Everyday"}</li>)}</ul>
+            </div>}
+            <label htmlFor="byok-model">{saved ? "Model ID to add or select" : "Starting model ID"}</label>
             <Input id="byok-model" value={model} maxLength={200} placeholder={selected.defaultModel}
               autoComplete="off" spellCheck={false} required onChange={event => setModel(event.target.value)} />
             <label htmlFor="byok-key">{saved ? "Replace API key" : "API key"}</label>

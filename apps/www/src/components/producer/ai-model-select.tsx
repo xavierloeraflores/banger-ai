@@ -4,7 +4,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLab
 
 
 import { useEffect, useRef, useState } from "react";
-import { AI_PROVIDERS, aiSettingsBridge, type AIOptionId, type AISettings } from "@/lib/ai-providers";
+import { AI_PROVIDERS, aiSettingsBridge, type AIOptionId, type AISettings, type ProviderId } from "@/lib/ai-providers";
 import type {} from "./local-model";
 
 import { reasoningLevels, type ReasoningLevel } from "@banger/agent/protocol";
@@ -13,6 +13,8 @@ function modelName(model: string) {
   const name = model.split("/").at(-1) ?? model;
   const claude = /^claude-(opus|sonnet|haiku)-(\d+)-(\d+)$/.exec(name);
   if (claude) return `Claude ${claude[1]![0]!.toUpperCase()}${claude[1]!.slice(1)} ${claude[2]}.${claude[3]}`;
+  if (/^muse-(wonder|spark)-/.test(name)) return name.replace(/^muse-(wonder|spark)-/, (_, family: string) => `Muse ${family[0]!.toUpperCase()}${family.slice(1)} `);
+  if (name.startsWith("grok-")) return name.replace("grok-", "Grok ");
   return name.replace(/^gpt-/, "GPT-").replace(/-(astra|sol|luna|terra)$/, (_, family: string) => ` ${family[0]!.toUpperCase()}${family.slice(1)}`);
 }
 
@@ -44,24 +46,24 @@ export function AIModelSelect({ id = "active-ai", mode = "settings", disabled = 
   }, []);
   const account = settings.chatgpt?.accounts.find(account => account.id === settings.chatgpt?.activeAccountId);
   const options = [
-    ...AI_PROVIDERS.filter(provider => settings.providers[provider.id]?.configured).map(provider => {
-      const model = settings.providers[provider.id]!.model;
-      return { id: provider.id, label: `${provider.name} · ${model}`, name: modelName(model), detail: provider.name };
-    }),
+    ...AI_PROVIDERS.filter(provider => settings.providers[provider.id]?.configured).flatMap(provider =>
+      settings.providers[provider.id]!.models.map(({ model }) => ({ id: `${provider.id}:${model}`, label: `${provider.name} · ${model}`, name: modelName(model), detail: provider.name }))),
     ...(settings.localModels ?? []).map(model => ({ ...model, name: model.label.replace(/ · local$/, ""), detail: "On this device" })),
     ...(settings.chatgpt?.accounts.some(account => account.connected && account.sharing) ? [{ id: "chatgpt", label: `ChatGPT · ${account?.model ?? "Choose a model"}`, name: modelName(account?.model ?? "Choose a model"), detail: "ChatGPT plan" }] : []),
   ];
   const chatModels = options.flatMap(option => option.id === "chatgpt" && settings.chatgpt?.models.length
     ? settings.chatgpt.models.map(model => ({ id: `chatgpt:${model.id}`, label: `ChatGPT · ${model.id}`, name: model.label, detail: "ChatGPT plan" }))
     : [option]);
-  const selected = settings.chatgpt?.selected ? "chatgpt" : settings.localSelected ? `local:${settings.localVariant ?? "small"}` : settings.activeProvider ?? "";
-  const modelSettings = selected === "chatgpt" ? account : settings.providers[selected as keyof typeof settings.providers];
-  const levels = reasoningLevels(selected, modelSettings?.model ?? "");
+  const selectedProvider = settings.activeProvider;
+  const providerSettings = selectedProvider ? settings.providers[selectedProvider] : undefined;
+  const selected = settings.chatgpt?.selected ? "chatgpt" : settings.localSelected ? `local:${settings.localVariant ?? "small"}` : selectedProvider && providerSettings ? `${selectedProvider}:${providerSettings.model}` : "";
+  const modelSettings = selected === "chatgpt" ? account : settings.localSelected ? undefined : providerSettings;
+  const levels = reasoningLevels(settings.chatgpt?.selected ? "chatgpt" : selectedProvider ?? "", modelSettings?.model ?? "");
   async function selectReasoning(value: string) {
     if (pending.current || disabled) return;
     pending.current = true; setBusy(true); setError("");
     try {
-      setSettings(await aiSettingsBridge().setReasoning(selected as AIOptionId, value ? value as ReasoningLevel : undefined));
+      setSettings(await aiSettingsBridge().setReasoning(settings.chatgpt?.selected ? "chatgpt" : selectedProvider!, value ? value as ReasoningLevel : undefined, modelSettings?.model));
       window.dispatchEvent(new Event("banger:ai-settings-changed"));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not change reasoning level."); }
     finally { pending.current = false; setBusy(false); }
@@ -75,7 +77,8 @@ export function AIModelSelect({ id = "active-ai", mode = "settings", disabled = 
         await window.bangerChatGPT.selectModel(value.slice("chatgpt:".length));
         value = "chatgpt";
       }
-      setSettings(await aiSettingsBridge().select(value as AIOptionId));
+      const provider = AI_PROVIDERS.find(provider => value.startsWith(`${provider.id}:`));
+      setSettings(await aiSettingsBridge().select(provider ? provider.id as ProviderId : value as AIOptionId, provider ? value.slice(provider.id.length + 1) : undefined));
       window.dispatchEvent(new Event("banger:ai-settings-changed"));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not switch AI models."); }
     finally { pending.current = false; setBusy(false); }

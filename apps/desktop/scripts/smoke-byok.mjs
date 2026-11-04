@@ -34,24 +34,31 @@ async function exercise(window, desktop) {
     if (!button || button.disabled) throw new Error('Unavailable button');
     button.click();
   })()`);
+  const tab = async name => {
+    await evaluate(`([...document.querySelectorAll('[role=tab]')].find(tab => tab.textContent === ${JSON.stringify(name)})).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))`);
+    await waitFor(`[...document.querySelectorAll('[role=tab]')].some(tab => tab.textContent === ${JSON.stringify(name)} && tab.getAttribute('aria-selected') === 'true')`);
+  };
   const input = (id, value) => evaluate(`(() => {
     const input = document.getElementById(${JSON.stringify(id)});
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await waitFor("document.querySelector('#producer-source')?.value");
-  assert.equal(await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').disabled"), true);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
-  await evaluate("document.querySelector('.ai-chat-launcher-hint').focus()");
+  await evaluate(`document.querySelector('[aria-label="Start a new chat"]').click()`);
+  await waitFor("document.querySelector('[aria-label=Send]')");
+  assert.equal(await evaluate("document.querySelector('[aria-label=Send]').disabled"), true);
+  await evaluate("document.querySelector('.ai-chat-compose .generation-key-hint').focus()");
   await waitFor("document.querySelector('.generation-key-tooltip') && getComputedStyle(document.querySelector('.generation-key-tooltip')).display !== 'none'");
   assert.ok(await evaluate("document.querySelector('.generation-key-tooltip').textContent.includes('Settings')"));
-  const hover = await evaluate("(() => { const r=document.querySelector('.ai-chat-launcher-hint').getBoundingClientRect(); document.activeElement.blur(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()");
+  const hover = await evaluate("(() => { const r=document.querySelector('.ai-chat-compose .generation-key-hint').getBoundingClientRect(); document.activeElement.blur(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()");
   window.webContents.sendInputEvent({type:'mouseMove',...hover});
   await waitFor("document.querySelector('.generation-key-tooltip') && getComputedStyle(document.querySelector('.generation-key-tooltip')).display !== 'none'");
   assert.equal(await evaluate("(() => { const r=document.querySelector('.generation-key-tooltip').getBoundingClientRect(); return r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=innerHeight; })()"),true);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   await writeFile(join(tmpdir(),desktop?'banger-key-hint-desktop.png':'banger-key-hint-web.png'),(await window.webContents.capturePage()).toPNG());
   window.webContents.sendInputEvent({type:'mouseMove',x:0,y:0});
+  await evaluate(`document.querySelector('[aria-label="Beat Studio"]').click()`);
   assert.equal(await evaluate("document.querySelector('.music-wav-actions button').disabled"),true);
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open' && document.querySelector('#producer-settings-dialog')?.getAttribute('aria-modal') === 'true') && !document.querySelector('.byok-layout > .byok-form fieldset').disabled");
@@ -66,13 +73,20 @@ async function exercise(window, desktop) {
   await waitFor("!(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open') && !document.querySelector('#byok-key')");
   await evaluate("document.querySelector('[aria-label=Settings]').focus(); document.querySelector('[aria-label=Settings]').click()");
   await waitFor("!document.querySelector('.byok-layout > .byok-form fieldset').disabled");
+  await tab("Vocals");
   await input("elevenlabs-key", "fake-vocal-key");
   assert.equal(await evaluate("document.querySelector('#elevenlabs-key').type"), "password");
   await click("Save ElevenLabs key");
   await waitFor("document.querySelector('.elevenlabs-settings [role=status]')?.textContent.includes('key saved')");
   await waitFor("!document.querySelector('.music-wav-actions button').disabled");
   assert.equal(await evaluate("document.querySelector('#active-ai-model').value"), "");
-  assert.equal(await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').disabled"), true);
+  await tab("AI");
+  await input("byok-key", "fake-smoke-key");
+  await click("Save and select");
+  await waitFor("document.querySelectorAll('.byok-model-row').length === 2");
+  assert.equal(await evaluate("document.querySelectorAll('#active-ai-model option:not([disabled])').length"), 2);
+  await evaluate(`document.querySelector('[aria-label="Use meta/muse-spark-1.3"]').click()`);
+  await waitFor("document.querySelector('#active-ai-model')?.value === 'vercel:meta/muse-spark-1.3' && !document.querySelector('#active-ai-model').disabled");
   const providers = ["Vercel AI Gateway", "Anthropic", "OpenAI", "Meta Muse", "Grok"];
   for (const name of providers) {
     await evaluate(`([...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === ${JSON.stringify(name)})).click()`);
@@ -86,19 +100,20 @@ async function exercise(window, desktop) {
     await waitFor(`document.querySelector('.byok-feedback [role="status"]')?.textContent.includes(${JSON.stringify(name + " settings saved")})`);
     assert.equal(await evaluate("document.querySelector('#byok-key').value"), "");
   }
-  assert.equal(await evaluate("document.querySelectorAll('#active-ai-model option:not([disabled])').length"), 5);
-  assert.equal(await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').disabled"), false);
+  assert.equal(await evaluate("document.querySelectorAll('#active-ai-model option:not([disabled])').length"), 15);
+  await tab("Vocals");
   await click("Remove ElevenLabs key");
   await waitFor("document.querySelector('.elevenlabs-settings [role=status]')?.textContent.includes('key removed')");
   await waitFor("document.querySelector('.music-wav-actions button').disabled");
-  assert.equal(await evaluate("document.querySelector('#active-ai-model').value"), "grok");
+  assert.equal(await evaluate("document.querySelector('#active-ai-model').value"), "grok:test-model");
+  await tab("AI");
   for (const id of ["openai", "anthropic", "grok"]) {
     await evaluate(`(() => {
       const select = document.getElementById('active-ai-model');
-      select.value = ${JSON.stringify(id)};
+      select.value = ${JSON.stringify(id + ":test-model")};
       select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
-    await waitFor(`document.querySelector('#active-ai-model')?.value === ${JSON.stringify(id)} && !document.querySelector('#active-ai-model').disabled`);
+    await waitFor(`document.querySelector('#active-ai-model')?.value === ${JSON.stringify(id + ":test-model")} && !document.querySelector('#active-ai-model').disabled`);
     if (desktop) assert.equal((await evaluate("window.bangerAI.load()")).activeProvider, id);
     else assert.equal(await evaluate("JSON.parse(sessionStorage.getItem('banger.ai-settings.v1')).activeProvider"), id);
   }
@@ -112,6 +127,7 @@ async function exercise(window, desktop) {
     await evaluate("[...document.querySelectorAll('.byok-providers button')].find(button => button.querySelector('span').textContent === 'Grok').click()");
     await waitFor("document.querySelector('#byok-model')");
   }
+  await tab("Vocals");
   await evaluate("document.querySelector('.elevenlabs-settings').scrollIntoView({behavior:'instant',block:'end'})");
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   await delay(200);
@@ -132,12 +148,22 @@ async function exercise(window, desktop) {
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("document.querySelector('#byok-model')?.value === 'test-model'");
   assert.equal(await evaluate("document.querySelector('.byok-layout > .byok-form h3').textContent"), "Grok");
+  await tab("AI");
   await input("byok-model", "second-model");
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=\"status\"]')?.textContent.includes('settings saved')");
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await evaluate("document.querySelector('.byok-models').scrollIntoView({behavior:'instant',block:'center'})");
   await delay(100);
   await writeFile(join(tmpdir(), desktop ? "banger-byok-desktop.png" : "banger-byok-web.png"), (await window.webContents.capturePage()).toPNG());
+  assert.equal(await evaluate("document.querySelectorAll('.byok-model-row').length"), 4);
+  await evaluate(`document.querySelector('[aria-label="Use grok-4.3"]').click()`);
+  await waitFor("document.querySelector('#active-ai-model')?.value === 'grok:grok-4.3' && !document.querySelector('#active-ai-model').disabled");
+  await evaluate(`document.querySelector('[aria-label="Remove second-model"]').click()`);
+  await waitFor("document.querySelectorAll('.byok-model-row').length === 3");
+  assert.equal(await evaluate("document.querySelector('#byok-key').required"), false);
+  await evaluate(`document.querySelector('[aria-label="Remove grok-4.3"]').click()`);
+  await waitFor("document.querySelector('#active-ai-model')?.value === 'grok:grok-4.7' && !document.querySelector('#active-ai-model').disabled");
   await click("Remove key");
   await waitFor("document.querySelector('.byok-feedback [role=\"status\"]')?.textContent === 'Grok key removed.'");
   assert.equal(await evaluate("document.querySelector('#byok-key').required"), true);
@@ -151,7 +177,7 @@ async function exercise(window, desktop) {
   window.webContents.sendInputEvent({ type: 'mouseDown', x: 2, y: 2, button: 'left', clickCount: 1 });
   window.webContents.sendInputEvent({ type: 'mouseUp', x: 2, y: 2, button: 'left', clickCount: 1 });
   await waitFor("!(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open')");
-  await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await evaluate(`document.querySelector('[aria-label="Vocal Studio"]').click()`);
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("(document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open')");
   assert.equal(await evaluate("document.querySelector('.producer').dataset.view"), "vocal");

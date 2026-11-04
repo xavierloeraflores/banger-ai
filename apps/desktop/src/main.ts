@@ -256,15 +256,15 @@ void app.whenReady().then(() => {
     senderWindow(event);
     return changeAISettings(async () => { await aiSettings.removeElevenLabs(); return loadAISettings(); });
   });
-  ipcMain.handle("banger:ai-reasoning", (event, option: unknown, level: unknown) => {
+  ipcMain.handle("banger:ai-reasoning", (event, option: unknown, level: unknown, model: unknown) => {
     senderWindow(event);
     return changeAISettings(async () => {
       if (option === "chatgpt") await chatgpt.setReasoning(level);
-      else await aiSettings.setReasoning(option, level);
+      else await aiSettings.setReasoning(option, level, model);
       return loadAISettings();
     });
   });
-  ipcMain.handle("banger:ai-select", (event, option: unknown) => {
+  ipcMain.handle("banger:ai-select", (event, option: unknown, model: unknown) => {
     senderWindow(event);
     return changeAISettings(async () => {
       if (option === "chatgpt") {
@@ -284,7 +284,7 @@ void app.whenReady().then(() => {
         await localModel.select(true);
         await localModel.start();
       } else {
-        await aiSettings.select(option);
+        await aiSettings.select(option, model);
         await chatgpt.select(false);
         await localModel.select(false);
       }
@@ -301,6 +301,10 @@ void app.whenReady().then(() => {
       await localModel.select(false);
       return loadAISettings();
     });
+  });
+  ipcMain.handle("banger:ai-remove-model", (event, provider: unknown, model: unknown) => {
+    senderWindow(event);
+    return changeAISettings(async () => { await aiSettings.removeModel(provider, model); cancelAI(); return loadAISettings(); });
   });
   ipcMain.handle("banger:ai-remove", eventRemove);
   function eventRemove(event: IpcMainInvokeEvent, provider: unknown) {

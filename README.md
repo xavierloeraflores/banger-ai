@@ -41,6 +41,20 @@ PostgreSQL test database. CI selects the same sets for pull requests and merges.
 See [test suites](docs/testing.md) for coverage, selection rules and browser/audio
 checks.
 
+## AI models
+
+In Settings → AI, saving a provider key adds a strong model and an everyday
+model. Vercel and Meta include Muse Wonder 1.0 and Muse Spark 1.3. Anthropic
+includes Claude Opus 5.5 and Sonnet 5.5, OpenAI includes GPT-6 Astra and GPT-6.1
+Sol, and Grok includes Grok 4.7 and Grok 4.3.
+
+Enter another model ID and save to add it using the same key. Switch models in
+the settings or chat model menu. Each model remembers its reasoning level.
+Removing a model keeps the key and other models; removing the key removes that
+provider's whole list. Existing settings retain their selected model and key
+and gain the default pair automatically. Keys remain encrypted on desktop and
+in the current tab's session storage on the web.
+
 ## Songs, mixing and export
 
 Open [night-drive.banger](examples/night-drive.banger) for a 40-bar song with eight tracks, named patterns, sections, buses, sends, sidechain and automation. The [language reference](packages/compiler/LANGUAGE.md) covers syntax and limits. Both music agents use the same language guide.
