@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { IconButton, Modal, Select, type ModalHandle } from "@banger/shadcn";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@banger/shadcn/components/tabs";
 import { AIModelSelect } from "./ai-model-select";
 import { ElevenLabsSettings } from "./elevenlabs-settings";
 import { ByokSettings } from "./byok-menu";
@@ -11,6 +12,7 @@ export function SettingsMenu() {
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<ModalHandle>(null);
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("general");
   const difficulty = useHeroDifficulty();
 
   return <div className="producer-settings">
@@ -28,15 +30,28 @@ export function SettingsMenu() {
           <h2 id="producer-settings-title">Settings</h2>
           <IconButton aria-label="Close settings" variant="ghost" onClick={() => dialog.current?.close()}><span aria-hidden="true">×</span></IconButton>
         </div>
-        {open && <>
-          <div className="muse-hero-settings">
-            <label htmlFor="muse-hero-difficulty">Muse Hero difficulty</label>
-            <Select id="muse-hero-difficulty" value={difficulty} onChange={event => setHeroDifficulty(event.target.value as HeroDifficulty)}>
-              {HERO_DIFFICULTIES.map(option => <option key={option.value} value={option.value}>{option.label} · {option.lanes} tracks</option>)}
-            </Select>
-          </div>
-          <AIModelSelect /><ByokSettings /><ElevenLabsSettings />
-        </>}
+        {open && <Tabs className="producer-settings-tabs" value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="producer-tabs" variant="line" aria-label="Settings sections">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="ai">AI</TabsTrigger>
+            <TabsTrigger value="vocals">Vocals</TabsTrigger>
+          </TabsList>
+          {/* Keep drafts and pending saves intact when switching sections. */}
+          <TabsContent forceMount value="general" hidden={activeTab !== "general"}>
+            <div className="muse-hero-settings">
+              <label htmlFor="muse-hero-difficulty">Muse Hero difficulty</label>
+              <Select id="muse-hero-difficulty" value={difficulty} onChange={event => setHeroDifficulty(event.target.value as HeroDifficulty)}>
+                {HERO_DIFFICULTIES.map(option => <option key={option.value} value={option.value}>{option.label} · {option.lanes} tracks</option>)}
+              </Select>
+            </div>
+          </TabsContent>
+          <TabsContent forceMount value="ai" hidden={activeTab !== "ai"}>
+            <AIModelSelect /><ByokSettings />
+          </TabsContent>
+          <TabsContent forceMount value="vocals" hidden={activeTab !== "vocals"}>
+            <ElevenLabsSettings />
+          </TabsContent>
+        </Tabs>}
       </div>
     </Modal>
   </div>;
