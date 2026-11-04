@@ -9,7 +9,7 @@ import { createScenery } from './scenery.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCharacter, type CharacterRig } from './character.js';
 import { PerformanceScore, trackRole, type PerformanceSnapshot } from './score.js';
-import { animatePerformer, createInstrument } from './animation.js';
+import { PerformerAnimator, createInstrument } from './animation.js';
 import { createAccessories } from './accessories.js';
 
 export interface StageOptions {
@@ -72,7 +72,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   const cast = new THREE.Group(); scene.add(cast);
   const score = new PerformanceScore();
   let signature = '';
-  let performers: { rig: CharacterRig; accessories: ReturnType<typeof createAccessories>; anchor: THREE.Group; instrument: THREE.Group; role: ReturnType<typeof trackRole>; target: THREE.Vector3 }[] = [];
+  let performers: { rig: CharacterRig; animator: PerformerAnimator; accessories: ReturnType<typeof createAccessories>; anchor: THREE.Group; instrument: THREE.Group; role: ReturnType<typeof trackRole>; target: THREE.Vector3 }[] = [];
   let positions: StagePosition[] = [];
   let previousFrame: number | undefined;
   let disposed = false;
@@ -122,7 +122,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       strip.rotation.x = Math.PI / 2; strip.position.y = -.04; anchor.add(strip);
       anchor.add(label(track.name, track.source.name.split('/')[1]!));
       cast.add(anchor);
-      return { rig, accessories, anchor, instrument, role, target: new THREE.Vector3() };
+      return { rig, animator: new PerformerAnimator(role, rig, instrument), accessories, anchor, instrument, role, target: new THREE.Vector3() };
     });
     renderer.domElement.dataset.characterCount = String(performers.length);
     renderer.domElement.dataset.outfits = JSON.stringify(performers.map(performer => performer.accessories.selection));
@@ -189,10 +189,9 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       const nextSignature = JSON.stringify(snapshot.program.tracks.map(track => [track.name, track.source]));
       if (nextSignature !== signature) { signature = nextSignature; rebuild(snapshot); }
       const motions = score.sample(snapshot);
-      performers.forEach(({ rig, instrument, target, anchor }, index) => {
-        rig.resetPose();
+      performers.forEach(({ rig, animator, target, anchor }, index) => {
         const motion = motions[index]!;
-        animatePerformer(trackRole(snapshot.program.tracks[index]!), rig, options.reducedMotion ? { ...motion, playing: false, active: false, energy: 0 } : motion, instrument);
+        animator.update(options.reducedMotion ? { ...motion, playing: false, active: false, energy: 0 } : motion, options.reducedMotion ? undefined : delta);
         target.copy(anchor.position).add(rig.body.position);
       });
       const signals = concertSignals(snapshot.program, motions, options.reducedMotion);

@@ -9,6 +9,8 @@ interface PercussionParts {
   hand: Vector3;
   target: Vector3;
   direction: Vector3;
+  targets: [Vector3, Vector3];
+  displayedTargets: [Vector3, Vector3];
 }
 const parts = new WeakMap<Group, PercussionParts>();
 const up = new Vector3(0, 1, 0);
@@ -42,13 +44,20 @@ export function createPercussion(rig: CharacterRig): Group {
   const stickGeometry = new CylinderGeometry(.022, .027, 1, 8);
   const sticks: [Mesh, Mesh] = [new Mesh(stickGeometry, wood), new Mesh(stickGeometry, wood)];
   sticks.forEach(stick => { stick.name = 'drumstick'; stick.castShadow = true; group.add(stick); });
-  parts.set(group, { sticks, cymbal, drumHead, hand: new Vector3(), target: new Vector3(), direction: new Vector3() });
+  parts.set(group, { sticks, cymbal, drumHead, hand: new Vector3(), target: new Vector3(), direction: new Vector3(),
+    targets: [new Vector3(), new Vector3()], displayedTargets: [new Vector3(), new Vector3()] });
   animatePercussion(rig, { beat: 0, playing: false, active: false, energy: 0, age: Infinity, duration: 0, midi: 60, index: 0 }, group);
   return group;
 }
 
 /** A note lands first, then the striking arm rebounds in a visible stick lift. */
 export function animatePercussion(rig: CharacterRig, motion: TrackMotion, instrument: Group): void {
+  posePercussion(rig, motion, instrument);
+  updatePercussionSticks(rig, instrument);
+}
+
+/** Evaluate targets before smoothing the rig, then attach sticks to the final hands. */
+export function posePercussion(rig: CharacterRig, motion: TrackMotion, instrument: Group): void {
   const state = parts.get(instrument);
   if (!state) return;
   const energy = motion.playing ? Math.sqrt(Math.max(0, Math.min(1, motion.energy))) : 0;
@@ -70,16 +79,23 @@ export function animatePercussion(rig: CharacterRig, motion: TrackMotion, instru
   rig.rightLeg.rotation.x = -.24 * impact - .09 * Math.max(0, Math.sin(phase)) * idle;
   state.cymbal.rotation.z = cymbalHit ? energy * Math.sin(age * 62) * .14 : 0;
   state.drumHead.position.y = .997 - (cymbalHit ? 0 : .018 * impact);
+  for (let index = 0; index < 2; index++) {
+    const striking = index === (left ? 0 : 1);
+    const hitCymbal = cymbalHit && index === 1 && motion.playing;
+    const idleLift = .18 * idle * (1 + Math.sin(phase / 2 + index * Math.PI)) / 2;
+    state.targets[index]!.set(hitCymbal ? .81 : index === 0 ? -.18 : .18, (hitCymbal ? 1.2 : 1.035) + (striking ? .58 * rebound : .14) + idleLift, hitCymbal ? .63 : .95);
+  }
+}
+
+export function updatePercussionSticks(rig: CharacterRig, instrument: Group, alpha = 1): void {
+  const state = parts.get(instrument);
+  if (!state) return;
   rig.root.updateWorldMatrix(true, true);
   instrument.updateWorldMatrix(true, false);
   const sockets = [rig.sockets.leftHand, rig.sockets.rightHand];
   for (let index = 0; index < 2; index++) {
-    const socket = sockets[index]!;
-    socket.getWorldPosition(state.hand); instrument.worldToLocal(state.hand);
-    const striking = index === (left ? 0 : 1);
-    const hitCymbal = cymbalHit && index === 1 && motion.playing;
-    const idleLift = .18 * idle * (1 + Math.sin(phase / 2 + index * Math.PI)) / 2;
-    state.target.set(hitCymbal ? .81 : index === 0 ? -.18 : .18, (hitCymbal ? 1.2 : 1.035) + (striking ? .58 * rebound : .14) + idleLift, hitCymbal ? .63 : .95);
+    sockets[index]!.getWorldPosition(state.hand); instrument.worldToLocal(state.hand);
+    state.target.copy(state.displayedTargets[index]!.lerp(state.targets[index]!, alpha));
     state.direction.subVectors(state.target, state.hand);
     const length = state.direction.length();
     const stick = state.sticks[index]!;
