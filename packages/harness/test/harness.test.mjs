@@ -210,3 +210,45 @@ test("reused project session uses the current reasoning options on each turn", a
   }
   assert.deepEqual(model.doGenerateCalls.map(call => call.providerOptions?.openai?.reasoningEffort), [undefined, "low", "high", undefined]);
 });
+
+test("record controls enforce song selection for music and lyric writes across turns", async t => {
+  const { workspace, root } = await fixture(t);
+  await writeFile(join(root, 'other.banger'), source);
+  const draft = JSON.stringify({ schemaVersion: 1, lyrics: 'A new line' });
+  const model = new MockLanguageModelV4({ doGenerate: [
+    step(call('read_file', { path: 'other.banger' })),
+    step(call('edit_file', { path: 'other.banger', search: 'tempo 120', replacement: 'tempo 90' }),
+      call('write_file', { path: 'other.banger', source: source.replace('120', '80') }),
+      call('write_draft', { path: 'other.draft.json', source: draft }),
+      call('write_file', { path: 'new.banger', source })),
+    step(call('edit_file', { path: 'song.banger', search: 'tempo 120', replacement: 'tempo 100' }),
+      call('write_draft', { path: 'song.draft.json', source: draft })),
+    finish('Selected song updated.'),
+    step(call('edit_file', { path: 'song.banger', search: 'tempo 100', replacement: 'tempo 110' })),
+    finish('No songs selected.'),
+  ] });
+  const session = new ProjectSession({ workspace, selected: { model, name: 'test' } });
+  const first = await session.run('Change every song.', { activeFile: 'song.banger', permissions: { beat: true, lyrics: true, songs: ['song.banger'], allowNewSongs: false } });
+  assert.deepEqual(first.changedPaths, ['song.banger', 'song.draft.json']);
+  assert.equal(await readFile(join(root, 'other.banger'), 'utf8'), source);
+  assert.equal(await workspace.readLyrics('other.draft.json'), null);
+  assert.deepEqual(await workspace.list(), ['other.banger', 'song.banger']);
+  assert.match(JSON.stringify(model.doGenerateCalls[2].prompt), /not selected in Record controls/);
+  const second = await session.run('Change the song again.', { activeFile: 'song.banger', permissions: { beat: true, lyrics: true, songs: [], allowNewSongs: false } });
+  assert.deepEqual(second.changedPaths, []);
+  assert.match((await workspace.read('song.banger')).source, /tempo 100/);
+});
+
+test('record controls can allow new songs while protecting existing songs', async t => {
+  const { workspace } = await fixture(t);
+  const model = new MockLanguageModelV4({ doGenerate: [
+    step(call('write_file', { path: 'new.banger', source })),
+    step(call('edit_file', { path: 'new.banger', search: 'tempo 120', replacement: 'tempo 90' })),
+    finish('Created a song.'),
+  ] });
+  const session = new ProjectSession({ workspace, selected: { model, name: 'test' } });
+  const result = await session.run('Create a song.', { permissions: { beat: true, lyrics: true, songs: [], allowNewSongs: true } });
+  assert.deepEqual(result.changedPaths, ['new.banger']);
+  assert.match((await workspace.read('new.banger')).source, /tempo 90/);
+  assert.equal((await workspace.read('song.banger')).source, source);
+});

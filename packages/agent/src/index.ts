@@ -6,13 +6,13 @@ import { createXai } from "@ai-sdk/xai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { compileMusic, serializeMusic, BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
-import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, REASONING_LEVELS, reasoningOptions, type BangerFile, type ChatReply, type ChatRequest, type Credentials } from "./protocol.js";
+import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, REASONING_LEVELS, reasoningOptions, canEditSong, type EditPermissions, type BangerFile, type ChatReply, type ChatRequest, type Credentials } from "./protocol.js";
 export * from "./protocol.js";
 
 const fileSchema = z.object({ name: z.string().min(1).max(100), source: z.string().max(65536), operation: z.enum(["create", "edit"]).optional() }).strict();
-export const editPermissionsSchema = z.object({ beat: z.boolean(), lyrics: z.boolean() }).strict();
-export function editingInstructions(permissions: { beat: boolean; lyrics: boolean }): string {
-  return `Enabled editing permissions are an upper bound, not a request to rewrite everything. The user's explicit scope takes precedence. If asked to change only a particular track, section, bar, note, lyric verse, line, or word, change only that part and preserve everything else exactly. Do not polish, rewrite, or regenerate unrelated parts. Pass these scope restrictions and the original user wording to any delegated lyric request. Editing permissions for this request: beat ${permissions.beat ? "enabled" : "disabled"}; lyrics ${permissions.lyrics ? "enabled" : "disabled"}. ${permissions.beat ? "You may edit music files when requested." : "Do not create or edit music files."} ${permissions.lyrics ? "You may write or revise lyrics when requested." : "Do not generate or revise lyrics, including in prose."} ${!permissions.beat && !permissions.lyrics ? "Reply only. Do not edit any files." : "Only use the enabled editing tools."}`;
+export const editPermissionsSchema = z.object({ beat: z.boolean(), lyrics: z.boolean(), songs: z.array(z.string().min(1).max(512).endsWith(".banger")).max(256).optional(), allowNewSongs: z.boolean().optional() }).strict();
+export function editingInstructions(permissions: EditPermissions): string {
+  return `Record controls: ${permissions.songs === undefined ? "All existing songs may be edited." : `Only these existing songs and their companion lyrics or drafts may be edited: ${JSON.stringify(permissions.songs)}. All other songs are read-only.`} ${permissions.allowNewSongs === false ? "Do not create new songs." : "New songs may be created when requested."}\nEnabled editing permissions are an upper bound, not a request to rewrite everything. The user's explicit scope takes precedence. If asked to change only a particular track, section, bar, note, lyric verse, line, or word, change only that part and preserve everything else exactly. Do not polish, rewrite, or regenerate unrelated parts. Pass these scope restrictions and the original user wording to any delegated lyric request. Editing permissions for this request: beat ${permissions.beat ? "enabled" : "disabled"}; lyrics ${permissions.lyrics ? "enabled" : "disabled"}. ${permissions.beat ? "You may edit music files when requested." : "Do not create or edit music files."} ${permissions.lyrics ? "You may write or revise lyrics when requested." : "Do not generate or revise lyrics, including in prose."} ${!permissions.beat && !permissions.lyrics ? "Reply only. Do not edit any files." : "Only use the enabled editing tools."}`;
 }
 export const chatRequestSchema = z.object({
   permissions: editPermissionsSchema.optional(),
@@ -112,7 +112,7 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
     abortSignal,
     stopWhen: isStepCount(5),
     tools: {
-      request_lyrics: tool({ description: "Request original lyrics or revisions for the active song. Include the user's lyrical requirements and vocal performance descriptions. Explicitly preserve sung words for style-only requests. The app saves a draft or fits edits to composition chunks after this response.", inputSchema: z.object({ prompt: z.string().trim().min(1).max(4000) }).strict(), execute: async ({prompt}) => { if (!permissions.lyrics) return {ok:false,message:"Lyrics editing is disabled."}; lyricPrompt=prompt; return {ok:true,message:"Lyric request prepared. The app will generate and save it next."}; } }),
+      request_lyrics: tool({ description: "Request original lyrics or revisions for the active song. Include the user's lyrical requirements and vocal performance descriptions. Explicitly preserve sung words for style-only requests. The app saves a draft or fits edits to composition chunks after this response.", inputSchema: z.object({ prompt: z.string().trim().min(1).max(4000) }).strict(), execute: async ({prompt}) => { if (!permissions.lyrics || !canEditSong(permissions, input.currentFile.name)) return {ok:false,message:"Lyrics editing is disabled for the current song."}; lyricPrompt=prompt; return {ok:true,message:"Lyric request prepared. The app will generate and save it next."}; } }),
       edit_banger_file: tool({
         description: "Revise a known .banger file in place using exact, unique text replacements. Read its latest source from context or a previous successful tool result. Preserves its name and unrelated content; returns compiler errors to repair before applying.",
         inputSchema: z.object({ name: z.string(), edits: z.array(z.object({ oldText: z.string().min(1).max(65536), newText: z.string().max(65536) }).strict()).min(1).max(32) }).strict(),
@@ -120,6 +120,7 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
           try {
             if (!permissions.beat) throw new Error("Beat editing is disabled.");
             abortSignal.throwIfAborted();
+            if (!canEditSong(permissions, name) && !files.has(name)) throw new Error("This song is not selected in Record controls.");
             const existing = knownFiles.get(name);
             if (!existing) throw new Error("Unknown file. Edit a file supplied in project context or create a new one.");
             if (!files.has(name) && files.size >= 4) throw new Error("Only four files can be changed per reply.");
@@ -150,6 +151,7 @@ export async function runBangerAgent(request: ChatRequest, selected: SelectedMod
             abortSignal.throwIfAborted();
             if (!files.has(name) && files.size >= 4) throw new Error("Only four files can be created per reply.");
             if (knownFiles.has(name)) throw new Error("This file already exists. Use edit_banger_file to revise it.");
+            if (!canEditSong(permissions, name, false)) throw new Error("Creating songs is disabled in Record controls.");
             const file = validateGeneratedFile(name, source);
             files.set(file.name, { ...file, operation: "create" });
             knownFiles.set(file.name, file);

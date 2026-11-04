@@ -707,3 +707,14 @@ body:has(.producer-project-dialog[data-state="open"]) { overflow: hidden; }
 .producer-editor-tabs [role="tab"] { height: auto; border-radius: 0; }
 .producer-tabs [role="tab"]::after { display: none; }
 .producer-editor-tabs [aria-selected="true"] { color: #fff; }
+
+.ai-chat-control-panels { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 20px; }
+.ai-chat-control-panels > details { min-width: 0; flex: 1 1 260px; }
+.ai-chat-record-controls fieldset { border: 0; margin: 0; padding: 8px 4px; min-width: 0; }
+.ai-chat-record-controls p { color: var(--producer-dim); margin: 0 0 8px; }
+.ai-chat-record-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.ai-chat-record-songs { display: grid; gap: 10px; max-height: 180px; overflow-y: auto; padding: 4px; }
+.ai-chat-record-songs label, .ai-chat-new-songs { display: flex; align-items: center; gap: 8px; }
+.ai-chat-record-songs label > span { overflow-wrap: anywhere; min-width: 0; }
+.ai-chat-record-songs small { color: var(--producer-dim); margin-left: auto; flex-shrink: 0; }
+.ai-chat-new-songs { margin: 12px 4px 8px; }

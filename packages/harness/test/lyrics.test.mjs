@@ -275,3 +275,18 @@ test('lyric files retain vocal descriptions through agent rewrites and allow exp
  assert.equal(JSON.parse((await workspace.readLyrics(current)).source).plan.chunks[0].vocalStyle,'');
  assert.deepEqual(songStorage.validateDraft({schemaVersion:1,lyrics:'Words',vocalStyle:'Breathy'}),{schemaVersion:1,lyrics:'Words',vocalStyle:'Breathy'});
 });
+
+test('unchecked songs reject both lyric mutation tools without creating revisions', async t => {
+  const { root, workspace } = await fixture(t);
+  const original = (await workspace.readLyrics(current)).source;
+  const model = new MockLanguageModelV4({ doGenerate: [
+    call('read_lyrics', { path: current }),
+    call('write_lyrics', { path: current, source: JSON.stringify(document('Blocked write')) }),
+    call('edit_lyrics', { path: current, search: 'First line', replacement: 'Blocked edit' }),
+    finish(),
+  ] });
+  const result = await new ProjectSession({ workspace, selected: { model, name: 'test' } }).run('Change lyrics.', { permissions: { beat: true, lyrics: true, songs: [], allowNewSongs: true } });
+  assert.deepEqual(result.changedPaths, []);
+  assert.equal((await workspace.readLyrics(current)).source, original);
+  assert.deepEqual(await readdir(join(root, '.banger/history/song/lyrics')), ['lyrics-v001.json']);
+});

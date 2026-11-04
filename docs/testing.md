@@ -137,3 +137,10 @@ checks standalone cover cards and record menus, keyboard and dialog focus,
 persistent native and browser renaming, and asynchronous artwork regeneration
 with fixture provider responses. It also verifies that the previous cover stays
 visible during regeneration and that a concurrent rename survives completion.
+
+Chat Record controls use
+`pnpm --filter @banger/desktop exec electron scripts/smoke-record-controls.mjs`.
+This checks project-wide and song-specific defaults, keyboard selection,
+permissions during a task, blocked writes to unchecked songs, saved selections,
+and narrow layouts. Also run `smoke:chat`, `smoke:workspace`, and
+`smoke-project-chats.mjs` when changing these controls.

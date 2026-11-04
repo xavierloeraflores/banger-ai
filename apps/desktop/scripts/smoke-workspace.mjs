@@ -77,6 +77,8 @@ async function run(window) {
     await click("Open Project");
     assert.equal(await evaluate("Boolean(document.querySelector('#workspace-source, #workspace-prompt, .project-song-advanced'))"), false);
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 120')");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
+    await wait("document.querySelector('#workspace-file')");
     assert.equal(await evaluate("document.querySelector('#workspace-file').value"), "chorus.banger");
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await click("Raw .banger");

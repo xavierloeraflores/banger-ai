@@ -3,7 +3,14 @@ export type ProviderId = typeof PROVIDER_IDS[number];
 export type Credentials = { provider: ProviderId; model: string; key: string; reasoningLevel?: ReasoningLevel };
 export type BangerFile = { name: string; source: string; operation?: "create" | "edit" };
 export type ChatMessage = { role: "user" | "assistant"; content: string };
-export type EditPermissions = { beat: boolean; lyrics: boolean };
+export type EditPermissions = { beat: boolean; lyrics: boolean; songs?: string[]; allowNewSongs?: boolean };
+// Lyrics and drafts share the edit permission of their companion song.
+export function songPath(path: string): string {
+  return path.replace(/\.(?:lyric|draft)\.json$/, ".banger");
+}
+export function canEditSong(permissions: EditPermissions, path: string, existing = true): boolean {
+  return existing ? permissions.songs === undefined || permissions.songs.includes(songPath(path)) : permissions.allowNewSongs !== false;
+}
 export type ChatRequest = {
   permissions?: EditPermissions;
   messages: ChatMessage[];
