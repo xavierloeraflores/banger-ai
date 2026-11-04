@@ -70,3 +70,26 @@ test('new projects stay empty until the first named song is saved', async () => 
   assert.deepEqual(Array.from(await api.list()), ['My first song.banger']);
   assert.equal((await api.read('My first song.banger')).source, music);
 });
+
+test('recent folder identities distinguish equal names and restore the intended project', async () => {
+  const first = directory('Same name');
+  const second = directory('Same name');
+  const window = { showDirectoryPicker: async () => first };
+  const api = browser(window);
+  const a = await api.open();
+  await api.save('song.banger', music, null);
+  window.showDirectoryPicker = async () => second;
+  const b = await api.open();
+  await api.save('song.banger', music.replace('120', '130'), null);
+  assert.notEqual(a.id, b.id);
+  assert.equal((await api.recent()).length, 2);
+  assert.equal((await api.read('song.banger', a.id)).source, music);
+  assert.match((await api.read('song.banger')).source, /130/);
+  assert.equal((await api.restore(a.id)).id, a.id);
+  assert.equal((await api.read('song.banger')).source, music);
+  assert.equal((await api.recent()).length, 2);
+  await api.activate(b.id);
+  assert.match((await api.read('song.banger')).source, /130/);
+  await assert.rejects(api.restore('unknown'), /reconnect/);
+  assert.match((await api.read('song.banger')).source, /130/);
+});

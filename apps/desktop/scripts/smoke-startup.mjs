@@ -99,10 +99,17 @@ export async function smokeStartup(window, directory) {
   await wait(window, "document.querySelector('#producer-source').value === " + JSON.stringify(sample));
   await input('#producer-source', sample + '\n// unsaved');
   await evaluate('void (window.confirm = () => false)');
+  const previousChat = await evaluate("[...document.querySelectorAll('.app-sidebar-chat')].findIndex(button => button.getAttribute('aria-current') === 'true')");
+  const previousChatCount = await evaluate("document.querySelectorAll('.app-sidebar-chat').length");
   let opened = false;
   dialog.showOpenDialog = async () => { opened = true; return { canceled: false, filePaths: [sampleFolder] }; };
   await click(window, 'Open Project');
-  assert.equal(opened, false);
+  assert.equal(opened, true);
+  await wait(window, `document.querySelectorAll('.app-sidebar-chat').length === ${previousChatCount + 1} && document.querySelector('#project-controls')?.getAttribute('data-state') !== 'open'`);
+  await evaluate(`document.querySelectorAll('.app-sidebar-chat')[${previousChat}].click()`);
+  await wait(window, "document.querySelector('#producer-source').value.includes('unsaved')");
+  await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
+  await click(window, 'Project');
   await evaluate("(() => { const s = document.querySelector('#workspace-file'); s.value = 'verse.banger'; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
   assert.match(await evaluate("document.querySelector('#producer-source').value"), /unsaved/);
   await evaluate('void (window.confirm = () => true)');

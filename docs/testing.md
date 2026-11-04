@@ -112,3 +112,10 @@ Vocal style checks use `smoke-music.mjs --vocal-style`, repeated with `--web`.
 They cover applying to all or selected chunks, clearing, free saves, reloads,
 reanalysis and generation. The lyrics-only Full Send smoke also verifies that
 saved vocal descriptions survive subsequent lyric edits and fresh analysis.
+
+Project chats and recent projects use
+`pnpm --filter @banger/desktop exec electron scripts/smoke-project-chats.mjs`.
+This exercises background tasks, project switching, independent chat history,
+draft preservation, cancellation, and restoring chats and recent projects after
+reload. Also run `smoke:chat` and `smoke:workspace` for changes to these flows.
+The hosted workspace isolation test runs in the API integration suite.

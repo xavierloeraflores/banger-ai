@@ -44,12 +44,14 @@ contextBridge.exposeInMainWorld("bangerChatGPT", Object.freeze({
 contextBridge.exposeInMainWorld("bangerWorkspace", Object.freeze({
   open: () => ipcRenderer.invoke("banger:workspace-open"),
   create: (name, source) => ipcRenderer.invoke("banger:workspace-create", name, source),
-  activate: () => ipcRenderer.invoke("banger:workspace-activate"),
+  recent: () => ipcRenderer.invoke("banger:workspace-recent"),
+  restore: id => ipcRenderer.invoke("banger:workspace-restore", id),
+  activate: id => ipcRenderer.invoke("banger:workspace-activate", id),
   list: () => ipcRenderer.invoke("banger:workspace-list"),
-  read: path => ipcRenderer.invoke("banger:workspace-read", path),
+  read: (path, id) => ipcRenderer.invoke("banger:workspace-read", path, id),
   save: (path, source, expectedSource) => ipcRenderer.invoke("banger:workspace-save", path, source, expectedSource),
-  run: (prompt, activeFile, resetHistory, permissions) => ipcRenderer.invoke("banger:workspace-run", prompt, activeFile, resetHistory, permissions),
-  cancel: () => ipcRenderer.invoke("banger:workspace-cancel"),
+  run: (prompt, activeFile, resetHistory, permissions, id, threadId, history) => ipcRenderer.invoke("banger:workspace-run", prompt, activeFile, resetHistory, permissions, id, threadId, history),
+  cancel: id => ipcRenderer.invoke("banger:workspace-cancel", id),
   onEvent: callback => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on("banger:workspace-event", listener);
