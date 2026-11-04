@@ -1,12 +1,17 @@
 {
   "name": "@banger/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Banger music studio for plain-text songs, synthesis, and AI-assisted production",
+  "author": "Xavier Loera Flores",
+  "homepage": "https://github.com/xavierloeraflores/banger-ai",
   "private": true,
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
     "dev": "pnpm compile && node scripts/dev.mjs",
     "build": "pnpm compile && node scripts/copy-assets.mjs",
+    "package": "node scripts/package.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "start": "electron .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -33,6 +38,8 @@
     "@banger/typescript-config": "workspace:*",
     "@types/node": "^22.19.0",
     "electron": "^45.2.1",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
     "eslint": "^9.39.0",
     "typescript": "^5.9.3"
   },
@@ -41,6 +48,7 @@
     "@banger/agent": "workspace:*",
     "@banger/elevenlabs": "workspace:*",
     "@banger/harness": "workspace:*",
+    "encoding": "0.1.13",
     "jose": "^6.2.14"
   }
 }

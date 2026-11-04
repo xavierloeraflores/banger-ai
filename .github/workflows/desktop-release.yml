@@ -1,0 +1,101 @@
+name: Desktop builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_ENV: production
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, platform: mac, arch: arm64 }
+          - { runner: macos-15-intel, platform: mac, arch: x64 }
+          - { runner: windows-2022, platform: win, arch: x64 }
+          - { runner: ubuntu-22.04, platform: linux, arch: x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Reads packageManager from package.json, including its exact pnpm version.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile --prod=false
+      - name: Install Linux smoke-test dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libasound2 libgbm1 libgtk-3-0 libnss3 libfuse2
+      - name: Build installers
+        run: pnpm desktop:dist --${{ matrix.platform }} --${{ matrix.arch }}
+      - name: Launch packaged app
+        if: runner.os != 'Linux'
+        run: pnpm desktop:smoke
+      - name: Launch packaged app with virtual display
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pnpm desktop:smoke
+      - name: Upload installers
+        # Preserve completed installers even if the launch smoke check fails.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Banger-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.blockmap
+
+  release:
+    name: Publish version release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Banger-*
+          merge-multiple: true
+          path: installers
+      - name: Publish installers to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          # Create as a draft so users never see a new release with partial assets.
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Banger $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" installers/* --clobber
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false
+          fi

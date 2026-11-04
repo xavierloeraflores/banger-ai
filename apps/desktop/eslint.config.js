@@ -1,6 +1,7 @@
 import base from "@banger/eslint-config/base";
 
 export default [
+  { ignores: [".packaging/**", "release/**"] },
   ...base,
   {
     files: ["**/*.mjs", "**/*.cjs"],

@@ -73,6 +73,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 
 | Changed area | Additional checks |
 | --- | --- |
+| Desktop packaging and bundled startup | `pnpm desktop:dist`, `pnpm desktop:smoke`, `pnpm --filter @banger/desktop smoke`, `smoke:web`; see [desktop distribution](desktop-distribution.md) |
 | Sequencer and piano roll | `pnpm --filter @banger/desktop smoke:grid`, `smoke:sequencer`, `smoke`, `smoke:web` |
 | Arrangement and mixer | `pnpm --filter @banger/desktop smoke:song`, `smoke:song:web`; `pnpm verify:song` |
 | Audio synthesis and DSP | `pnpm verify:audio` |

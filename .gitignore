@@ -3,6 +3,8 @@ node_modules/
 .turbo/
 .next/
 dist/
+.packaging/
+release/
 out/
 /output/
 *.tsbuildinfo

@@ -28,7 +28,7 @@ pnpm typecheck
 pnpm fullbuild
 ```
 
-`pnpm build` runs workspace builds with the current environment. `pnpm fullbuild` sets `NODE_ENV=production`, including on machines that default to development. Desktop builds emit runnable files in `apps/desktop/dist`; installer packaging is not configured.
+`pnpm build` runs workspace builds with the current environment. `pnpm fullbuild` sets `NODE_ENV=production`, including on machines that default to development. Desktop builds emit runnable files in `apps/desktop/dist`. Run `pnpm desktop:dist` to build native installers in `apps/desktop/release`. See [desktop distribution](docs/desktop-distribution.md) for supported architectures, GitHub Actions downloads, releases, and signing.
 
 After building, use `pnpm --filter @banger/www start` or `pnpm --filter @banger/desktop start`.
 

@@ -5,5 +5,7 @@ packages:
 allowBuilds:
   "@parcel/watcher": true
   electron: true
+  # Squirrel is an unused electron-builder dependency; Windows uses NSIS.
+  electron-winstaller: false
   esbuild: true
   sharp: true
