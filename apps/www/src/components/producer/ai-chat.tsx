@@ -19,9 +19,6 @@ const suggestions = [
   "Write a synth-pop song with an intro, verse, chorus and outro",
   "Make a lo-fi beat at 85 BPM with swung drums and mellow keys chords",
   "Create an ambient piece with sustained pads, bells and reverb",
-  "Make three house variations with bass ducking under the kick",
-  "Add a pluck melody with delay to this project, keeping the drums",
-  "Build tension in this song with a rising filter sweep before the chorus",
 ];
 
 export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onProjectBusy, onProjectFile }: Props) {
@@ -42,7 +39,6 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [targetFile, setTargetFile] = useState<string | null>(null);
-  const [local, setLocal] = useState(false);
   const [connection, setConnection] = useState("Choose a provider in Settings → BYOK");
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -94,7 +90,6 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
       void aiSettingsBridge().load().then(settings => {
         if (!active) return;
         const provider = AI_PROVIDERS.find(item => item.id === settings.activeProvider);
-        setLocal(Boolean(settings.localSelected));
         setConnection(settings.chatgpt?.selected ? `ChatGPT · ${settings.chatgpt.accounts.find(account => account.id === settings.chatgpt?.activeAccountId)?.model ?? "Choose a model"}` : settings.localSelected ? "Muse Glimmer 30B · local" : provider ? `${provider.name} · ${settings.providers[provider.id]?.model || "Choose a model in Settings → BYOK"}` : "Choose a provider in Settings → BYOK");
       }).catch(() => { if (active) setConnection("AI settings unavailable"); });
     };
@@ -254,7 +249,6 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
     </form>
     <div className="ai-chat-footer">
       {projectMode && projectDirty && <p role="status">Save your studio changes before running a project task.</p>}
-      <p>{projectMode ? (local ? "Project files and task history stay on this computer." : "Project files and task history are sent to the selected AI provider.") : local ? "Your current source and recent chat stay on this computer. Muse Glimmer generates files locally." : "Your current source and recent chat are sent to the selected AI provider. Choose a local model or your own key in Settings → BYOK."}</p>
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>
