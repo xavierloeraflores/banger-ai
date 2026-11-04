@@ -5,10 +5,11 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { compileMusic, FACTORY_PATCHES } from '../packages/compiler/dist/index.js';
+import { compileMusic, FACTORY_PATCHES, INSTRUMENT_PATCHES } from '../packages/compiler/dist/index.js';
 import { serveApp } from '../apps/desktop/dist/static-app.js';
 import { enterStudio } from '../apps/desktop/scripts/smoke-startup.mjs';
 
+const soundPatches=[...FACTORY_PATCHES,...Object.values(INSTRUMENT_PATCHES)];
 const web=process.argv.includes('--web');
 const timer=setTimeout(()=>{console.error('Preset smoke timed out');app.exit(1);},120000);
 let server;
@@ -33,7 +34,36 @@ async function run(window) {
     const before=(await program()).tracks[0].steps;
     const selector='[aria-label="lead synth preset"]';
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)}).querySelectorAll('optgroup').length`),5);
-    for(const patch of FACTORY_PATCHES){
+    for(const [name,patch] of Object.entries(INSTRUMENT_PATCHES)){
+      // Begin with an override to prove source selection activates the recipe.
+      await field(selector,'String Ensemble');
+      await field('[aria-label="lead sound"]',name);
+      const track=(await program()).tracks[0];
+      assert.equal(track.source.name,name);
+      assert.equal(track.synth,undefined);
+      assert.equal(track.modular,undefined);
+      assert.deepEqual(track.steps,before,'source selection preserves notes and locks');
+      assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)}).value`),patch.name);
+      assert.equal(Number(await evaluate(`document.querySelector('[aria-label="lead Decay"]').value`)),patch.config.decay);
+      await field('[aria-label="lead Decay"]',.33,'HTMLInputElement');
+      assert.deepEqual((await program()).tracks[0].synth,{...patch.config,decay:.33},'editing starts from the instrument recipe');
+      await click('On');
+      assert.equal((await program()).tracks[0].synth.enabled,false);
+      await click('Off');
+      assert.equal((await program()).tracks[0].synth.enabled,true);
+      await field('[aria-label="lead parameter lock step"]','0');
+      await field('[aria-label="lead Decay"]',.2,'HTMLInputElement');
+      assert.equal((await program()).tracks[0].steps[0].locks.decay,.2);
+      await evaluate(`document.querySelector('[aria-label="Remove Decay lock"]').click()`);
+      await field('[aria-label="lead parameter lock step"]','-1');
+      await click('Modular');await field('[aria-label="lead factory patch"]',patch.name);
+      assert.deepEqual((await program()).tracks[0].modular.config,patch.config);
+      await field('[aria-label="lead sound"]',name);
+      assert.equal((await program()).tracks[0].modular,undefined,'source selection exits modular mode');
+      await click('Preview');
+      await wait('document.querySelector(".sound-status").textContent.includes("Preview playing")');
+    }
+    for(const patch of soundPatches){
       await field(selector,patch.name);
       const track=(await program()).tracks[0];
       assert.deepEqual(track.synth,patch.config,patch.name);
@@ -52,23 +82,23 @@ async function run(window) {
     await field('[aria-label="lead Filter sweep"]',-.5,'HTMLInputElement');
     assert.equal((await program()).tracks[0].steps[0].locks.filterSweep,-.5);
     await click('Clear step locks');await field('[aria-label="lead parameter lock step"]','-1');
-    await click('Modular');await field('[aria-label="lead factory patch"]','String Ensemble');
-    await field('[aria-label="lead patch name"]','My strings','HTMLInputElement');await click('Save patch');
+    await click('Modular');await field('[aria-label="lead factory patch"]','Muted Synth Guitar');
+    await field('[aria-label="lead patch name"]','My guitar','HTMLInputElement');await click('Save patch');
     const saved=await source();
     await click('Project');await click('Save .banger');
     await wait('document.querySelector(".project-file-identity p").textContent.startsWith("Saved")');
     const disk=web?await evaluate('(async()=>{const folder=await window.smokeProjectParent.getDirectoryHandle("Sample Project");return (await (await folder.getFileHandle("night-drive.banger")).getFile()).text();})()'):await readFile(join(folder,'night-drive.banger'),'utf8');
     assert.equal(disk,saved,'project save contains preset and patch library');
-    await evaluate('document.querySelector("#project-controls").close()');
+    await evaluate(`document.querySelector('[aria-label="Close project controls"]').click()`);
     await apply(disk);
-    assert.equal((await program()).tracks[0].modular.name,'My strings');
-    assert.deepEqual((await program()).tracks[0].modular.config,FACTORY_PATCHES.find(p=>p.name==='String Ensemble').config);
-    await click('Clear patch');await field('[aria-label="lead saved patch"]','My strings');
-    assert.equal((await program()).tracks[0].modular.name,'My strings');
-    await click('Synth engine');await field(selector,'Noise Riser');
+    assert.equal((await program()).tracks[0].modular.name,'My guitar');
+    assert.deepEqual((await program()).tracks[0].modular.config,INSTRUMENT_PATCHES['synth/muted-guitar'].config);
+    await click('Clear patch');await field('[aria-label="lead saved patch"]','My guitar');
+    assert.equal((await program()).tracks[0].modular.name,'My guitar');
+    await click('Synth engine');await field(selector,'808 Bass');
     await evaluate('document.querySelector(".sound-design").scrollIntoView({block:"start"})');await delay(100);
     await writeFile(`/tmp/banger-presets-${web?'web':'desktop'}.png`,(await window.webContents.capturePage()).toPNG());
-    console.log(`${web?'Web':'Desktop'} preset smoke passed: all ${FACTORY_PATCHES.length} presets, groups, note/lock preservation, preview cancellation, sweep locks, modular save/load and project disk save/reapply.`);
+    console.log(`${web?'Web':'Desktop'} preset smoke passed: all ${soundPatches.length} presets, six native sources, recipe edits, on/off, locks, modular overrides, groups, note/lock preservation, preview cancellation, sweep locks, modular save/load and project disk save/reapply.`);
   }catch(error){console.error(error);process.exitCode=1;}
   finally{clearTimeout(timer);window.destroy();server?.close();app.exit(process.exitCode??0);}
 }

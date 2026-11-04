@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FACTORY_PATCHES, INIT_SYNTH, SYNTH_RANGES, type MusicTrack, type SynthConfig, type SynthParameter, type SynthPatch } from "@banger/compiler";
+import { FACTORY_PATCHES, INSTRUMENT_PATCHES, trackSynth, INIT_SYNTH, SYNTH_RANGES, type MusicTrack, type SynthConfig, type SynthParameter, type SynthPatch } from "@banger/compiler";
 import { renderWav } from "@banger/engine";
 import { Button, Input, Select } from "@banger/shadcn";
 import "./sound-design.css";
@@ -9,14 +9,23 @@ import "./sound-design.css";
 const waves = [["sine", "Sine", "∿"], ["triangle", "Triangle", "△"], ["sawtooth", "Sawtooth", "⩘"], ["square", "Square", "⊓"]] as const;
 const format = (key: SynthParameter, value: number) => key === "filterDecay" && value === 0 ? "Note length" : ["attack", "decay", "release", "glide", "pitchDecay", "filterDecay"].includes(key) ? `${Math.round(value * 1000)}ms` : key === "resonance" ? value.toFixed(1) : key === "cutoff" ? `${Math.round(value)}Hz` : key.includes("Rate") ? `${value.toFixed(2)}Hz` : ["detune", "unisonDetune"].includes(key) ? `${value.toFixed(0)}c` : key === "pitchEnv" ? `${value.toFixed(0)}st` : key === "fmRatio" ? `${value.toFixed(2)}×` : key === "voices" ? String(value) : `${Math.round(value * 100)}%`;
 const controlStep = (key: SynthParameter) => key === "voices" || key === "cutoff" || key === "pitchEnv" || key.toLowerCase().includes("detune") ? 1 : ["attack", "decay", "release", "glide", "pitchDecay", "filterDecay"].includes(key) ? .001 : .01;
+const soundPatches = [...FACTORY_PATCHES, ...Object.values(INSTRUMENT_PATCHES)];
+const instrumentHints: Record<string, string> = {
+  "808 Bass": "Use C1 to C3 for bass lines. Hold notes for sustain; adjust Glide, Drive and Pitch amount for slides and punch.",
+  Marimba: "Use short notes or chords for warm mallet strikes. Adjust Decay and FM amount for the body and brightness.",
+  Woodblock: "Use short notes for wooden percussion. Adjust Decay, FM ratio and Cutoff to shape the strike.",
+  "Noise Downlifter": "Hold a C4 note for the full downward sweep. Note length controls the sweep duration; Filter sweep controls its direction and depth.",
+  Impact: "Use a C2 note for a low impact. Adjust Noise, Pitch amount and Decay to balance the thump and tail.",
+  "Muted Synth Guitar": "Use short notes or chords for muted strums. Adjust Decay, Cutoff and Drive. This is a synthesized guitar sound.",
+};
 const patchGroups = [
   { name: "Leads and pads", names: ["Synth Brass", "Flute Lead", "Chiptune Lead", "String Ensemble", "Init Saw", "Acid", "S&H Bleeps"] },
-  { name: "Keys and plucks", names: ["Kalimba Pluck", "Acoustic Piano", "Electric Piano", "FM Electric Piano", "FM Bell", "Karplus-ish"] },
-  { name: "Bass", names: ["Sub Bass", "Analog Bass", "Acid Bass", "FM Bass", "Reese Bass", "Pluck Bass"] },
-  { name: "Transitions", names: ["Noise Riser"] },
+  { name: "Keys and plucks", names: ["Kalimba Pluck", "Marimba", "Muted Synth Guitar", "Acoustic Piano", "Electric Piano", "FM Electric Piano", "FM Bell", "Karplus-ish"] },
+  { name: "Bass", names: ["808 Bass", "Sub Bass", "Analog Bass", "Acid Bass", "FM Bass", "Reese Bass", "Pluck Bass"] },
+  { name: "Transitions", names: ["Noise Riser", "Noise Downlifter", "Impact"] },
 ];
-const groupedPatches = [...patchGroups.map(group => ({ name: group.name, patches: FACTORY_PATCHES.filter(patch => group.names.includes(patch.name)) })),
-  { name: "Drums and percussion", patches: FACTORY_PATCHES.filter(patch => !patchGroups.some(group => group.names.includes(patch.name))) }];
+const groupedPatches = [...patchGroups.map(group => ({ name: group.name, patches: soundPatches.filter(patch => group.names.includes(patch.name)) })),
+  { name: "Drums and percussion", patches: soundPatches.filter(patch => !patchGroups.some(group => group.names.includes(patch.name))) }];
 function factoryOptions() { return groupedPatches.map(group => <optgroup key={group.name} label={group.name}>{group.patches.map(patch => <option key={patch.name} value={patch.name}>{patch.name}</option>)}</optgroup>); }
 
 export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange }: { track: MusicTrack; phrase: MusicTrack; disabled: boolean; onChange: (track: MusicTrack) => void; onPhraseChange: (track: MusicTrack) => void }) {
@@ -27,9 +36,10 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
   const patchName = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   const modular = track.modular !== undefined;
-  const config = { ...INIT_SYNTH, ...(track.modular?.config ?? track.synth) };
-  const active = modular ? Boolean(track.modular?.config.enabled) : Boolean(track.synth?.enabled);
-  const selectedPreset = FACTORY_PATCHES.find(patch => Object.entries(patch.config).every(([key, value]) => config[key as keyof SynthConfig] === value))?.name ?? "";
+  const resolvedSynth = trackSynth(track);
+  const config = { ...INIT_SYNTH, ...resolvedSynth };
+  const active = Boolean(resolvedSynth?.enabled);
+  const selectedPreset = soundPatches.find(patch => Object.entries(patch.config).every(([key, value]) => config[key as keyof SynthConfig] === value))?.name ?? "";
   const step = phrase.steps[selectedStep];
   const locks = step?.locks ?? {};
   const effective = { ...config, ...locks };
@@ -62,7 +72,7 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
     try {
       await context.current?.close().catch(() => {});
       const audio = new AudioContext(); context.current = audio; await audio.resume();
-      const midi = step?.kind === "note" ? step.midi : phrase.pianoRoll?.[0]?.midi ?? (track.source.kind === "sound" ? 36 : 60);
+      const midi = step?.kind === "note" ? step.midi : phrase.pianoRoll?.[0]?.midi ?? (track.source.kind === "sound" || selectedPreset === "808 Bass" || selectedPreset === "Impact" ? 36 : 60);
       // Hold slow patches long enough to hear their attack. Apply the selected
       // step's locks to this isolated preview, without changing the project.
       const previewConfig = { ...config, ...step?.locks };
@@ -89,20 +99,21 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
     <legend>Sound design</legend>
     <div className="sound-header"><div className="sound-mode" role="group" aria-label={`${track.name} engine`}><Button variant={!modular ? "primary" : "ghost"} aria-pressed={!modular} onClick={() => { stopPreview(); const next = { ...track }; delete next.modular; onChange(next); }}>Synth engine</Button><Button variant={modular ? "primary" : "ghost"} aria-pressed={modular} onClick={() => { stopPreview(); onChange({ ...track, modular: track.modular ?? null }); }}>Modular</Button></div>
       <Button variant={active ? "primary" : "secondary"} aria-pressed={active} disabled={modular && !track.modular} onClick={() => updateConfig({ ...config, enabled: !active })}>{active ? "On" : "Off"}</Button>
-      {!modular && <Select value={selectedPreset} aria-label={`${track.name} synth preset`} onChange={event => { const patch = FACTORY_PATCHES.find(patch => patch.name === event.target.value); if (patch) loadSynth(patch.config, patch.name); else if (event.target.value === "init") loadSynth(INIT_SYNTH, "Init"); }}><option value="">{track.synth ? "Custom / Init" : "Choose a sound…"}</option><option value="init">Init</option>{factoryOptions()}</Select>}
+      {!modular && <Select value={selectedPreset} aria-label={`${track.name} synth preset`} onChange={event => { const patch = soundPatches.find(patch => patch.name === event.target.value); if (patch) loadSynth(patch.config, patch.name); else if (event.target.value === "init") loadSynth(INIT_SYNTH, "Init"); }}><option value="">{track.synth ? "Custom / Init" : "Choose a sound…"}</option><option value="init">Init</option>{factoryOptions()}</Select>}
       {!modular && <Button variant="ghost" onClick={() => loadSynth(INIT_SYNTH, "Init")}>Reset Init</Button>}
       <Button variant="secondary" disabled={!active || previewing} onClick={() => void preview()}>{previewing ? "Playing…" : modular ? "Preview note" : "Preview"}</Button>
     </div>
     {modular && <div className="sound-modular">
-      <div className="sound-header"><Select value="" aria-label={`${track.name} factory patch`} onChange={event => { const patch = FACTORY_PATCHES.find(patch => patch.name === event.target.value); if (patch) loadPatch(patch); }}><option value="">Factory…</option>{factoryOptions()}</Select>
+      <div className="sound-header"><Select value="" aria-label={`${track.name} factory patch`} onChange={event => { const patch = soundPatches.find(patch => patch.name === event.target.value); if (patch) loadPatch(patch); }}><option value="">Factory…</option>{factoryOptions()}</Select>
         {(track.patchLibrary?.length ?? 0) > 0 && <Select value="" aria-label={`${track.name} saved patch`} onChange={event => { const patch = track.patchLibrary?.find(patch => patch.name === event.target.value); if (patch) loadPatch(patch); }}><option value="">Saved patches…</option>{track.patchLibrary!.map(patch => <option key={patch.name}>{patch.name}</option>)}</Select>}
         <label className="sound-patch-field">Patch name<Input key={track.modular?.name ?? "empty"} ref={patchName} defaultValue={track.modular?.name ?? ""} aria-label={`${track.name} patch name`} maxLength={64} disabled={!track.modular} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); savePatch(); } }} /></label>
         <Button disabled={!track.modular} onClick={savePatch}>Save patch</Button><Button disabled={!track.modular} onClick={() => { stopPreview(); onChange({ ...track, modular: null }); setStatus("Patch cleared. This track is silent."); }}>Clear patch</Button></div>
       {!track.modular ? <div className="sound-empty"><p>No patch loaded. This track is silent.</p><Button onClick={() => loadPatch(FACTORY_PATCHES[0]!)}>Start patching</Button></div> : <p className="sound-patch-name">{track.modular.name}</p>}
-      <details open={!track.modular}><summary>Factory patches</summary><div className="sound-factory">{FACTORY_PATCHES.map(patch => <Button key={patch.name} variant="secondary" onClick={() => loadPatch(patch)}>{patch.name}</Button>)}</div></details>
+      <details open={!track.modular}><summary>Factory patches</summary><div className="sound-factory">{soundPatches.map(patch => <Button key={patch.name} variant="secondary" onClick={() => loadPatch(patch)}>{patch.name}</Button>)}</div></details>
     </div>}
     {(!modular || track.modular) && <>
-      <p className="sound-hint">Factory sounds are synthesized. Use long piano-roll notes for String Ensemble and Noise Riser. Step locks still override the selected sound.</p>
+      <p className="sound-hint">Factory sounds are synthesized. Use long piano-roll notes for String Ensemble, Noise Riser and Noise Downlifter. Step locks still override the selected sound.</p>
+      {instrumentHints[selectedPreset] && <p className="sound-hint">{instrumentHints[selectedPreset]}</p>}
       <div className="sound-header sound-lock-header"><span>VCO → VCF → VCA → OUT</span><label>Edit <Select aria-label={`${track.name} parameter lock step`} value={step ? selectedStep : -1} onChange={event => setSelectedStep(Number(event.target.value))}><option value={-1}>Track sound</option>{phrase.steps.map((item, index) => item && <option key={index} value={index}>Step {index + 1}{Object.keys(item.locks ?? {}).length ? " ◆" : ""}</option>)}</Select></label>{step && <Button variant="ghost" onClick={() => onPhraseChange({ ...phrase, steps: phrase.steps.map((item,index) => { if (index !== selectedStep || !item) return item; const next = {...item}; delete next.locks; return next; }) })}>Clear step locks</Button>}</div>
       <p className="sound-hint">{step ? `Step ${selectedStep + 1}: moving a numeric control adds a lock. ◆ removes that lock. Waveforms and mode buttons edit the track.` : "Choose an active step to lock its numeric controls. Track settings stay unchanged."}</p>
       <div className="sound-columns">
@@ -112,6 +123,6 @@ export function SoundDesign({ track, phrase, disabled, onChange, onPhraseChange 
         <section><h3>Envelope · ADSR</h3><svg className="sound-envelope" viewBox="0 0 300 80" role="img" aria-label="Envelope shape"><path d={`M 0 78 L ${10 + effective.attack * 40} 5 L ${80 + effective.decay * 30} ${78 - effective.sustain * 70} L 240 ${78 - effective.sustain * 70} L ${250 + effective.release * 16} 78`} fill="none" stroke="currentColor" strokeWidth="2" /></svg>{slider("attack", "Attack")}{slider("decay", "Decay")}{slider("sustain", "Sustain")}{slider("release", "Release")}{slider("glide", "Glide")}<h3>Pitch envelope</h3>{slider("pitchEnv", "Pitch amount")}{slider("pitchDecay", "Pitch decay")}<h3>Output</h3>{slider("volume", "Synth volume")}</section>
       </div>
     </>}
-    <p className="sound-status" role="status">{status || (!modular && !track.synth ? "Enable the synth to replace this track’s current instrument." : "")}</p>
+    <p className="sound-status" role="status">{status || (!modular && !resolvedSynth ? "Enable the synth to replace this track’s current instrument." : "")}</p>
   </fieldset>;
 }

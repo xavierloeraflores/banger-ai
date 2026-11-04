@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   compileMusic,
+  INSTRUMENT_PATCHES,
   CompileError,
   serializeMusic,
   programDurationBeats,
@@ -72,6 +73,7 @@ const sounds = [
   ["synth/bell", "Bell"],
   ["synth/organ", "Organ"],
   ["synth/keys", "Keys"],
+  ...Object.entries(INSTRUMENT_PATCHES).map(([source, patch]) => [source, patch.name] as const),
 ] as const;
 const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const noteName = (midi: number) => `${notes[midi % 12]}${Math.floor(midi / 12) - 1}`;
@@ -410,6 +412,12 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
       const nextPattern = { ...pattern, ...convert(pattern) }; if (!instrument) delete nextPattern.pianoRoll; return nextPattern;
     }) };
     if (!instrument) delete next.pianoRoll;
+    // Selecting a recipe must make it audible even after an explicit synth or
+    // modular override. Saved patches and phrase locks belong to the track.
+    if (Object.hasOwn(INSTRUMENT_PATCHES, name)) {
+      delete next.synth;
+      delete next.modular;
+    }
     editTrack(index, next);
   }
 
@@ -510,7 +518,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
               </Select>}
               <Button variant="ghost" aria-label={`Remove ${track.name}`} onClick={() => remove(index)}>Remove track</Button>
             </div>
-            <SoundDesign track={track} phrase={phraseTrack} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
+            <SoundDesign key={track.source.name} track={track} phrase={phraseTrack} disabled={draft || fileBusy} onChange={next => editTrack(index, next)} onPhraseChange={editPhrase} />
           </>,
           effects: <>
             <TrackEffects open track={track} tracks={program.tracks.map(item => item.name)} disabled={draft || fileBusy} onChange={next => editTrack(index, { ...track, ...next })} />
