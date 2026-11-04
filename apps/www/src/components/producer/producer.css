@@ -22,7 +22,7 @@ body { margin: 0; background: #141514; }
 .producer button { cursor: pointer; }
 .producer button:disabled { cursor: not-allowed; }
 .producer :focus-visible { outline: 2px solid var(--producer-lime); outline-offset: 3px; }
-.producer-start { display: grid; place-items: center; padding-block: 32px; }
+.producer-start { display: grid; place-items: center; padding-block: 32px; background: var(--producer-bg) url("./muse-background.png") center / cover no-repeat; }
 .producer-start-card { width: min(100%, 520px); padding: clamp(24px, 5vw, 48px); border: 1px solid var(--producer-border); border-radius: 16px; background: var(--producer-panel); }
 .producer-start-card .producer-wordmark { margin-bottom: 32px; }
 .producer-start-card > p { color: var(--producer-dim); }
