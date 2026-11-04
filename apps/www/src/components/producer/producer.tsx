@@ -208,7 +208,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     id: crypto.randomUUID(), title: "New chat", status: "idle", snapshot: { source, appliedSource, savedSource, fileName, folder: currentFolder, workspaceFile, cloudBinding },
   }]);
   const chatsRef = useRef(chats);
-  const [activeChat, setActiveChat] = useState(startingChat?.id ?? chats[chats.length - 1]!.id);
+  const [activeChat, setActiveChat] = useState(() => startingChat?.id ?? chats[chats.length - 1]!.id);
   const activeChatRef = useRef(activeChat);
   const [chatView, setChatView] = useState(Boolean(initialChatId));
   const switchingChat = useRef(false);
@@ -230,7 +230,6 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     updateChat(activeChat, { snapshot: { revision: sourceRevision, source, appliedSource, savedSource, fileName, folder: currentFolder, workspaceFile, cloudBinding } });
   }, [activeChat, sourceRevision, source, appliedSource, savedSource, fileName, currentFolder, workspaceFile, cloudBinding, updateChat]);
   useEffect(() => {
-    if (!chats.length) return;
     const timer = window.setTimeout(() => {
       try { writeChats(chats); }
       catch { setNotice("Chat history could not be saved on this device. Free some browser storage before closing the app."); }
@@ -262,6 +261,16 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     activeChatRef.current = chat.id; setActiveChat(chat.id);
     setChatView(open);
     if (open) stopPlayback();
+  }
+  function closeChat(id: string) {
+    const chat = chatsRef.current.find(item => item.id === id);
+    if (!chat || chat.status === "running") return;
+    updateChats(previous => previous.filter(item => item.id !== id));
+    if (activeChatRef.current === id) {
+      activeChatRef.current = "";
+      setActiveChat("");
+      setChatView(false);
+    }
   }
   async function selectChat(id: string) {
     if (id === activeChatRef.current) { setChatView(true); stopPlayback(); return; }
@@ -899,7 +908,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         {hasProject && chats.map(chat => {
           const selected = chat.id === activeChat;
           const bound = selected ? snapshot : chat.snapshot;
-          return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected && chatView} initialHistory={chat.history} onUpdate={updateChat} onClose={() => setChatView(false)}
+          return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected && chatView} initialHistory={chat.history} onUpdate={updateChat} onClose={() => closeChat(chat.id)}
             onFullSend={runFullSend} onFullSendCheck={checkFullSend} onLyrics={runLyrics} vocalStudio={vocalStudio} source={bound.source} fileName={bound.fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy}
             onLoad={(file, requestRevision, automatic) => { if (activeChatRef.current === chat.id) loadGeneratedFile(file, requestRevision, automatic); }}
             folderName={bound.folder?.name ?? ""} projectPaths={bound.folder?.paths} projectEpoch={projectEpoch} activeFile={bound.workspaceFile?.path} projectDirty={bound.source !== bound.savedSource}

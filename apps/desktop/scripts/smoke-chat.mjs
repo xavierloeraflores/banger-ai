@@ -68,10 +68,10 @@ async function exercise(window, desktop) {
     await evaluate(`(document.querySelector('.app-sidebar-chat[aria-current="page"]') || [...document.querySelectorAll('.app-sidebar-chat')].at(-1) || document.querySelector('[aria-label="Start a new chat"]')).click()`);
     await waitFor("document.querySelector('#ai-chat-view')");
   };
-  const closeChat = async () => {
+  const leaveChat = async () => {
     if (!await evaluate("Boolean(document.querySelector('#ai-chat-view'))")) return;
     assert.equal(await evaluate(`document.querySelector('[aria-label="Close chat"]').disabled`), false);
-    await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
+    await evaluate(`document.querySelector('[aria-label="Beat Studio"]').click()`);
     await waitFor("!document.querySelector('#ai-chat-view')");
   };
   const newChat = () => evaluate(`document.querySelector('[aria-label="New chat"]').click()`);
@@ -91,7 +91,12 @@ async function exercise(window, desktop) {
   assert.match(await evaluate("document.querySelector('[role=menu]').textContent"), /Add a model/);
   await evaluate("document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}))");
   await waitFor("!document.querySelector('[role=menu]')");
-  await closeChat();
+  await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
+  await waitFor("!document.querySelector('#ai-chat-view') && document.querySelector('.ai-chat-launcher')");
+  assert.equal(await evaluate("document.querySelectorAll('.app-sidebar-chat').length"), 0);
+  await newChat();
+  await waitFor("document.querySelector('#ai-chat-view')");
+  await leaveChat();
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("!document.querySelector('.byok-form fieldset').disabled");
   await input("byok-model", "anthropic/claude-opus-5-5");
@@ -105,7 +110,7 @@ async function exercise(window, desktop) {
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => [input.parentElement.textContent, (input.getAttribute('aria-checked') === 'true')])"), [["Edit beat", true], ["Edit lyrics", false], ["Produce and Add to Library", false]]);
   assert.equal(await evaluate("!!document.querySelector('[aria-label=\"AI editing target\"]')"), false);
   await input("ai-chat-prompt", "Keep this draft");
-  await closeChat();
+  await leaveChat();
   await openChat();
   assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "Keep this draft");
   await openMenu('chat-ai-model');
@@ -192,7 +197,7 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource);
   // Edits made after generation require an explicit decision before loading.
   const newer = `${originalSource}\n// newer manual edit\n`;
-  await closeChat();
+  await leaveChat();
   await click("Raw .banger");
   await input("producer-source", newer);
   await openChat();
@@ -203,7 +208,7 @@ async function exercise(window, desktop) {
   await click("Load in studio");
   await waitFor("document.querySelector('#producer-tempo').value === '105'");
   assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
-  await closeChat();
+  await leaveChat();
   await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
   await waitFor("document.querySelector('#project-controls')?.getAttribute('data-state') === 'open'");
   assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save').disabled"), false);
@@ -233,7 +238,7 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('[aria-label=\"File to edit\"]').value"), "slow-loop.banger");
   // Load the revision, then explicitly target the editor to preserve manual source changes.
   await evaluate("document.querySelectorAll('.ai-chat-file button')[9].click()");
-  await closeChat();
+  await leaveChat();
   await input("producer-source", `${secondRevision}\n// preserve my manual arrangement\n`);
   await openChat();
   await evaluate(`(() => {
@@ -279,7 +284,7 @@ async function exercise(window, desktop) {
   await click("Stop generating");
   await waitFor("document.querySelector('.ai-chat-footer [role=status]')?.textContent.includes('Generation stopped')");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 9);
-  await closeChat();
+  await leaveChat();
   await waitFor("!document.querySelector('.producer-agent-banner') && !document.querySelector('#producer-source').readOnly");
   await openChat();
   await newChat();
@@ -294,7 +299,7 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), beforeReadOnly);
   const readOnlyCalls = desktop ? calls : await evaluate("window.__chatCalls");
   assert.equal((readOnlyCalls.at(-1).tools ?? []).length, 0);
-  await closeChat();
+  await leaveChat();
   await openChat();
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions [role=checkbox]')].map(input => (input.getAttribute('aria-checked') === 'true'))"), [false, false, false]);
   await evaluate("document.querySelectorAll('.ai-chat-permissions [role=checkbox]')[0].click(); document.querySelectorAll('.ai-chat-permissions [role=checkbox]')[1].click()");
