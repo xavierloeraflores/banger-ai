@@ -71,6 +71,41 @@ async function run(window) {
   try {
     await wait("document.querySelector('.producer-start')");
     await setupBrowser();
+    const sidebarGeometry = () => evaluate(`(() => {
+      const rail = document.querySelector('.app-sidebar-rail').getBoundingClientRect();
+      const panel = document.querySelector('.app-sidebar-panel');
+      return { left: rail.left, width: rail.width, top: rail.top, panelVisible: panel.checkVisibility(), contentLeft: document.querySelector('.app-shell-content').getBoundingClientRect().left };
+    })()`);
+    assert.deepEqual(await sidebarGeometry(), { left: 0, width: 64, top: 0, panelVisible: true, contentLeft: 304 });
+    assert.equal(await evaluate("document.querySelector('.app-sidebar-toggle').getAttribute('aria-controls') === document.querySelector('.app-sidebar-panel').id"), true);
+    await evaluate("document.querySelector('.app-sidebar-toggle').click()");
+    await wait("document.querySelector('.app-sidebar-panel').hidden");
+    assert.deepEqual(await sidebarGeometry(), { left: 0, width: 64, top: 0, panelVisible: false, contentLeft: 64 });
+    assert.equal(await evaluate("[...document.querySelectorAll('.app-sidebar-rail button')].filter(button => button.checkVisibility()).length"), 5);
+    await evaluate("document.querySelector('.app-sidebar-rail [aria-label=Settings]').click()");
+    await wait("document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') === 'open'");
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await wait("document.querySelector('#producer-settings-dialog')?.getAttribute('data-state') !== 'open'");
+    await evaluate("document.querySelector('.app-sidebar-toggle').click()");
+    await wait("!document.querySelector('.app-sidebar-panel').hidden");
+    window.setMinimumSize(0, 0); window.setContentSize(390, 844); await delay(100);
+    assert.deepEqual(await sidebarGeometry(), { left: 0, width: 64, top: 0, panelVisible: true, contentLeft: 64 });
+    await writeFile(`/tmp/banger-sidebar-${web ? 'web' : 'desktop'}-mobile.png`, (await window.webContents.capturePage()).toPNG());
+    await evaluate("document.querySelector('.app-sidebar-backdrop').click()");
+    await wait("document.querySelector('.app-sidebar-panel').hidden");
+    assert.equal(await evaluate("document.activeElement === document.querySelector('.app-sidebar-toggle')"), true);
+    window.setContentSize(1380, 980); await delay(100);
+    await evaluate("document.querySelector('.app-sidebar-toggle').click()");
+    await wait("!document.querySelector('.app-sidebar-panel').hidden");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').focus()");
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await wait("document.querySelector('.app-sidebar-panel').hidden");
+    assert.equal(await evaluate("document.activeElement === document.querySelector('.app-sidebar-toggle')"), true);
+    await evaluate("document.querySelector('.app-sidebar-toggle').click()");
+    await wait("!document.querySelector('.app-sidebar-panel').hidden");
+
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Open Library']);
     await writeFile(`/tmp/banger-project-entry-${web ? 'web' : 'desktop'}-start.png`, (await window.webContents.capturePage()).toPNG());
     assert.ok(await evaluate("Boolean(document.querySelector('[aria-label=\"Projects\"] [aria-label=\"Add project\"]'))"));
@@ -120,7 +155,7 @@ async function run(window) {
     for (const destination of ['library', 'beat', 'vocal']) { await chooseView(destination); await wait(`({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === '${destination}'`); }
     assert.equal(await evaluate("document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open'"), false, 'An open project allows switching studios');
     // Songs are available without opening project controls, in both desktop and browser workspaces.
-    await evaluate("document.querySelector('[aria-label=\"Expand sidebar\"]').click()");
+    await evaluate("document.querySelector('[aria-label=\"Expand sidebar\"]')?.click()");
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].map(button => button.dataset.songPath)"), ['entry.banger']);
     await evaluate("document.querySelector('[aria-label=\"Add song\"]').focus(); document.querySelector('[aria-label=\"Add song\"]').click()");
     await wait("document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open'");

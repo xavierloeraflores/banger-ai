@@ -98,7 +98,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; studio: "beat" | "vocal"; chatId?: string } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [requiredStudio, setRequiredStudio] = useState<"beat" | "vocal" | null>(null);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [startDestination, setStartDestination] = useState<AppDestination>("library");
   const startStudio = startDestination === "vocal" ? "vocal" : "beat";
   const [savedChats, setSavedChats] = useState<ProjectChat[]>([]);
