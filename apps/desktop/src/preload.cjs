@@ -87,4 +87,6 @@ contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
 contextBridge.exposeInMainWorld("bangerLibrary", {
   list: () => ipcRenderer.invoke("banger:library-list"),
   read: id => ipcRenderer.invoke("banger:library-read", id),
+  renameRecord: async (id, name) => { const result = await ipcRenderer.invoke("banger:record-rename", id, name); if (!result.ok) throw new Error(result.error); },
+  regenerateArtwork: async id => { const result = await ipcRenderer.invoke("banger:record-regenerate", id); if (!result.ok) throw new Error(result.error); },
 });

@@ -59,12 +59,16 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   const libraryResponse=await accountRequest('/library','POST',{name:'Saved recording',artifactId:upload.id,beat:{name:'song.banger',source:songSource}});assert.equal(libraryResponse.status,201);const libraryEntry=await libraryResponse.json();
   assert.equal((await(await accountRequest('/library')).json()).songs[0].songType,'instrumental');
   const secondLibrary=await(await accountRequest('/library','POST',{name:'Second song',artifactId:upload.id})).json();
+  assert.equal((await accountRequest(`/library/${libraryEntry.recordId}/record`,'PATCH',{name:'  Renamed record  '})).status,200);
+  assert.ok((await(await accountRequest('/library')).json()).songs.every((song:{recordName:string})=>song.recordName==='Renamed record'));
+  for(const name of ['', 'x'.repeat(161)])assert.equal((await accountRequest(`/library/${libraryEntry.recordId}/record`,'PATCH',{name})).status,400);
+
   assert.equal(secondLibrary.recordId,libraryEntry.recordId);
   assert.equal((await accountRequest(`/library/${libraryEntry.recordId}/artwork`)).status,404);
   const cover=Buffer.from('fixture image');
   await db().query('UPDATE library_records SET artwork=$2 WHERE id=$1',[libraryEntry.recordId,`data:image/png;base64,${cover.toString('base64')}`]);
   const covered=(await(await accountRequest('/library')).json()).songs;
-  assert.ok(covered.every((song:{recordId:string;artwork:string})=>song.recordId===libraryEntry.recordId && song.artwork===`/api/library/${libraryEntry.recordId}/artwork`));
+  assert.ok(covered.every((song:{recordId:string;artwork:string})=>song.recordId===libraryEntry.recordId && song.artwork===`/api/library/${libraryEntry.recordId}/artwork?v=0`));
   const imageResponse=await accountRequest(`/library/${libraryEntry.recordId}/artwork`);
   assert.equal(imageResponse.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()),cover);
   assert.equal((await fetch(`${webOrigin}/api/library/${libraryEntry.recordId}/artwork`)).status,401);
@@ -112,6 +116,9 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   assert.equal((await request(`/music/${musicId}`,'GET',undefined,{Authorization:`Bearer ${stranger}`})).status,404);
   assert.equal((await request(`/library/${libraryEntry.id}`,'GET',undefined,{Authorization:`Bearer ${stranger}`})).status,404);
   assert.equal((await request(`/library/${libraryEntry.recordId}/artwork`,'GET',undefined,{Authorization:`Bearer ${stranger}`})).status,404);
+  assert.equal((await request(`/library/${libraryEntry.recordId}/record`,'PATCH',{name:'Stolen'},{Authorization:`Bearer ${stranger}`})).status,404);
+  assert.equal((await request(`/library/${libraryEntry.recordId}/regenerate`,'POST',{provider:'meta',key:'fixture'},{Authorization:`Bearer ${stranger}`})).status,404);
+
   assert.equal((await request(`/artifacts/${upload.id}`,'GET',undefined,{Authorization:`Bearer ${stranger}`})).status,404);
 
 });
