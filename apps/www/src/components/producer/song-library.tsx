@@ -193,7 +193,7 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
     const group = groups.get(id) ?? { id, name: song.recordName ?? song.name, artwork: song.artwork, songs: [] as Song[] };
     group.artwork ??= song.artwork; group.songs.push(song); groups.set(id, group); return groups;
   }, new Map<string, {id:string;name:string;artwork?:string;songs:Song[]}>()).values()];
-  const shuffleButton = <Button variant="secondary" aria-label="Shuffle library" aria-pressed={shuffling} disabled={!songs.length || loading} onClick={toggleShuffle} title={shuffling ? 'Turn off shuffle' : 'Play the entire library in random order'}>
+  const shuffleButton = <Button variant={shuffling ? "primary" : "secondary"} aria-label="Shuffle library" aria-pressed={shuffling} disabled={!songs.length || loading} onClick={toggleShuffle} title={shuffling ? 'Turn off shuffle' : 'Play the entire library in random order'}>
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 6h3c5 0 7 12 12 12h3M17 14l4 4-4 4M3 18h3c2 0 4-2 6-6s4-6 6-6h3M17 2l4 4-4 4" /></svg>
     Shuffle
   </Button>;
