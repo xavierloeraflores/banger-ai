@@ -1,12 +1,14 @@
 import { createLibraryRecords, validRecordId } from './library-records.js';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
-import { lstat, readdir } from 'node:fs/promises';
+import { lstat, readdir, writeFile, rename } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { songStorage } from '@banger/harness';
 
-type Entry = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string };
+type Entry = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; songType: LibrarySongType; projectId?: string; recordPosition?: number; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string };
 type File = { root: string; path: string; kind: Entry['kind'] };
+type Edit = { name?: string; recordId?: string | null; recordPosition?: number; artworkId?: string };
+const writes = new Map<string, Promise<unknown>>();
 const absent = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 async function safeRead(root: string, path: string) {
   const parts = relative(root, path).split(sep);
@@ -21,8 +23,45 @@ async function safeRead(root: string, path: string) {
 }
 export function createSongLibrary(userData: string, records = createLibraryRecords(userData)) {
   let files = new Map<string, File>();
+  let listed = new Map<string, Entry>();
+  async function edits(): Promise<Record<string, Edit>> {
+    return JSON.parse((await songStorage.readRegular(join(userData, 'library-edits.json')).catch(error => { if (absent(error)) return Buffer.from('{}'); throw error; })).toString());
+  }
+  function update(action: (values: Record<string, Edit>) => Promise<void> | void) {
+    const task = (writes.get(userData) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      const values = await edits(); await action(values);
+      const file = join(await songStorage.directory(userData), 'library-edits.json'), temporary = `${file}.${randomUUID()}.tmp`;
+      await writeFile(temporary, JSON.stringify(values), { flag: 'wx', mode: 0o600 }); await rename(temporary, file);
+    });
+    writes.set(userData, task);
+    void task.finally(() => { if (writes.get(userData) === task) writes.delete(userData); }).catch(() => {});
+    return task;
+  }
+  function entry(id: string) {
+    const value = listed.get(id);
+    if (!value) throw new Error('Refresh the library and select the song again.');
+    return value;
+  }
+  function validateName(name: string) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 160) throw new Error('Enter a name from 1 to 160 characters.');
+    return name.trim();
+  }
   return {
     async list(project?: string): Promise<Entry[]> {
+      const overrides = await edits();
+      const projectIds = new Map<string, string>(), projectRoots = new Map<string, string>();
+      const recents: { id: string; root: string }[] = await songStorage.readRegular(join(userData, 'recent-projects.json')).then(bytes => {
+        const value: unknown = JSON.parse(bytes.toString());
+        return Array.isArray(value) ? value.filter(item => typeof item?.id === 'string' && typeof item?.root === 'string') : [];
+      }).catch(() => []);
+      for (const recent of recents) {
+        try {
+          if (!(await lstat(recent.root)).isDirectory()) continue;
+          projectRoots.set(recent.root, recent.id);
+          const identity = JSON.parse((await safeRead(recent.root, join(recent.root, '.banger', 'record.json'))).toString());
+          if (validRecordId(identity.id)) projectIds.set(identity.id, recent.id);
+        } catch { /* A moved or missing project has no open action. */ }
+      }
       const recordCache = new Map<string, ReturnType<typeof records.get>>();
       const entries: Entry[] = [], next = new Map<string, File>();
       async function scan(root: string, folder: string, scope: string, depth = 0) {
@@ -62,12 +101,15 @@ export function createSongLibrary(userData: string, records = createLibraryRecor
           const metadata = await optionalJson('library') as { songType?: unknown; record?: { id?: unknown; name?: unknown } } | undefined;
           const songType = kind === 'beat' ? 'instrumental' : metadata?.songType === 'vocal' || metadata?.songType === 'instrumental'
             ? metadata.songType : librarySongType(await optionalJson('lyric') ?? await optionalJson('lyrics'));
-          const recordId = validRecordId(metadata?.record?.id) ? metadata.record.id : undefined;
-          if (recordId && !recordCache.has(recordId)) recordCache.set(recordId, records.get(recordId).catch(() => undefined));
-          const record = recordId ? await recordCache.get(recordId) : undefined;
+          const originalRecordId = validRecordId(metadata?.record?.id) ? metadata.record.id : undefined;
+          const edit = overrides[id];
+          const recordId = edit?.recordId === null ? undefined : edit?.recordId ?? originalRecordId;
+          const artworkId = recordId ?? edit?.artworkId;
+          if (artworkId && !recordCache.has(artworkId)) recordCache.set(artworkId, records.get(artworkId).catch(() => undefined));
+          const record = artworkId ? await recordCache.get(artworkId) : undefined;
           const recordName = record?.name ?? (typeof metadata?.record?.name === 'string' ? metadata.record.name.slice(0, 160) : name);
-          if (recordId) artwork = record?.artwork;
-          next.set(id, { root, path, kind }); entries.push({ id, name, kind, scope, artwork, songType, recordId, recordName: recordId ? recordName : undefined, artworkPending: Boolean(record?.regenerating && (record.attempts < 3 || record.generating)), artworkError: Boolean(record?.regenerating && record.attempts >= 3 && !record.generating) });
+          if (artworkId) artwork = record?.artwork ?? artwork;
+          next.set(id, { root, path, kind }); entries.push({ id, name: edit?.name ?? name, projectId: (originalRecordId ? projectIds.get(originalRecordId) : undefined) ?? projectRoots.get(root), recordPosition: edit?.recordPosition, kind, scope, artwork, songType, recordId, recordName: recordId ? recordName : undefined, artworkPending: Boolean(record?.regenerating && (record.attempts < 3 || record.generating)), artworkError: Boolean(record?.regenerating && record.attempts >= 3 && !record.generating) });
           if (entries.length > 1000) throw new Error('The library has more than 1,000 songs. Open a smaller project.');
         }
       }
@@ -77,8 +119,41 @@ export function createSongLibrary(userData: string, records = createLibraryRecor
         try { if ((await lstat(hidden)).isDirectory() && !(await lstat(hidden)).isSymbolicLink()) await scan(project, join(hidden, 'library'), 'Project library'); }
         catch (error) { if (!absent(error)) throw error; }
       }
-      files = next;
+      files = next; listed = new Map(entries.map(item => [item.id, item]));
       return entries.sort((a, b) => a.name.localeCompare(b.name));
+    },
+    async renameSong(id: string, name: string) {
+      entry(id); const next = validateName(name);
+      await update(values => { values[id] = { ...values[id], name: next }; });
+    },
+    async addToRecord(id: string, recordId: string, name?: string) {
+      entry(id);
+      if (name !== undefined) await records.ensure({ id: recordId, name: validateName(name) }, { name: validateName(name) });
+      else if (!await records.get(recordId)) throw new Error('Record not found.');
+      await update(values => { values[id] = { ...values[id], recordId, recordPosition: Date.now() }; });
+    },
+    async editRecordSongs(recordId: string, ids: string[]) {
+      if (!await records.get(recordId)) throw new Error('Record not found.');
+      if (!Array.isArray(ids) || ids.length > 1000 || new Set(ids).size !== ids.length) throw new Error('Choose each song once.');
+      ids.forEach(entry);
+      await update(values => {
+        for (const song of listed.values()) {
+          const current = values[song.id]?.recordId === null ? undefined : values[song.id]?.recordId ?? song.recordId;
+          if (current === recordId && !ids.includes(song.id)) values[song.id] = { ...values[song.id], recordId: null, recordPosition: undefined };
+        }
+        ids.forEach((id, index) => { values[id] = { ...values[id], recordId, recordPosition: index }; });
+      });
+    },
+    async regenerateSongArtwork(id: string) {
+      const song = entry(id);
+      let artworkId = '';
+      await update(async values => {
+        artworkId = values[id]?.artworkId ?? randomUUID();
+        await records.ensure({ id: artworkId, name: values[id]?.name ?? song.name }, { name: values[id]?.name ?? song.name }, { artwork: song.artwork, generate: false });
+        values[id] = { ...values[id], artworkId };
+      });
+      await records.rename(artworkId, (await edits())[id]?.name ?? song.name);
+      await records.regenerate(artworkId);
     },
     async read(id: string) {
       const file = files.get(id);

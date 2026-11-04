@@ -137,3 +137,7 @@ checks standalone cover cards and record menus, keyboard and dialog focus,
 persistent native and browser renaming, and asynchronous artwork regeneration
 with fixture provider responses. It also verifies that the previous cover stays
 visible during regeneration and that a concurrent rename survives completion.
+The library options check also covers song menus, record creation and membership,
+removing songs without deleting audio, track ordering, and reopening the original
+project. Native unit tests verify that metadata edits preserve audio, lyrics,
+project links, and concurrent renames.
