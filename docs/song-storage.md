@@ -84,3 +84,28 @@ project switching, MP3 conversion, and library copying, run:
 ```sh
 pnpm --filter @banger/desktop exec electron scripts/smoke-storage.mjs
 ```
+
+## Vocal performance descriptions
+
+Current `.lyric.json` documents and their history revisions store an optional
+`plan.chunks[i].vocalStyle` string, up to 1,000 characters. A pre-composition
+`.draft.json` can store the same field at the top level. For example:
+
+```json
+{"vocalStyle":"Warm, breathy alto, intimate delivery, restrained vibrato."}
+```
+
+Keep the description separate from chunk `text` and `positiveStyles`. Vocal
+Studio can apply a description to every chunk or the selected chunks. Saving
+creates a composition revision without generating audio. An empty description
+clears it; changing it replaces the previous description. Lyric-only edits retain
+it, including full agent document rewrites that omit the field. To clear a style
+through an agent file edit, set it to an empty string explicitly.
+
+The shared ElevenLabs adapter adds the description to each generated chunk's
+`positiveStyles`, avoiding duplicate entries. It retains the separately saved
+field after generation so subsequent edits cannot remove musical styles.
+Full Send and WAV reanalysis transfer descriptions to the fresh composition.
+When chunk boundaries change, each new chunk uses the description from the old
+chunk with the greatest time overlap. A uniform song-wide style applies to all
+new chunks, including any extension of the song.

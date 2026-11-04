@@ -1,5 +1,5 @@
 import { browserStorageKey } from "./browser-account";
-export type LyricDraft = { schemaVersion: 1; lyrics: string };
+export type LyricDraft = { schemaVersion: 1; lyrics: string; vocalStyle?: string };
 export type LibrarySelection = { audio: string; instrumental?: string; lyrics?: string };
 declare global {
   interface Window {

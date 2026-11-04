@@ -84,11 +84,12 @@ export function saveLyrics(song: SongLocation, document: unknown, beforeSave?: (
   return task;
 }
 
-export type LyricDraft = { schemaVersion: 1; lyrics: string };
+export type LyricDraft = { schemaVersion: 1; lyrics: string; vocalStyle?: string };
 export function validateDraft(value: unknown): LyricDraft {
   const draft = value as LyricDraft;
   if (!draft || draft.schemaVersion !== 1 || typeof draft.lyrics !== 'string' || !draft.lyrics.trim() || Buffer.byteLength(draft.lyrics) > 12000 || draft.lyrics.includes('\0')) throw new Error('Use a lyric draft with schemaVersion 1 and nonempty lyrics under 12 KiB.');
-  return { schemaVersion: 1, lyrics: draft.lyrics };
+  if (draft.vocalStyle !== undefined && (typeof draft.vocalStyle !== 'string' || draft.vocalStyle.length > 1000)) throw new Error('Vocal style must be text up to 1,000 characters.');
+  return { schemaVersion: 1, lyrics: draft.lyrics, ...(draft.vocalStyle !== undefined ? { vocalStyle: draft.vocalStyle.trim() } : {}) };
 }
 export async function readDraft(song: SongLocation): Promise<LyricDraft | null> {
   songName(song.name);

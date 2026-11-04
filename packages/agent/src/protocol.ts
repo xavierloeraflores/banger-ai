@@ -16,8 +16,8 @@ export type ChatReply = { lyricPrompt?: string; text: string; files: BangerFile[
 export type ChatOutcome = { ok: true; reply: ChatReply } | { ok: false; error: string };
 export const MAX_CHAT_BODY_BYTES = 256 * 1024;
 
-export type LyricRequest = { prompt: string; chunks: { index: number; text: string; durationMs: number }[] };
-export type LyricEdit = { index: number; lyrics: string };
+export type LyricRequest = { prompt: string; chunks: { index: number; text: string; durationMs: number; vocalStyle?: string }[] };
+export type LyricEdit = { index: number; lyrics: string; vocalStyle?: string };
 export type LyricOutcome = { ok: true; edits: LyricEdit[] } | { ok: false; error: string };
 
 // Conservative capability list: unknown models retain the provider default.

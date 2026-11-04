@@ -1,6 +1,6 @@
 import { ElevenLabsClient, type ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import { Music } from '@elevenlabs/elevenlabs-js/wrapper/music.js';
-import { MUSIC_MODEL, MAX_WAV_BYTES, audioMetadataSchema, type AudioMetadata, planSchema, providerPlanSchema, applyLyrics, lyricsOf, validateIndices, inpaintingPlan, type CompositionPlan, type MusicVersion, type ProviderPlan } from './protocol.js';
+import { MUSIC_MODEL, MAX_WAV_BYTES, audioMetadataSchema, type AudioMetadata, planSchema, providerPlanSchema, providerChunk, applyLyrics, lyricsOf, validateIndices, inpaintingPlan, type CompositionPlan, type MusicVersion, type ProviderPlan } from './protocol.js';
 export * from './protocol.js';
 export class MusicProviderError extends Error {
   constructor(message: string, public uncertain = false) { super(message); }
@@ -75,7 +75,7 @@ export class ElevenMusic implements MusicProvider {
     planSchema.parse(plan);
     validateIndices(plan, indices);
     const generated = await this.call(() => this.client.music.compositionPlan.create({
-      modelId: MUSIC_MODEL, sourceCompositionPlan: structuredClone(plan) as ElevenLabs.CompositionPlan,
+      modelId: MUSIC_MODEL, sourceCompositionPlan: { ...structuredClone(plan), chunks: plan.chunks.map(providerChunk) } as ElevenLabs.CompositionPlan,
       prompt: `Write original lyrics for chunks ${indices.map(index=>index+1).join(', ')}. ${prompt}\nKeep chunk count, order, durations, styles and section names unchanged. Return all chunks in their original order.`,
     }, { maxRetries: 0, timeoutInSeconds: 120 }));
     const proposed=planSchema.parse(generated);
@@ -89,7 +89,7 @@ export class ElevenMusic implements MusicProvider {
     if (!result.songId || !result.audio.length || result.audio.length>MAX_WAV_BYTES) throw new MusicProviderError('ElevenLabs did not return a complete stored song.', true);
     const providerPlan=providerPlanSchema.parse(result.json.compositionPlan);
     if (providerPlan.chunks.length !== version.plan.chunks.length) throw new MusicProviderError('ElevenLabs returned a different chunk structure. The original song is preserved.', true);
-    const plan=planSchema.parse({ ...providerPlan, chunks: providerPlan.chunks.map((chunk,index)=>'text' in chunk ? chunk : structuredClone(version.plan.chunks[index]!)) });
+    const plan=planSchema.parse({ ...providerPlan, chunks: providerPlan.chunks.map((chunk,index)=>'text' in chunk ? { ...chunk, positiveStyles: structuredClone(version.plan.chunks[index]!.positiveStyles), vocalStyle: version.plan.chunks[index]!.vocalStyle } : structuredClone(version.plan.chunks[index]!)) });
     return {songId:result.songId,plan,providerPlan,audio:new Uint8Array(result.audio),audioMetadata:audioMetadataSchema.parse(result.json)};
   }
 }

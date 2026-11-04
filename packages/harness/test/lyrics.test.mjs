@@ -260,3 +260,18 @@ test('agent edits chunk lyrics and cannot recreate the draft once chunks exist',
   assert.equal(await workspace.readLyrics('song.draft.json'), null);
   assert.equal(JSON.parse((await workspace.readLyrics(current)).source).plan.chunks[0].text, 'Chunk line');
 });
+
+test('lyric files retain vocal descriptions through agent rewrites and allow explicit clearing',async t=>{
+ const {workspace}=await fixture(t);
+ let original=(await workspace.readLyrics(current)).source;
+ const styled=document('First line');styled.plan.chunks[0].vocalStyle='Warm alto';
+ await workspace.writeLyrics(current,JSON.stringify(styled),original);
+ original=(await workspace.readLyrics(current)).source;
+ await workspace.writeLyrics(current,JSON.stringify(document('Edited words')),original);
+ const saved=await workspace.readLyrics(current);
+ assert.equal(JSON.parse(saved.source).plan.chunks[0].vocalStyle,'Warm alto');
+ const clear=JSON.parse(saved.source);clear.plan.chunks[0].vocalStyle='';
+ await workspace.writeLyrics(current,JSON.stringify(clear),saved.source);
+ assert.equal(JSON.parse((await workspace.readLyrics(current)).source).plan.chunks[0].vocalStyle,'');
+ assert.deepEqual(songStorage.validateDraft({schemaVersion:1,lyrics:'Words',vocalStyle:'Breathy'}),{schemaVersion:1,lyrics:'Words',vocalStyle:'Breathy'});
+});

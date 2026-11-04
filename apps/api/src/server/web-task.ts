@@ -17,9 +17,9 @@ const inputSchema = z.object({ thread: id, baseRevision: z.number().int().nonneg
 type Sidecar = { path: string; source: string; songPath: string; music?: MusicVersion };
 async function saveLyrics(user: string, project: string, before: MusicVersion, source: string) {
   const document = JSON.parse(source) as MusicVersion;
-  const stripText = (value: MusicVersion) => ({ ...value, plan: { ...value.plan, chunks: value.plan.chunks.map(chunk => ({ ...chunk, text: '' })) } });
+  const stripText = (value: MusicVersion) => ({ ...value, plan: { ...value.plan, chunks: value.plan.chunks.map(chunk => ({ ...chunk, text: '', vocalStyle: '' })) } });
   if (!isDeepStrictEqual(stripText(document), stripText(before))) throw new ApiError(400, 'Lyric edits must preserve the composition timing, styles and audio references.');
-  const action = { operation: 'edit' as const, baseVersion: before.version, edits: document.plan.chunks.map((chunk, index) => ({ index, lyrics: lyricsOf(chunk.text) })) };
+  const action = { operation: 'edit' as const, baseVersion: before.version, edits: document.plan.chunks.map((chunk, index) => ({ index, lyrics: lyricsOf(chunk.text), ...(chunk.vocalStyle !== undefined ? { vocalStyle: chunk.vocalStyle } : {}) })) };
   const { version } = await performMusicAction(() => { throw new Error('A lyric save must not call a provider.'); }, before, action, randomUUID());
   const pathname = `projects/${project}/music/${before.id}/lyrics/${randomUUID()}.json`;
   await projectObjects.write(pathname, JSON.stringify(version), 'application/json');

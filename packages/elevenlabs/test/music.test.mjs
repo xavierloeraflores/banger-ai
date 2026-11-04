@@ -57,7 +57,12 @@ test('actual SDK multipart parsing retains song IDs and binary MP3; inpainting r
   request=JSON.parse(options.body);
   return new globalThis.Response(Buffer.concat([Buffer.from('--fixture\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify(wire)+'\r\n--fixture\r\nContent-Type: audio/mpeg\r\nContent-Disposition: attachment; filename="song.mp3"\r\n\r\n'),audio,Buffer.from('\r\n--fixture--\r\n')]),{headers:{'content-type':'multipart/mixed; boundary=fixture','song-id':'new-song'}});
  }});
- const result=await api.generate(version,[0]);
+ const styledVersion={...version,plan:applyLyrics(plan,[{index:0,vocalStyle:'Warm alto'}])};
+ const result=await api.generate(styledVersion,[0]);
+ assert.deepEqual(request.composition_plan.chunks[0].positive_styles,['piano','quiet','Warm alto']);
+ assert.equal(request.composition_plan.chunks[0].vocal_style,undefined);
+ assert.equal(result.plan.chunks[0].vocalStyle,'Warm alto');
+ assert.deepEqual(result.plan.chunks[0].positiveStyles,['piano','quiet']);
  assert.equal(request.model_id,'music_v2_5');assert.equal(request.store_for_inpainting,true);assert.equal(request.with_timestamps,true);assert.equal(request.with_waveform_visual,true);assert.deepEqual(result.audioMetadata,{wordsTimestamps:[{word:'New',startMs:120,endMs:500}],waveformVisual:[-900,600,0]});assert.deepEqual(request.composition_plan.chunks[1],{song_id:'original-song',range:{start_ms:4000,end_ms:10000}});
  assert.equal(request.composition_plan.chunks[0].condition_strength,'xhigh');
  assert.deepEqual(request.composition_plan.chunks[0].conditioning_ref,{song_id:'original-song',range:{start_ms:0,end_ms:4000}});
@@ -66,6 +71,7 @@ test('actual SDK multipart parsing retains song IDs and binary MP3; inpainting r
  assert.equal(request.composition_plan.chunks[0].condition_strength,'xhigh');
  assert.deepEqual(request.composition_plan.chunks[0].conditioning_ref,{song_id:'original-song',range:{start_ms:0,end_ms:4000}});
  assert.equal(request.composition_plan.chunks[1].song_id,'new-song');
+ assert.deepEqual(request.composition_plan.chunks[0].positive_styles,['piano','quiet','Warm alto']);
 });
 test('WAV validation accepts metadata and rejects truncated or compressed files',async()=>{
  const {validateWav}=await import('../dist/index.js');const {wav}=await import('./fixtures.mjs');const bytes=wav();assert.equal(validateWav(bytes).durationMs,8000);
@@ -92,4 +98,44 @@ test('metadata follows audio through drafts, historical branches, and missing pr
  assert.equal(generated.version.audioMetadata,undefined,'Never label a new recording with old timings');
  const branch=musicActionBase(generated.version,original,{operation:'generate',baseVersion:3,sourceVersion:1,indices:[0]});
  assert.deepEqual(branch.audioMetadata,original.audioMetadata);assert.equal(branch.audioVersion,1);
+});
+
+test('vocal descriptions are replaceable metadata and project into applicable provider chunks only', async()=>{
+ const {performMusicAction,musicActionSchema,vocalStyleEdits}=await import('../dist/index.js');
+ const original={...plan,chunks:plan.chunks.map(chunk=>({...chunk,text:chunk.text+'\n{intimate}'}))};
+ const styled=applyLyrics(original,[{index:0,vocalStyle:'Warm, breathy alto'}]);
+ assert.deepEqual(styled.chunks[0],{...original.chunks[0],vocalStyle:'Warm, breathy alto'});
+ assert.deepEqual(styled.chunks[1],original.chunks[1]);
+ let next=await performMusicAction(()=>{throw new Error('No paid requests');},{...version,plan:styled},musicActionSchema.parse({operation:'edit',baseVersion:1,edits:[{index:0,vocalStyle:'Restrained vibrato'}]}),'style');
+ assert.equal(next.version.audioId,version.audioId);
+ assert.equal(next.version.version,2);
+ assert.deepEqual(next.version.plan.chunks[0].positiveStyles,plan.chunks[0].positiveStyles);
+ const request=inpaintingPlan(next.version,[0]);
+ assert.deepEqual(request.chunks[0].positiveStyles,['piano','quiet','Restrained vibrato']);
+ assert.equal('vocalStyle' in request.chunks[0],false);
+ assert.equal(request.chunks[0].text,original.chunks[0].text);
+ assert.equal(request.chunks[0].conditionStrength,'xhigh');
+ assert.deepEqual(request.chunks[1],{songId:version.songId,range:{startMs:4000,endMs:10000}});
+ assert.equal(applyLyrics(next.version.plan,[{index:0,lyrics:'New words'}]).chunks[0].vocalStyle,'Restrained vibrato');
+ const cleared=applyLyrics(next.version.plan,[{index:0,vocalStyle:''}]);
+ assert.deepEqual(cleared,original);
+ const same=applyLyrics(original,[{index:0,vocalStyle:'piano'}]);
+ assert.deepEqual(inpaintingPlan({...version,plan:same},[0]).chunks[0].positiveStyles,['piano','quiet']);
+ assert.deepEqual(applyLyrics(same,[{index:0,vocalStyle:''}]),original);
+ assert.throws(()=>musicActionSchema.parse({operation:'edit',baseVersion:1,edits:[{index:0,vocalStyle:'x'.repeat(1001)}]}));
+ assert.throws(()=>musicActionSchema.parse({operation:'edit',baseVersion:1,edits:[{index:0}]}));
+ const split={chunks:[{...plan.chunks[0],durationMs:3000},{...plan.chunks[0],durationMs:3000},{...plan.chunks[0],durationMs:4000}]};
+ assert.deepEqual(vocalStyleEdits(styled,split).map(edit=>edit.vocalStyle),['Warm, breathy alto','','']);
+ const all=applyLyrics(original,[{index:0,vocalStyle:'alto'},{index:1,vocalStyle:'alto'}]);
+ assert.deepEqual(vocalStyleEdits(all,split).map(edit=>edit.vocalStyle),['alto','alto','alto']);
+});
+
+test('SDK lyric proposals preserve descriptions and send them separately from sung words',async()=>{
+ const styled=applyLyrics(plan,[{index:0,vocalStyle:'Breathy alto'}]);let request;
+ const api=new ElevenMusic('fixture',{fetch:async(_url,options)=>{request=JSON.parse(options.body);return globalThis.Response.json({chunks:plan.chunks.map(chunk=>({text:chunk.text,duration_ms:chunk.durationMs,positive_styles:['wrong']}))});}});
+ const result=await api.lyrics(styled,'Change a word',[0]);
+ assert.equal(result.chunks[0].vocalStyle,'Breathy alto');
+ assert.deepEqual(result.chunks[0].positiveStyles,plan.chunks[0].positiveStyles);
+ assert.deepEqual(request.source_composition_plan.chunks[0].positive_styles,['piano','quiet','Breathy alto']);
+ assert.equal(request.source_composition_plan.chunks[0].text,plan.chunks[0].text);
 });

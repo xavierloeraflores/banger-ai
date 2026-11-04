@@ -43,6 +43,7 @@ export function validateLyrics(source: string): Record<string, unknown> {
   if (typeof source !== "string" || Buffer.byteLength(source, "utf8") > PROJECT_LIMITS.fileBytes || source.includes("\0")) throw new Error("Lyrics must be UTF-8 JSON under 64 KiB without null characters.");
   const document = JSON.parse(source);
   if (!document || typeof document !== "object" || Array.isArray(document) || !document.plan || !Array.isArray(document.plan.chunks) || !document.plan.chunks.every((chunk: unknown) => chunk && typeof chunk === "object" && "text" in chunk && typeof chunk.text === "string" && !chunk.text.includes("\0"))) throw new Error("Lyrics must contain a plan with chunks of text.");
+  for (const chunk of document.plan.chunks) if (chunk.vocalStyle !== undefined && (typeof chunk.vocalStyle !== "string" || chunk.vocalStyle.length > 1000)) throw new Error("Vocal style must be text up to 1,000 characters.");
   return document;
 }
 
@@ -196,7 +197,9 @@ export class ProjectWorkspace {
       const location = lyricsPath(path);
       if (!location.draft || location.history) throw new Error("Choose a current .draft.json file.");
       await this.read(path.replace(/\.draft\.json$/, ".banger"));
-      const document = validateDraft(JSON.parse(source));
+      const proposed = JSON.parse(source);
+      const prior = expectedSource ? validateDraft(JSON.parse(expectedSource)) : null;
+      const document = validateDraft({ ...proposed, ...(proposed.vocalStyle === undefined && prior?.vocalStyle !== undefined ? { vocalStyle: prior.vocalStyle } : {}) });
       await saveDraft({ root: dirname(absolute), name: location.name }, document, expectedSource === null ? null : validateDraft(JSON.parse(expectedSource)), async () => { signal?.throwIfAborted(); await this.target(path, true, true); });
       return { path, source: JSON.stringify(document, null, 2) + "\n" };
     });
@@ -213,6 +216,10 @@ export class ProjectWorkspace {
       if (location.history) throw new Error("Lyrics history is read-only. Edit the current .lyric.json file instead.");
       if (location.draft) throw new Error("Use write_draft for lyric drafts.");
       const document = validateLyrics(source);
+      if (typeof expectedSource !== "string") throw new Error("The file was not read. Read it before editing.");
+      const prior = validateLyrics(expectedSource) as { plan: { chunks: { vocalStyle?: string }[] } };
+      const chunks = (document.plan as { chunks: { vocalStyle?: string }[] }).chunks;
+      chunks.forEach((chunk, index) => { if (chunk.vocalStyle === undefined && prior.plan.chunks[index]?.vocalStyle !== undefined) chunk.vocalStyle = prior.plan.chunks[index]!.vocalStyle; });
       const formatted = JSON.stringify(document, null, 2) + "\n";
       validateLyrics(formatted);
       await saveLyrics({ root: dirname(absolute), name: location.name }, document, async () => {

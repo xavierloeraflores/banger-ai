@@ -197,10 +197,15 @@ async function run(){
       assert.ok(generatedInputs[0].version.plan.chunks.every(chunk=>chunk.text.includes('Tomorrow brings the light')));
     }
     if(fullSendMode==='lyrics'){
+      await click('Close AI chat');
+      await fill('#vocal-style','Warm alto');await click('Apply to all chunks');await click('Save lyrics & style');
+      await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 4')");
+      await click('Open AI chat');
       await fill('#ai-chat-prompt','Change only the first chunk to Morning brings the light. Leave the second chunk unchanged.');await click('Send');
       await wait("document.querySelectorAll('.ai-chat-turn .ai-chat-answer').length===2 || document.querySelector('.ai-chat-footer [role=alert]')");
       assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"),'');
       assert.equal(provider.calls.generate,2);
+      assert.deepEqual(generatedInputs[1].version.plan.chunks.map(chunk=>chunk.vocalStyle),['Warm alto','Warm alto']);
       assert.ok(generatedInputs[1].version.plan.chunks[0].text.includes('Morning brings the light'));
       assert.ok(generatedInputs[1].version.plan.chunks[1].text.includes('Tomorrow brings the light'));
       assert.equal(await evaluate("document.querySelector('#producer-source').value"),originalSource);
@@ -238,6 +243,38 @@ async function run(){
   assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),1);
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   const id=(await store.list())[0].id;const originalWav=Buffer.from((await store.audio(id,1)).bytes);assert.equal(originalWav.subarray(0,4).toString(),'RIFF');assert.ok((await store.get(id)).beat);assert.deepEqual((await store.get(id)).plan,fixturePlan);
+  if(process.argv.includes('--vocal-style')){
+    const style='Warm, breathy alto, intimate delivery, restrained vibrato.';
+    await fill('#vocal-style',style);await click('Apply to all chunks');
+    assert.equal(provider.calls.generate,0);
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Generate new variation\"]').disabled"),true);
+    await click('Save lyrics & style');await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 2')");
+    await click('Reload composition');
+    await wait(`document.querySelector('[aria-label="Vocal style for chunk 1"]').value===${JSON.stringify(style)}`);
+    assert.deepEqual((await store.get(id)).plan.chunks.map(chunk=>chunk.vocalStyle),[style,style]);
+    await wait("!document.querySelectorAll('.music-chunk-heading [role=checkbox]')[1].disabled");
+    await evaluate("document.querySelectorAll('.music-chunk-heading [role=checkbox]')[1].click()");
+    await wait("document.querySelectorAll('.music-chunk-heading [role=checkbox]')[1].getAttribute('aria-checked')==='false'");
+    await fill('#vocal-style','Bright tenor');await click('Apply to selected chunks');await click('Save lyrics & style');
+    await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 3')");
+    assert.deepEqual((await store.get(id)).plan.chunks.map(chunk=>chunk.vocalStyle),['Bright tenor',style]);
+    await fill('[aria-label="Vocal style for chunk 1"]','');await click('Save lyrics & style');
+    await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 4')");
+    assert.equal((await store.get(id)).plan.chunks[0].vocalStyle,undefined);
+    assert.deepEqual((await store.get(id)).plan.chunks.map(chunk=>chunk.positiveStyles),fixturePlan.chunks.map(chunk=>chunk.positiveStyles));
+    assert.deepEqual(provider.calls,{analyze:1,lyrics:0,generate:0});
+    if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT,(await window.webContents.capturePage()).toPNG());
+    await click('Use studio WAV');
+    await wait(`document.querySelector('[aria-label="Vocal take"]').value!==${JSON.stringify(id)} && document.querySelector('.music-editor-heading').textContent.includes('Composition version 2')`);
+    const reanalyzed=await store.get((await store.list())[0].id);
+    assert.deepEqual(reanalyzed.plan.chunks.map(chunk=>chunk.vocalStyle),[undefined,style]);
+    await click('Generate new variation');await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 3')");
+    assert.deepEqual(generatedInputs.at(-1).version.plan.chunks.map(chunk=>chunk.vocalStyle),[undefined,style]);
+    window.setContentSize(390,844);await delay(200);
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
+    console.log(`${cloud?'Browser':'Desktop'} vocal styles passed: all/selected/clear, free saves, reload, reanalysis, generation.`);
+    return;
+  }
   if(!cloud){
    await click('Project');await wait("document.querySelector('#workspace-file')");
    const originalPath=await evaluate("document.querySelector('#workspace-file').value");
@@ -272,12 +309,12 @@ async function run(){
    await fill(lyricSelector,invalid);
    await wait("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').getAttribute('aria-invalid')==='true'");
    assert.ok(await evaluate("document.querySelector('#music-lyric-help-0[role=alert]').textContent.length>0"));
-   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics').disabled"),true);
+   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics & style').disabled"),true);
    assert.equal((await store.get(id)).version,1);
   }
   await fill(lyricSelector,Array(29).fill('a'.repeat(200)).join('\n'));
   await wait("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').getAttribute('aria-invalid')==='false'");
-  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics').disabled"),false);
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Save lyrics & style').disabled"),false);
   if(!cloud){
    await evaluate('void(window.confirm=()=>false)');
    await click('Project');await fill('#workspace-file','second.banger');await click('Close project controls');
@@ -285,7 +322,7 @@ async function run(){
    assert.equal(await evaluate(`document.querySelector('[aria-label="Lyrics for chunk 1"]').value`),Array(29).fill('a'.repeat(200)).join('\n'));
    await evaluate('void(window.confirm=()=>true)');
   }
-  await fill('[aria-label="Lyrics for chunk 1"]','We write our own tomorrow');await click('Save lyrics');
+  await fill('[aria-label="Lyrics for chunk 1"]','We write our own tomorrow');await click('Save lyrics & style');
   await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 2')");assert.equal(await evaluate("document.querySelector('[aria-label=\"Lyrics for chunk 1\"]').value"),'We write our own tomorrow');
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
