@@ -5,13 +5,13 @@ import { readChats } from './chat-sessions';
 import { generateRecordArtwork, artworkContext, type ArtworkContext } from '@banger/agent';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 
-export type LibraryRecord = { id: string; name: string; prompt?: string };
+export type LibraryRecord = { id: string; name: string; prompt?: string; projectId?: string | null };
 type StoredRecord = LibraryRecord & { context: ArtworkContext; attempts: number; leaseUntil?: number; regenerating?: boolean; artwork?: string };
 export type LibraryBundle = { id: string; name: string; projectId?: string | null; recordPosition?: number; artworkId?: string; recordId?: string; recordName?: string; artworkPending?: boolean; artworkError?: boolean; artwork?: string; songType?: LibrarySongType; wav: ArrayBuffer; files: Record<string, ArrayBuffer | string>; beat?: { name: string; source: string } };
 export function captureLibraryRecord(name: string): LibraryRecord {
   const project = browserProjectIdentity();
   const chat = project ? readChats().find(chat => chat.snapshot.folder?.id === project.id) : undefined;
-  return { id: project?.id ?? crypto.randomUUID(), name: (project?.name ?? name).slice(0,160), prompt: chat?.history?.turns[0]?.prompt ?? chat?.history?.prompt };
+  return { id: project?.id ?? crypto.randomUUID(), projectId: project?.id ?? null, name: (project?.name ?? name).slice(0,160), prompt: chat?.history?.turns[0]?.prompt ?? chat?.history?.prompt };
 }
 function database(key = browserStorageKey('banger-library')): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -66,7 +66,7 @@ export async function saveLibraryBundle(name: string, wav: ArrayBuffer, files: L
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(['songs','records'], 'readwrite');
-      tx.objectStore('songs').add({ id: crypto.randomUUID(), recordId: record.id, projectId: browserProjectIdentity()?.id ?? null, name, wav, files, beat, songType });
+      tx.objectStore('songs').add({ id: crypto.randomUUID(), recordId: record.id, projectId: 'projectId' in record ? record.projectId : record.id, name, wav, files, beat, songType });
       const records = tx.objectStore('records'), existing = records.get(record.id);
       existing.onsuccess = () => { if(!existing.result) records.add({ id: record.id, name: record.name.slice(0,160), attempts: 0, context: artworkContext({ name: record.name, prompt: record.prompt, source: beat?.source, lyrics: typeof files['lyrics.json'] === 'string' ? files['lyrics.json'] : undefined }) }); };
       tx.oncomplete = () => resolve();

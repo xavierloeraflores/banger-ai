@@ -58,14 +58,38 @@ export function SongLibrary({ onBeatChange, onRecordingChange, active = true, si
       if (!cancelled) setProjectIds(new Set(recent.map(project => project.id)));
       if (window.bangerLibrary) {
         const library = window.bangerLibrary;
-        sources.push(library.list().then(items => items.map(item => ({ ...item, storage: 'saved' as const, renameSong: library.renameSong ? (name: string) => library.renameSong!(item.id, name) : undefined, addToRecord: library.addToRecord ? (id: string, name?: string) => library.addToRecord!(item.id, id, name) : undefined, editRecordSongs: item.recordId && library.editRecordSongs ? (ids: string[]) => library.editRecordSongs!(item.recordId!, ids.map(id => id.replace(/^saved:/, ''))) : undefined, regenerateSongArtwork: library.regenerateSongArtwork ? () => library.regenerateSongArtwork!(item.id) : undefined, id: `saved:${item.id}`, recordKey: item.recordId ? `saved:${item.recordId}` : undefined, renameRecord: item.recordId && library.renameRecord ? (name: string) => library.renameRecord!(item.recordId!, name) : undefined, regenerateArtwork: item.recordId && library.regenerateArtwork ? () => library.regenerateArtwork!(item.recordId!) : undefined, load: async () => {
-          const file = await library.read(item.id);
-          if (file.source !== undefined) return { url: await beatUrl(file.source), beat: { name: item.name, source: file.source } };
-          if (!file.bytes) throw new Error('This song has no audio.');
-          return { url: audioUrl(file.bytes, file.contentType), beat: file.beat, lyrics: file.lyrics };
-        } }))));
+        sources.push(library.list().then(items => items.map(item => ({
+          ...item, storage: 'saved' as const, id: `saved:${item.id}`,
+          recordKey: item.recordId ? `saved:${item.recordId}` : undefined,
+          renameSong: library.renameSong ? (name: string) => library.renameSong!(item.id, name) : undefined,
+          addToRecord: library.addToRecord ? (id: string, name?: string) => library.addToRecord!(item.id, id, name) : undefined,
+          editRecordSongs: item.recordId && library.editRecordSongs
+            ? (ids: string[]) => library.editRecordSongs!(item.recordId!, ids.map(id => id.replace(/^saved:/, ''))) : undefined,
+          regenerateSongArtwork: library.regenerateSongArtwork ? () => library.regenerateSongArtwork!(item.id) : undefined,
+          renameRecord: item.recordId && library.renameRecord ? (name: string) => library.renameRecord!(item.recordId!, name) : undefined,
+          regenerateArtwork: item.recordId && library.regenerateArtwork ? () => library.regenerateArtwork!(item.recordId!) : undefined,
+          load: async () => {
+            const file = await library.read(item.id);
+            if (file.source !== undefined) return { url: await beatUrl(file.source), beat: { name: item.name, source: file.source } };
+            if (!file.bytes) throw new Error('This song has no audio.');
+            return { url: audioUrl(file.bytes, file.contentType), beat: file.beat, lyrics: file.lyrics };
+          },
+        }))));
       }
-      sources.push(browserLibrarySongs().then(items => items.map(item => ({ storage: 'browser' as const, projectId: item.projectId ?? undefined, recordPosition: item.recordPosition, renameSong: (name: string) => renameBrowserSong(item.id, name), addToRecord: (id: string, name?: string) => addBrowserSongToRecord(item.id, id, name), editRecordSongs: item.recordId ? (ids: string[]) => editBrowserRecordSongs(item.recordId!, ids) : undefined, regenerateSongArtwork: () => regenerateBrowserSongArtwork(item.id), id: item.id, name: item.name, recordId: item.recordId, recordName: item.recordName, artwork: item.artwork, artworkPending: item.artworkPending, artworkError: item.artworkError, recordKey: item.recordId ? `browser:${item.recordId}` : undefined, renameRecord: item.recordId ? (name: string) => renameBrowserRecord(item.recordId!, name) : undefined, regenerateArtwork: item.recordId ? () => regenerateBrowserArtwork(item.recordId!) : undefined, kind: 'audio' as const, scope: 'Library', songType: item.songType ?? librarySongType(item.files['lyrics.json']), load: async () => ({ url: audioUrl(item.wav), beat: item.beat, lyrics: item.files['lyrics.json'] }) }))));
+      sources.push(browserLibrarySongs().then(items => items.map(item => ({
+        storage: 'browser' as const, id: item.id, name: item.name, kind: 'audio' as const, scope: 'Library',
+        projectId: item.projectId ?? undefined, recordPosition: item.recordPosition,
+        recordId: item.recordId, recordName: item.recordName, recordKey: item.recordId ? `browser:${item.recordId}` : undefined,
+        artwork: item.artwork, artworkPending: item.artworkPending, artworkError: item.artworkError,
+        songType: item.songType ?? librarySongType(item.files['lyrics.json']),
+        renameSong: (name: string) => renameBrowserSong(item.id, name),
+        addToRecord: (id: string, name?: string) => addBrowserSongToRecord(item.id, id, name),
+        editRecordSongs: item.recordId ? (ids: string[]) => editBrowserRecordSongs(item.recordId!, ids) : undefined,
+        regenerateSongArtwork: () => regenerateBrowserSongArtwork(item.id),
+        renameRecord: item.recordId ? (name: string) => renameBrowserRecord(item.recordId!, name) : undefined,
+        regenerateArtwork: item.recordId ? () => regenerateBrowserArtwork(item.recordId!) : undefined,
+        load: async () => ({ url: audioUrl(item.wav), beat: item.beat, lyrics: item.files['lyrics.json'] }),
+      }))));
       const results = await Promise.allSettled(sources);
       if (cancelled) return;
       const items = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
