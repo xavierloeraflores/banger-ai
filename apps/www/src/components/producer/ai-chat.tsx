@@ -45,6 +45,7 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialHistory?.error ?? null);
   const [notice, setNotice] = useState("");
+  const [editedSongPaths, setEditedSongPaths] = useState<string[]>(initialHistory?.editedSongPaths ?? []);
   const [targetFile, setTargetFile] = useState<string | null>(initialHistory?.targetFile ?? null);
   const [connection, setConnection] = useState("Choose a provider in Settings → BYOK");
   const [saving, setSaving] = useState(false);
@@ -62,12 +63,12 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
   }, [prompt, active]);
   useEffect(() => {
     onUpdate(chatId, {
-      history: { prompt, turns, targetFile, permissions, fullSend, error },
+      history: { prompt, turns, targetFile, permissions, fullSend, error, editedSongPaths },
       title: (turns[0]?.prompt ?? pendingPrompt ?? "New chat").slice(0, 70),
       status: busy ? "running" : error ? "error" : turns.length ? "done" : "idle",
       blocksSwitch: busy && (fullSend || (permissions.lyrics && !projectMode)),
     });
-  }, [chatId, onUpdate, prompt, turns, targetFile, permissions, fullSend, pendingPrompt, busy, error, projectMode]);
+  }, [chatId, onUpdate, prompt, turns, targetFile, permissions, fullSend, pendingPrompt, busy, error, projectMode, editedSongPaths]);
   useEffect(() => {
     if (active) input.current?.focus();
     else editsDialog.current?.close();
@@ -93,6 +94,10 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
 
   useEffect(() => window.bangerWorkspace?.onEvent(event => {
     if (!projectRequest.current || (event.projectId && event.projectId !== projectId) || (event.threadId && event.threadId !== chatId)) return;
+    if (event.type === "file-changed" && event.file?.path) {
+      const path = event.file.path;
+      setEditedSongPaths(previous => previous.includes(path) ? previous : [...previous, path]);
+    }
     const text = event.type === "file-changed" ? `Saved ${event.file?.path}`
       : event.type === "tool-start" ? `${event.name}${event.path ? ` · ${event.path}` : ""}`
       : event.type === "tool-result" && !event.ok ? event.error : "";
@@ -148,6 +153,8 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
     setNotice("");
     setProgress("");
     const snapshotRevision = revision;
+    const songPath = selectedTarget ?? activeFile ?? fileName;
+    setEditedSongPaths(previous => previous.includes(songPath) ? previous : [...previous, songPath]);
     if(permissions.lyrics && !permissions.beat && !projectMode) {
       try {
         let answer=await onLyrics(text,controller.signal);
@@ -167,6 +174,10 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
         editsDialog.current?.close();
         const result = await bridge.run(text, snapshot.activeFile, resetProjectHistory.current, permissions, projectId, chatId, turns.slice(-5).flatMap(turn => [{ role: "user" as const, content: turn.prompt }, { role: "assistant" as const, content: turn.reply.text.slice(0, 4000) }]));
         resetProjectHistory.current = false;
+        if (result.ok && result.reply.changedPaths?.length) {
+          const paths = result.reply.changedPaths;
+          setEditedSongPaths(previous => [...new Set([...previous, ...paths])]);
+        }
         if (!result.ok || result.reply.status !== "completed") setError(result.ok ? "The task stopped before completing. Review the saved changes before retrying." : result.error);
         setTurns(previous => [...previous, { prompt: text, revision: snapshotRevision, project: folderName,
           reply: { text: result.ok ? result.reply.text : result.error, files: [], model: connection }, activity: activityRef.current }]);

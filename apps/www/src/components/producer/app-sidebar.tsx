@@ -3,7 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 import "./app-sidebar.css";
 import { useRecentProjects } from "./recent-projects";
-import type { ProjectChat } from "@/lib/chat-sessions";
+import { chatSidebarLabel, type ProjectChat } from "@/lib/chat-sessions";
 import { SettingsMenu } from "./settings-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@banger/shadcn/components/tooltip";
 
@@ -51,14 +51,17 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
       </nav>
       <section className="app-sidebar-chats" aria-label="Chats">
         <div className="app-sidebar-section-heading"><span hidden={!expanded}>Chats</span><button type="button" aria-label="New chat" title="New chat" disabled={!onNewChat} onClick={onNewChat}>+</button></div>
-        {chats.map(chat => <Tooltip key={chat.id}><TooltipTrigger asChild><button type="button" className="app-sidebar-chat" aria-current={chat.id === activeChat ? "page" : undefined} aria-label={`${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}`} title={expanded ? `${chat.title} · ${chat.snapshot.folder?.name ?? chat.snapshot.fileName} · ${chat.status}` : undefined} onClick={() => onChat?.(chat.id)}>
-          <span className="app-chat-indicator" data-status={chat.status} aria-hidden="true">{chat.status === "running" ? "◌" : chat.status === "error" ? "!" : chat.status === "done" ? "✓" : "◇"}</span>
-          <span hidden={!expanded} className="app-chat-label"><span>{chat.title}</span><small>{chat.snapshot.folder?.name ?? chat.snapshot.fileName}</small></span>
-        </button></TooltipTrigger>
-          {!expanded && <TooltipContent className="app-sidebar-tooltip" side="right" sideOffset={12} collisionPadding={12}>
-            <span>{chat.title}</span><small>{chat.snapshot.folder?.name ?? chat.snapshot.fileName}</small>
-          </TooltipContent>}
-        </Tooltip>)}
+        {chats.map(chat => {
+          const { project, songs, label } = chatSidebarLabel(chat);
+          return <Tooltip key={chat.id}><TooltipTrigger asChild><button type="button" className="app-sidebar-chat" aria-current={chat.id === activeChat ? "page" : undefined} aria-label={`${label} · ${chat.status}`} onClick={() => onChat?.(chat.id)}>
+            <span className="app-chat-indicator" data-status={chat.status} aria-hidden="true">{chat.status === "running" ? "◌" : chat.status === "error" ? "!" : chat.status === "done" ? "✓" : "◇"}</span>
+            <span hidden={!expanded} className="app-chat-label"><span>{label}</span></span>
+          </button></TooltipTrigger>
+            <TooltipContent className="app-sidebar-tooltip" side="right" sideOffset={12} collisionPadding={12}>
+              <span>{project}</span>{songs.map(song => <small key={song}>{song}</small>)}
+            </TooltipContent>
+          </Tooltip>;
+        })}
         {!chats.length && expanded && <p>Chats appear when you open a project.</p>}
       </section>
       <section className="app-sidebar-recents" aria-label="Projects">
