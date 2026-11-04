@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react";
 import { Button } from "@banger/shadcn";
 import type { MusicProgram } from "@banger/compiler";
 import { MuseHero } from "./muse-hero";
 import type { PerformanceSnapshot, StageView } from "@banger/stage";
 import "./performance-stage.css";
+
+export const BandStageButton = forwardRef<HTMLButtonElement, ComponentPropsWithoutRef<typeof Button>>(function BandStageButton(props, ref) {
+  return <Button {...props} ref={ref} className="performance-stage-trigger" variant="secondary" aria-haspopup="dialog" aria-controls="performance-stage">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8" /></svg>
+    Band stage
+  </Button>;
+});
 
 interface Props {
   onOpen?: () => void;
@@ -76,10 +83,7 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
     setFailure(null); setStatus("loading"); setOpen(true); dialog.current?.showModal();
   }
   return <>
-    <Button ref={trigger} variant="secondary" onClick={show} aria-haspopup="dialog" aria-controls="performance-stage">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8" /></svg>
-      Band stage
-    </Button>
+    <BandStageButton ref={trigger} onClick={show} />
     <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else { onClose?.(); } }} onClose={() => { setHero(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
         <div><span className="performance-eyebrow">BANGER / LIVE ROOM</span><h2 id="performance-title">Meet your band<span className={playing ? "performance-live playing" : "performance-live"}>{playing ? "LIVE" : "READY"}</span></h2><p id="performance-description">One little performer for every track. Your music brings them to life.</p></div>

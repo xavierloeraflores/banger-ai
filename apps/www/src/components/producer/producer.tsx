@@ -40,7 +40,7 @@ import { DesktopProjectWorkspace } from "./desktop-project-workspace";
 import { AIChat } from "./ai-chat";
 import { ProjectStart } from "./project-start";
 import { SourceEditor } from "./source-editor";
-import { PerformanceStage } from "./performance-stage";
+import { BandStageButton, PerformanceStage } from "./performance-stage";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder, WorkspaceFile } from "@/lib/project-workspace";
 import type { BangerFile } from "@banger/agent/protocol";
@@ -512,6 +512,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
         <div className="producer-file-actions">
+          {studio === "library" && !stageProgram && <BandStageButton disabled title="Select a song with a beat to open the band stage." />}
           {stageProgram && <PerformanceStage program={stageProgram} fileName={beatStudio ? fileName : associatedBeat!.name} heroDisabled={(beatStudio && draft) || fileBusy || workspaceBusy} stopGame={stagePlayback.stop} readPerformance={stagePlayback.readPerformance} playing={stagePlayback.state.playing} starting={stagePlayback.starting} tempo={stagePlayback.state.playing ? stagePlayback.state.tempo ?? stageProgram.tempo : stageProgram.tempo} tracks={stageProgram.tracks.length} error={stagePlayback.error} onPlay={stagePlayback.play} onStop={beatStudio ? stopPlayback : associatedPlayback.stop} onOpen={() => setStageOpen(true)} onClose={() => { setStageOpen(false); if (!beatStudio) associatedPlayback.stop(); }} />}
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
