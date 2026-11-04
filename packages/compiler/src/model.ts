@@ -1,6 +1,6 @@
-import { validateSynth, validateSynthLocks, validatePatch, type SynthConfig, type SynthLocks, type SynthPatch } from './synth.js';
+import { INSTRUMENT_PATCHES, trackSynth, validateSynth, validateSynthLocks, validatePatch, type SynthInstrumentName, type SynthConfig, type SynthLocks, type SynthPatch } from './synth.js';
 export type SoundName = 'drums/kick' | 'drums/snare' | 'drums/hat' | 'drums/clap' | 'drums/tom' | 'drums/open-hat';
-export type InstrumentName = 'synth/bass' | 'synth/pluck' | 'synth/lead' | 'synth/pad' | 'synth/bell' | 'synth/organ' | 'synth/keys';
+export type InstrumentName = 'synth/bass' | 'synth/pluck' | 'synth/lead' | 'synth/pad' | 'synth/bell' | 'synth/organ' | 'synth/keys' | SynthInstrumentName;
 export const STEP_CONDITIONS = ['always', 'fill', 'not-fill', 'first', 'every-2', 'every-4'] as const;
 export type StepCondition = typeof STEP_CONDITIONS[number];
 export interface StepPerformance { velocity?: number; probability?: number; condition?: StepCondition; locks?: SynthLocks }
@@ -59,7 +59,7 @@ export interface MusicProgram {
 }
 export const MUSIC_LIMITS = Object.freeze({ minTempo: 20, maxTempo: 300, tracks: 16, steps: 64, notes: 128, totalNotes: 4096, sourceLength: 65536, patterns: 32, bars: 64, sections: 64, timeline: 128, songBars: 1024, buses: 8, sends: 8, curves: 16, points: 128, expandedEvents: 65536 });
 export const SOUND_NAMES: readonly SoundName[] = ['drums/kick', 'drums/snare', 'drums/hat', 'drums/clap', 'drums/tom', 'drums/open-hat'];
-export const INSTRUMENT_NAMES: readonly InstrumentName[] = ['synth/bass', 'synth/pluck', 'synth/lead', 'synth/pad', 'synth/bell', 'synth/organ', 'synth/keys'];
+export const INSTRUMENT_NAMES: readonly InstrumentName[] = ['synth/bass', 'synth/pluck', 'synth/lead', 'synth/pad', 'synth/bell', 'synth/organ', 'synth/keys', ...Object.keys(INSTRUMENT_PATCHES) as SynthInstrumentName[]];
 export const isTrackName = (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z_][A-Za-z_0-9]{0,63}$/.test(name);
 
 const fail = (message: string): never => { throw new RangeError(message); };
@@ -238,7 +238,7 @@ export function validateMusicProgram(value: unknown): asserts value is MusicProg
     const pattern = resolvePattern(track, patternName);
     const events = pattern.pianoRoll?.length ?? pattern.steps.filter(step => step !== null).length;
     const repetitions = Math.ceil(duration / patternDurationBeats(pattern));
-    const synth = track.modular === null ? undefined : track.modular?.config ?? track.synth;
+    const synth = trackSynth(track);
     if (synth?.enabled) {
       const cost = (locks?: SynthLocks) => 20 + (locks?.voices ?? synth.voices) * 8;
       synthNodes += repetitions * (pattern.pianoRoll ? pattern.pianoRoll.length * cost() : pattern.steps.reduce((sum,step) => sum + (step ? cost(step.locks) : 0),0));

@@ -54,7 +54,7 @@ export class PerformanceScore {
           const list = result.get(event.track.name) ?? [], last = list.at(-1);
           const role = trackRole(event.track, event.step);
           list.push({ event, role, duration: event.duration * (config && !event.sustained ? .85 : 1),
-            sustained: event.sustained || ['flute', 'strings', 'riser'].includes(role),
+            sustained: event.sustained || ['flute', 'strings', 'riser', 'bass808', 'downlifter'].includes(role),
             gestureIndex: last ? last.gestureIndex + Number(last.event.beat !== event.beat) : 0 });
           result.set(event.track.name, list);
         }

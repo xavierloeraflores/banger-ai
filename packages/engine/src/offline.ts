@@ -1,4 +1,4 @@
-import { copyMusicProgram, type MusicProgram } from '@banger/compiler';
+import { copyMusicProgram, trackSynth, type MusicProgram } from '@banger/compiler';
 import { AudioRenderer } from './audio.js';
 import { songDuration } from './events.js';
 import { effectTail } from './graph.js';
@@ -21,7 +21,7 @@ export function encodeWav(buffer: AudioBuffer): ArrayBuffer {
 }
 function tailLength(program: MusicProgram): number {
   // Sum bus tails conservatively, including send chains. Same length for all stems.
-  return Math.max(.7, ...program.tracks.flatMap(track => [track.synth?.release ?? 0, track.modular?.config.release ?? 0, ...[track,...track.patterns ?? []].flatMap(pattern => pattern.steps.map(step => step?.locks?.release ?? 0))]), ...program.tracks.filter(track => track.source.kind === 'sound').map(track => .65 * 2 ** (-Math.min(0, ...(track.automation ?? []).filter(curve => curve.target === 'pitch').flatMap(curve => curve.points.map(point => point.value))) / 12))) + Math.max(0, ...program.tracks.map(track => effectTail(track.effects, track.automation))) + (program.buses ?? []).reduce((sum, bus) => sum + effectTail(bus.effects, bus.automation), 0);
+  return Math.max(.7, ...program.tracks.flatMap(track => [trackSynth(track)?.release ?? 0, ...[track,...track.patterns ?? []].flatMap(pattern => pattern.steps.map(step => step?.locks?.release ?? 0))]), ...program.tracks.filter(track => track.source.kind === 'sound').map(track => .65 * 2 ** (-Math.min(0, ...(track.automation ?? []).filter(curve => curve.target === 'pitch').flatMap(curve => curve.points.map(point => point.value))) / 12))) + Math.max(0, ...program.tracks.map(track => effectTail(track.effects, track.automation))) + (program.buses ?? []).reduce((sum, bus) => sum + effectTail(bus.effects, bus.automation), 0);
 }
 async function render(program: MusicProgram, options: RenderOptions, solo?: string): Promise<RenderedAudio> {
   const sampleRate = options.sampleRate ?? 44100, tailSeconds = options.tailSeconds ?? tailLength(program);

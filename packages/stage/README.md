@@ -38,3 +38,19 @@ matching `.lyrics.json` file. Browser bundles retain the same document in
 `files['lyrics.json']`. This includes `wordsTimestamps` and `waveformVisual` as
 well as the lyric plan, so existing library files need no migration. A later lyric
 draft does not replace the recorded word timings.
+
+The language also provides `synth/808-bass`, `synth/marimba`, `synth/woodblock`,
+`synth/downlifter`, `synth/impact` and `synth/muted-guitar`. Their recipes live in
+`INSTRUMENT_PATCHES`, separate from the existing picker catalog. Muse supplies a
+bass pad controller with a pitch ribbon, wooden bars and resonators with two
+mallets, a slotted woodblock, a descending effects slider, an impact trigger pad,
+and a six-string prop with a muted strum. Muted Synth Guitar is an approximate
+synth voice. No guitar samples or physical string model are used.
+
+Native sources and copied or renamed patches share role detection and audio
+precedence. Step locks, disconnected patches, mute, solo, seeks, loops and stop
+use the same score path as the existing instruments. The new assets are generated
+as Three.js geometry; they need no downloaded textures or samples.
+
+Run `pnpm --filter @banger/desktop exec electron scripts/smoke-synth-stage.mjs --extended`
+for all six native sources, real playback, individual renders and prop replacement.

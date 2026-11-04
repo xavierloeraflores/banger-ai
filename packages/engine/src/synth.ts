@@ -1,4 +1,4 @@
-import { INIT_SYNTH, type SynthConfig } from '@banger/compiler';
+import { INIT_SYNTH, trackSynth, type SynthConfig } from '@banger/compiler';
 import type { MusicEvent } from './events.js';
 const noiseCache = new WeakMap<BaseAudioContext, AudioBuffer[]>();
 function noiseBuffer(context: BaseAudioContext, metal: boolean): AudioBuffer {
@@ -13,7 +13,7 @@ function noiseBuffer(context: BaseAudioContext, metal: boolean): AudioBuffer {
   buffers[index] = buffer; return buffer;
 }
 export function synthForEvent(event: Pick<MusicEvent, 'track' | 'step'>): SynthConfig | null | undefined {
-  const config = event.track.modular === null ? null : event.track.modular?.config ?? event.track.synth;
+  const config = trackSynth(event.track);
   return config ? {...config,...event.step.locks} : config;
 }
 export function synthRelease(event: MusicEvent): number { return synthForEvent(event)?.release ?? 0; }
@@ -61,7 +61,14 @@ export function scheduleSynth(context: BaseAudioContext, input: AudioNode, event
       osc.connect(levelNode).connect(pan);
     }
   }
-  if(config.sub>0&&tone>0) { const sub=oscillator('sine',frequency/2);pitchEnv.connect(sub.detune);allOscillators.push(sub);sub.connect(gain(tone*config.sub)).connect(mix); }
+  if(config.sub>0&&tone>0) {
+    const sub=oscillator('sine',frequency/2);pitchEnv.connect(sub.detune);allOscillators.push(sub);
+    if(config.glide>0&&previousMidi!==undefined) {
+      sub.frequency.setValueAtTime(Math.min(context.sampleRate*.4,440*2**((previousMidi-69)/12))/2,time);
+      sub.frequency.exponentialRampToValueAtTime(frequency/2,time+config.glide);
+    }
+    sub.connect(gain(tone*config.sub)).connect(mix);
+  }
   if(config.noise>0) { const noise=own(context.createBufferSource());noise.buffer=noiseBuffer(context,config.noiseType==='metal');noise.loop=true;sources.push(noise);noise.connect(gain(config.noise)).connect(mix); }
   for(const id of [1,2] as const) {
     const depth=config[`lfo${id}Depth`];if(depth===0)continue;

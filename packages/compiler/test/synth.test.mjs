@@ -38,3 +38,25 @@ test('untrusted synth config, lock indices, scalar ranges and graph budgets are 
   program.sections=[{name:'a',bars:64,tracks:[{track:'lead'}]}];program.timeline=[{section:'a',repeats:16}];assert.throws(()=>validateMusicProgram(program),/render budget/);
   program.tracks[0].synth.enabled=false;assert.doesNotThrow(()=>validateMusicProgram(program));
 });
+
+test('built-in synth instruments round trip with patterns, locks, chords and arrangement', async () => {
+  const { INSTRUMENT_PATCHES, INSTRUMENT_NAMES, BANGER_LANGUAGE_GUIDE, validateSynth } = await import('../dist/index.js');
+  for (const [name, patch] of Object.entries(INSTRUMENT_PATCHES)) {
+    assert.ok(INSTRUMENT_NAMES.includes(name));
+    assert.ok(BANGER_LANGUAGE_GUIDE.includes(name));
+    validateSynth(patch.config);
+    const program = compileMusic(`track part { instrument "${name}"; notes "C2 . G2 ."; lock 0 { drive .2; release .4; }
+      pattern chord { piano { note "C4" start 0 duration 1 velocity .7; note "E4" start 0 duration 1 velocity .6; } }
+    } section a { bars 2; play part chord; } song { play a; }`);
+    assert.equal(program.tracks[0].synth, undefined, 'recipe need not be serialized');
+    assert.deepEqual(compileMusic(serializeMusic(program)), program);
+    assert.ok(!FACTORY_PATCHES.some(item => item.name === patch.name), 'defer picker changes');
+    const dense = compileMusic(`track part { instrument "${name}"; notes "C2 C2 C2 C2"; }`);
+    dense.sections = [{ name: 'long', bars: 64, tracks: [{ track: 'part' }] }];
+    dense.timeline = [{ section: 'long', repeats: 16 }];
+    assert.throws(() => validateMusicProgram(dense), /render budget/);
+    dense.tracks[0].modular = null;
+    assert.doesNotThrow(() => validateMusicProgram(dense));
+  }
+  assert.throws(() => compileMusic('track bad { instrument "synth/guitar"; notes "C4"; }'), /Unknown instrument/);
+});

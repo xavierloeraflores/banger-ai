@@ -95,8 +95,10 @@ Each abbreviated `smoke:*` command in the table uses the same
 release or a change spanning these areas, not for every merge.
 
 `verify-sound.mjs` checks synth controls, preset rendering, chords, release tails,
-and the string, kalimba and riser envelopes. It writes six WAV previews to
+and the string, kalimba and riser envelopes. It also checks the six native synth instruments, their decay and sweep direction,
+and equivalence with explicit synth recipes. It writes twelve WAV previews to
 `banger-preset-demos` under the system temporary directory for listening checks.
+Use `smoke-synth-stage.mjs --extended` for the six new Muse props and animations.
 
 Full Send uses the music fixture smoke with `--full-send-beat`, `--full-send`,
 and `--full-send-both` for beat-only, lyrics-only, and combined edits. Run each

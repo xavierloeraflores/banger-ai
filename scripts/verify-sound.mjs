@@ -67,6 +67,26 @@ try {
       p.tracks[0].pianoRoll=[60,64,67].map(midi=>({midi,start:0,duration:4,velocity:.8}));
       assert(stats((await render(p)).buffer).peak<.99,name+' chord clips');
     }
+    for(const [source,patch] of Object.entries(c.INSTRUMENT_PATCHES)){
+      const p=c.compileMusic('tempo 120; track voice { instrument "'+source+'"; piano { note "'+(source==='synth/808-bass'||source==='synth/impact'?'C2':'C4')+'" start 0 duration 4 velocity .8; } gain .5; }');
+      const result=await render(p),all=stats(result.buffer),early=stats(result.buffer,.02,.08),late=stats(result.buffer,1,1.3);
+      assert(all.rms>1e-4 && all.peak<.99,source+' silent or clipped');
+      if(source==='synth/808-bass')assert(late.rms>early.rms*.2,'808 does not sustain');
+      if(['synth/marimba','synth/woodblock','synth/muted-guitar'].includes(source))assert(late.rms<early.rms*.001,source+' does not decay');
+      if(source==='synth/downlifter'){
+        assert(late.rms<early.rms*.5,'downlifter does not fade');
+        assert(late.brightness<early.brightness*.5,'downlifter does not darken');
+      }
+      if(source==='synth/impact')assert(late.rms<early.rms*.01,'impact does not decay');
+      assert(stats(result.buffer,2+patch.config.release+.01).peak<1e-6,source+' release does not end');
+      presets[patch.name]={...all,early,late};demos.push({name:patch.name,wav:Array.from(new Uint8Array(result.wav))});
+      // Native source defaults and explicit synth patches must render identically.
+      const explicit=structuredClone(p);explicit.tracks[0].source.name='synth/lead';explicit.tracks[0].synth=patch.config;
+      const other=(await render(explicit)).buffer.getChannelData(0),native=result.buffer.getChannelData(0);
+      assert(native.every((value,i)=>Math.abs(value-other[i])<1e-7),source+' bypasses recipe rendering');
+      p.tracks[0].pianoRoll=[60,64,67].map(midi=>({midi,start:0,duration:.5,velocity:.8}));
+      assert(stats((await render(p)).buffer).peak<.99,source+' chord clips');
+    }
     const silent=base();silent.tracks[0].synth={...c.INIT_SYNTH,tone:0,noise:0};assert(energy((await render(silent)).buffer)===0,'oscillator level zero still has tone');
     return {controlChanges:Object.keys(deltas),factories,presets,demos,lockIsolation:true,disabledSilence:true,emptyPatchSilence:true,releaseTail:tail.tailSeconds,saveReopen:true,wavBytes:reference.wav.byteLength};
   })()`);

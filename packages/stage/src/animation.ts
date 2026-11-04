@@ -5,14 +5,17 @@ import { createPercussion, animatePercussion, posePercussion, updatePercussionSt
 import { createMelodicInstrument, animateMelodic } from './melodic.js';
 import { PoseSmoother } from './pose.js';
 import { animatePlayed, createPlayedInstrument } from './played.js';
-import { playedRoles, type PlayedRole } from './roles.js';
+import { animateExtended, createExtendedInstrument } from './extended.js';
+import { extendedRoles, type ExtendedRole, playedRoles, type PlayedRole } from './roles.js';
 
 export function createInstrument(role: PerformanceRole, rig: CharacterRig): Group {
+  if (extendedRoles.includes(role)) return createExtendedInstrument(role as ExtendedRole, rig);
   if (playedRoles.includes(role)) return createPlayedInstrument(role as PlayedRole, rig);
   return role === 'drums' ? createPercussion(rig) : createMelodicInstrument(role as 'bass' | 'keys' | 'dance', rig);
 }
 export function animatePerformer(role: PerformanceRole, rig: CharacterRig, motion: TrackMotion, instrument: Group): void {
-  if (role === 'drums') animatePercussion(rig, motion, instrument);
+  if (extendedRoles.includes(role)) animateExtended(role as ExtendedRole, rig, motion, instrument);
+  else if (role === 'drums') animatePercussion(rig, motion, instrument);
   else if (playedRoles.includes(role)) animatePlayed(role as PlayedRole, rig, motion, instrument);
   else animateMelodic(role as 'bass' | 'keys' | 'dance', rig, motion, instrument);
 }

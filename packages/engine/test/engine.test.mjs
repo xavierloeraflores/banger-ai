@@ -487,3 +487,45 @@ test('holding Fill before Play is honored by the first bar', async t => {
   assert.equal(Context.instances[0].sources.length, 1);
   await player.dispose();
 });
+
+test('native synth sources use recipes, step locks and explicit override precedence', async () => {
+  const { INSTRUMENT_PATCHES } = await import('@banger/compiler');
+  const { synthForEvent } = await import('../dist/synth.js');
+  for (const [name, patch] of Object.entries(INSTRUMENT_PATCHES)) {
+    const program = compileMusic(`track voice { instrument "${name}"; notes "C2 G2"; lock 0 { volume .2; release .7; } }`);
+    const events = eventsForSong(program);
+    assert.deepEqual(synthForEvent(events[0]), { ...patch.config, volume: .2, release: .7 });
+    assert.deepEqual(synthForEvent(events[1]), patch.config, 'locks cannot mutate recipes');
+    const context = new Context(), renderer = new AudioRenderer(context);
+    const rendered = renderer.renderSong(program);
+    assert.ok(context.sources.length > 0);
+    assert.ok(rendered.cleanupAt >= events[1].time + events[1].duration + patch.config.release);
+    rendered.dispose(); renderer.dispose();
+    assert.ok(context.nodes.every(node => node.connections.length === 0));
+    const track = program.tracks[0];
+    track.synth = { ...INIT_SYNTH, volume: .4 };
+    assert.equal(synthForEvent(events[1]).volume, .4);
+    track.modular = { name: 'renamed', config: { ...INIT_SYNTH, volume: .6 } };
+    assert.equal(synthForEvent(events[1]).volume, .6);
+    track.modular = null;
+    assert.equal(synthForEvent(events[1]), null);
+  }
+});
+
+test('808 glide and transient apply to the fundamental and sub together', async () => {
+  const { INSTRUMENT_PATCHES } = await import('@banger/compiler');
+  const config = INSTRUMENT_PATCHES['synth/808-bass'].config;
+  const context = new Context();
+  const result = scheduleSynth(context, context.destination, { time: 1, duration: 2, sustained: true, velocity: 1, step: { kind: 'note', midi: 48 } }, config, 36);
+  const fundamental = result.pitchOscillators[0], sub = result.pitchOscillators.at(-1);
+  assert.equal(fundamental.frequency.events.length, 2);
+  for (let i = 0; i < 2; i++) {
+    near(sub.frequency.events[i].value * 2, fundamental.frequency.events[i].value);
+    near(sub.frequency.events[i].time, fundamental.frequency.events[i].time);
+  }
+  near(sub.frequency.events.at(-1).time, 1 + config.glide);
+  const transient = context.nodes.find(node => node.kind === 'constant');
+  assert.ok(transient.connections.includes(sub.detune));
+  assert.deepEqual(transient.offset.events, [{ value: config.pitchEnv * 100, time: 1 }, { value: 0, time: 1 + config.pitchDecay }]);
+  assert.ok(context.nodes.some(node => node.kind === 'shaper'));
+});

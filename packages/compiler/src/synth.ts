@@ -1,3 +1,5 @@
+import type { MusicTrack } from './model.js';
+
 export type SynthWave = 'sine' | 'triangle' | 'sawtooth' | 'square';
 export type SynthTarget = 'filter' | 'pitch' | 'amp';
 export interface SynthConfig {
@@ -53,6 +55,24 @@ export function validatePatch(patch: SynthPatch): void {
   validateSynth(patch.config);
 }
 const patch = (name: string, config: Partial<SynthConfig>): SynthPatch => ({name, config:{...INIT_SYNTH, attack:.005, decay:.15, sustain:.4, lfo1Depth:0, glide:0, ...config}});
+/** Source recipes are separate from the visible factory browser until its UI update. */
+export const INSTRUMENT_PATCHES = {
+  'synth/808-bass': patch('808 Bass', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:.3,drive:.32,attack:.003,decay:.24,sustain:.78,release:.2,pitchEnv:19,pitchDecay:.045,glide:.12,cutoff:900,filterEnv:0,resonance:0,volume:.55}),
+  'synth/marimba': patch('Marimba', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:0,fm:.1,fmRatio:4,attack:.002,decay:.24,sustain:0,release:.08,cutoff:2400,filterEnv:0,resonance:.1,volume:.7}),
+  'synth/woodblock': patch('Woodblock', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:0,fm:.28,fmRatio:2.7,attack:.001,decay:.075,sustain:0,release:.035,cutoff:2800,filterEnv:0,resonance:.3,volume:.65}),
+  'synth/downlifter': patch('Noise Downlifter', {tone:0,sub:0,noise:1,attack:.003,decay:1.5,sustain:0,release:.18,cutoff:10000,filterEnv:0,filterSweep:-1,resonance:.2,volume:.6}),
+  'synth/impact': patch('Impact', {osc1:'sine',osc2:'sine',mix:0,detune:0,sub:.3,noise:.65,drive:.15,attack:.001,decay:.65,sustain:0,release:.3,pitchEnv:24,pitchDecay:.07,cutoff:3600,filterEnv:0,filterSweep:-.8,resonance:.2,volume:.5}),
+  'synth/muted-guitar': patch('Muted Synth Guitar', {osc1:'triangle',osc2:'sine',mix:.2,detune:0,sub:0,noise:.015,fm:.06,fmRatio:2,drive:.08,attack:.002,decay:.12,sustain:0,release:.045,cutoff:1800,filterEnv:.25,filterDecay:.07,resonance:.2,volume:.6}),
+} satisfies Record<string, SynthPatch>;
+export type SynthInstrumentName = keyof typeof INSTRUMENT_PATCHES;
+
+/** Shared by validation, audio rendering and stage role selection. */
+export function trackSynth(track: Pick<MusicTrack, 'source' | 'synth' | 'modular'>): SynthConfig | null | undefined {
+  if (track.modular === null) return null;
+  return track.modular?.config ?? track.synth ?? (track.source.kind === 'instrument' && Object.hasOwn(INSTRUMENT_PATCHES, track.source.name)
+    ? INSTRUMENT_PATCHES[track.source.name as SynthInstrumentName].config : undefined);
+}
+
 /** Factory recipes named in the supplied modular browser. */
 export const FACTORY_PATCHES: readonly SynthPatch[] = [
   patch('Init Saw',{osc1:'sawtooth',osc2:'sawtooth',mix:0,sub:0,cutoff:10000}),

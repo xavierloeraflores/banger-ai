@@ -6,7 +6,7 @@ export interface Instrument {
 }
 const voice = (type: OscillatorType, ratio = 1, level = 1, detune = 0): Voice => ({ type, ratio, level, detune });
 /** Synthesized locally so every instrument also works offline. */
-export const instruments: Record<InstrumentName, Instrument> = {
+export const instruments: Partial<Record<InstrumentName, Instrument>> = {
   'synth/bass': { attack: .008, release: .05, peak: .45, sustain: .7, gate: .6, voices: [voice('triangle')] },
   'synth/pluck': { attack: .008, release: .05, peak: .55, sustain: .7, gate: .35, voices: [voice('sine')] },
   'synth/lead': { attack: .015, release: .12, peak: .26, sustain: .65, gate: .8, voices: [voice('sawtooth')] },

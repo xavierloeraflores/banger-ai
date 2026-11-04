@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Group, Mesh, Vector3 } from 'three';
-import { FACTORY_PATCHES, compileMusic } from '@banger/compiler';
+import { FACTORY_PATCHES, INSTRUMENT_PATCHES, compileMusic } from '@banger/compiler';
 import { createCharacter } from '../dist/character.js';
 import { createInstrument, animatePerformer, PerformerAnimator } from '../dist/animation.js';
 import { PerformanceScore, trackRole } from '../dist/score.js';
 import { concertLayout } from '../dist/concert.js';
 
-const roles = ['brass', 'flute', 'chiptune', 'strings', 'kalimba', 'riser'];
-const names = ['Synth Brass', 'Flute Lead', 'Chiptune Lead', 'String Ensemble', 'Kalimba Pluck', 'Noise Riser'];
-const patch = name => structuredClone(FACTORY_PATCHES.find(patch => patch.name === name).config);
+const roles = ['brass', 'flute', 'chiptune', 'strings', 'kalimba', 'riser', 'bass808', 'marimba', 'woodblock', 'downlifter', 'impact', 'mutedGuitar'];
+const names = ['Synth Brass', 'Flute Lead', 'Chiptune Lead', 'String Ensemble', 'Kalimba Pluck', 'Noise Riser', ...Object.values(INSTRUMENT_PATCHES).map(patch => patch.name)];
+const patch = name => structuredClone([...FACTORY_PATCHES, ...Object.values(INSTRUMENT_PATCHES)].find(patch => patch.name === name).config);
 const fixture = name => {
   const program = compileMusic('tempo 120; track misleading_name { instrument "synth/bass"; piano { note "C4" start 0 duration 3 velocity .8; note "E4" start 0 duration 1 velocity .7; note "G4" start 1 duration .25 velocity .5; } gain .8; }');
   program.tracks[0].synth = patch(name); return program;
@@ -125,7 +125,7 @@ test('stops blend to idle and frozen clocks reproduce every new playing pose', (
 });
 
 test('valves, keys, bow, thumbs and sweep move with onset age and duration', () => {
-  for (const [role, part, axis] of [['brass', 'valve-0', 'y'], ['chiptune', 'chip-key-0', 'y'], ['strings', 'bow', 'x'], ['kalimba', 'left-thumb', 'z'], ['riser', 'slider', 'z']]) {
+  for (const [role, part, axis] of [['brass', 'valve-0', 'y'], ['chiptune', 'chip-key-0', 'y'], ['strings', 'bow', 'x'], ['kalimba', 'left-thumb', 'z'], ['riser', 'slider', 'z'], ['bass808', 'pitch-cursor', 'z'], ['marimba', 'left-mallet', 'y'], ['woodblock', 'left-mallet', 'y'], ['downlifter', 'slider', 'z'], ['impact', 'impact-pad', 'y'], ['mutedGuitar', 'mute-pad', 'z']]) {
     const rig = createCharacter(), instrument = createInstrument(role, rig);
     rig.resetPose(); animatePerformer(role, rig, note, instrument);
     const start = instrument.getObjectByName(part).position[axis];
@@ -180,5 +180,44 @@ test('a chord sweep keeps the longest voice for its entire duration', () => {
     assert.equal(motion.duration, 1.5);
     assert.equal(motion.midi, 67);
     assert.equal(motion.age, beat / 2);
+  }
+});
+
+
+test('native sources select Muse props without patch metadata and silence disconnects them', () => {
+  Object.keys(INSTRUMENT_PATCHES).forEach((name, index) => {
+    const program = compileMusic(`tempo 120; track part { instrument "${name}"; notes "C4 . G4 ."; }`);
+    const role = roles[index + 6];
+    assert.equal(trackRole(program.tracks[0]), role);
+    const score = new PerformanceScore();
+    const onset = score.sample(snapshot(program, 0))[0];
+    assert.equal(onset.role, role); assert.equal(onset.active, true);
+    assert.equal(score.sample(snapshot(program, 4))[0].age, 0);
+    program.tracks[0].modular = null;
+    assert.equal(new PerformanceScore().sample(snapshot(program, 0))[0].active, false);
+  });
+});
+
+
+test('sweep direction locks change the effects gesture without trusting the patch name', () => {
+  const program = compileMusic('track sweep { instrument "synth/downlifter"; notes "C4 C4"; lock 1 { filterSweep 1; } }');
+  assert.equal(trackRole(program.tracks[0], program.tracks[0].steps[0]), 'downlifter');
+  assert.equal(trackRole(program.tracks[0], program.tracks[0].steps[1]), 'riser');
+});
+
+test('new props remain within mitten reach across the MIDI range', () => {
+  for (const role of roles.slice(6)) {
+    const rig = createCharacter(), instrument = createInstrument(role, rig), anchor = new Group();
+    anchor.add(rig.root, instrument);
+    for (let midi = 0; midi < 128; midi++) {
+      rig.resetPose(); animatePerformer(role, rig, { ...note, midi, gestureIndex: midi % 2 }, instrument);
+      anchor.updateMatrixWorld(true);
+      for (const side of ['left', 'right']) {
+        const hand = rig.sockets[`${side}Hand`].getWorldPosition(new Vector3());
+        const target = instrument.getObjectByName(`${side}-contact`).getWorldPosition(new Vector3());
+        assert.ok(hand.distanceTo(target) < .14, `${role} ${midi} ${side} reach`);
+      }
+    }
+    dispose(instrument); rig.dispose();
   }
 });

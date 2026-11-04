@@ -110,6 +110,7 @@ export class AudioRenderer {
           automatePitch(sample.detune, 0, event.time + sample.buffer.duration * 2 ** (-minimumPitch / 12)); sample.connect(envelope).connect(input); register(sample, envelope);
         } else if (event.step.kind === 'note') {
           const instrument = instruments[event.track.source.name];
+          if (!instrument) throw new RangeError(`No voice for ${event.track.source.name}`);
           const duration = event.sustained ? event.duration : Math.min(event.duration * .85, instrument.gate);
           for (const voice of instrument.voices) {
             const oscillator = context.createOscillator(); oscillator.type = voice.type;
