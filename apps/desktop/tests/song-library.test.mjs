@@ -44,3 +44,19 @@ test('library excludes symbolic links and rechecks directories when reading a pr
   await symlink(join(root, 'moved'), join(root, 'library', 'Dawn'));
   await assert.rejects(library.read(entries[0].id), /symbolic links/);
 });
+
+test('library reads the saved recording metadata and tolerates missing or damaged lyrics', async t => {
+  const { root, library } = await fixture(t);
+  const [entry] = await library.list();
+  const sidecar = join(root, 'library', 'Dawn', 'Dawn.lyrics.json');
+  assert.equal((await library.read(entry.id)).lyrics, undefined);
+  const lyrics = { audioMetadata: { wordsTimestamps: [{ word: 'Dawn', startMs: 500, endMs: 1400 }], waveformVisual: [12, -30] } };
+  await writeFile(sidecar, JSON.stringify(lyrics));
+  assert.deepEqual((await library.read(entry.id)).lyrics, lyrics);
+  await writeFile(sidecar, '{broken');
+  assert.equal((await library.read(entry.id)).lyrics, undefined);
+  assert.deepEqual((await library.read(entry.id)).bytes, wav());
+  await rm(sidecar);
+  await symlink(join(root, 'library', 'Dawn', 'Dawn.banger'), sidecar);
+  await assert.rejects(library.read(entry.id), /symbolic|regular/i);
+});

@@ -107,6 +107,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const [studio, setStudio] = useState<"beat" | "vocal" | "library">("beat");
   const [vocalBeat, setVocalBeat] = useState<BangerFile | null>(null);
   const [libraryBeat, setLibraryBeat] = useState<BangerFile | null>(null);
+  const [singAlongOpen, setSingAlongOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const vocalStudio = studio === "vocal";
   const beatStudio = studio === "beat";
@@ -514,9 +515,14 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <div className="producer-file-actions">
           {studio === "library" && !stageProgram && <BandStageButton disabled title="Select a song with a beat to open the band stage." />}
           {stageProgram && <PerformanceStage program={stageProgram} fileName={beatStudio ? fileName : associatedBeat!.name} heroDisabled={(beatStudio && draft) || fileBusy || workspaceBusy} stopGame={stagePlayback.stop} readPerformance={stagePlayback.readPerformance} playing={stagePlayback.state.playing} starting={stagePlayback.starting} tempo={stagePlayback.state.playing ? stagePlayback.state.tempo ?? stageProgram.tempo : stageProgram.tempo} tracks={stageProgram.tracks.length} error={stagePlayback.error} onPlay={stagePlayback.play} onStop={beatStudio ? stopPlayback : associatedPlayback.stop} onOpen={() => setStageOpen(true)} onClose={() => { setStageOpen(false); if (!beatStudio) associatedPlayback.stop(); }} />}
+          {studio === "library" && <Button variant="secondary" aria-pressed={singAlongOpen} aria-controls="library-sing-along" onClick={() => setSingAlongOpen(value => !value)}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></svg>
+            Sing along
+          </Button>}
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
             stopPlayback();
+            setSingAlongOpen(false);
             setStudio(event.target.value as "beat" | "vocal" | "library");
           }}>
             <option value="vocal">Vocal Studio</option>
@@ -669,7 +675,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <div id="vocal-studio" hidden={!vocalStudio}>
           <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !stageOpen} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
-        {studio === "library" && <SongLibrary active={!stageOpen} onBeatChange={setLibraryBeat} />}
+        {studio === "library" && <SongLibrary active={!stageOpen} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}

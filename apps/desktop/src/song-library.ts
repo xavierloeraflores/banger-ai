@@ -70,7 +70,14 @@ export function createSongLibrary(userData: string) {
       if (file.kind === 'beat') return { source: bytes.toString('utf8') };
       const beatPath = file.path.replace(/\.(wav|mp3)$/i, '.banger');
       const source = await safeRead(file.root, beatPath).catch(error => { if (absent(error)) return undefined; throw error; });
-      return { bytes, contentType: file.path.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav', beat: source ? { name: beatPath.split(sep).pop()!, source: source.toString('utf8') } : undefined };
+      const lyricsPath = file.path.replace(/\.(wav|mp3)$/i, '.lyrics.json');
+      const lyricsBytes = await safeRead(file.root, lyricsPath).catch(error => { if (absent(error)) return undefined; throw error; });
+      // A missing or damaged optional sidecar must not prevent audio playback.
+      let lyrics: unknown;
+      if (lyricsBytes && lyricsBytes.length <= 5 * 1024 * 1024) {
+        try { lyrics = JSON.parse(lyricsBytes.toString('utf8')); } catch { /* Display the missing-timings state. */ }
+      }
+      return { bytes, lyrics, contentType: file.path.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav', beat: source ? { name: beatPath.split(sep).pop()!, source: source.toString('utf8') } : undefined };
     },
   };
 }
