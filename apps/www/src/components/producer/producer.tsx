@@ -93,7 +93,7 @@ function diagnose(cause: unknown) {
 
 export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; studio: "beat" | "vocal"; chatId?: string } | null>(null);
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(true);
   const [requiredStudio, setRequiredStudio] = useState<"beat" | "vocal" | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [startStudio, setStartStudio] = useState<"beat" | "vocal">("beat");

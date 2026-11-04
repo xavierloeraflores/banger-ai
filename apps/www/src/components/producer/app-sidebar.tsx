@@ -9,9 +9,9 @@ import { SettingsMenu } from "./settings-menu";
 export type AppDestination = "beat" | "vocal" | "library";
 
 const destinations = [
+  { id: "library", label: "Library", icon: <><rect x="3" y="4" width="4" height="16" rx="1" /><rect x="10" y="4" width="4" height="16" rx="1" /><path d="m17 4 4 1v15l-4-1z" /></> },
   { id: "beat", label: "Beat Studio", icon: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></> },
   { id: "vocal", label: "Vocal Studio", icon: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> },
-  { id: "library", label: "Library", icon: <><rect x="3" y="4" width="4" height="16" rx="1" /><rect x="10" y="4" width="4" height="16" rx="1" /><path d="m17 4 4 1v15l-4-1z" /></> },
 ] as const;
 
 export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, children }: {
