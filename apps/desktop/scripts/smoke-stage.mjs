@@ -52,6 +52,17 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'mouseWheel', x: 700, y: 400, deltaY: 200, deltaX: 0 });
     await delay(300);
     assert.ok(Math.abs(await cameraDistance() - autoDistance) < .2, 'scroll cannot take over the automatic camera');
+    const cameraShot = () => evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraShot");
+    const shots = new Set([await cameraShot()]);
+    for (let cut = 0; cut < 3; cut++) {
+      const previous = await cameraShot();
+      await wait(`document.querySelector('.performance-viewport canvas').dataset.cameraShot !== ${JSON.stringify(previous)}`, 'automatic shot cut');
+      const shot = await cameraShot();
+      shots.add(shot);
+      await delay(250);
+      await writeFile(`/tmp/banger-band-stage-${shot}.png`, (await window.webContents.capturePage()).toPNG());
+    }
+    assert.deepEqual([...shots].sort(), ['close', 'orbit', 'overhead', 'wide'], 'automatic camera uses every shot style');
     await click('Take control');
     assert.equal(await evaluate("document.querySelector('.performance-viewport canvas').dataset.cameraMode"), 'manual');
     const heldPosition = await cameraPosition();
@@ -121,7 +132,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await click('Band stage');
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '" + trackCount + "'", 'final stage ready');
     assert.deepEqual(graphicsErrors, [], 'No WebGL shader errors');
-    console.log('Band stage smoke passed: idle camera tour, manual hold, zoom buttons, drag orbit, auto resume, still camera, default mode on reopen, mobile camera controls, one performer per track, shared transport, beat progression, stopped pose, still mode, repeated disposal/reopen, focus restoration, mobile layout and Escape.');
+    console.log('Band stage smoke passed: automatic shot cuts, close-ups, overhead sweeps, performer orbits, manual hold, zoom buttons, drag orbit, auto resume, still camera, default mode on reopen, mobile camera controls, one performer per track, shared transport, beat progression, stopped pose, still mode, repeated disposal/reopen, focus restoration, mobile layout and Escape.');
     clearTimeout(timeout);
     if (!keepOpen) app.exit(0);
     else { window.show(); window.focus(); console.log('Leaving band stage open for review.'); }

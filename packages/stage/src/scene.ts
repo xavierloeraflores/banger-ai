@@ -151,9 +151,10 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       const viewZ = (y - 1.8) * sin + (z - center) * cos;
       distance = Math.max(distance, viewZ + Math.max((Math.abs(position.x) + 1.6) / (tangent * camera.aspect), Math.abs(viewY) / tangent));
     }
-    // Leave room for the slow side-to-side tour, including portrait layouts.
+    // Leave room for angled wide shots, including portrait layouts.
     distance *= 1.2;
-    cameraRig.frame(new THREE.Vector3(0, 1.8, center), distance, elevation);
+    cameraRig.frame(new THREE.Vector3(0, 1.8, center), distance, elevation,
+      positions.map(position => new THREE.Vector3(position.x, position.y + 1.6, position.z)));
     controls.maxDistance = Math.max(140, distance * 2);
   }
   function clearCameraInertia() {
@@ -199,6 +200,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       scenery.update(time, signals, performers.map(performer => performer.target));
       if (cameraRig.manual) controls.update();
       cameraRig.update(delta);
+      renderer.domElement.dataset.cameraShot = cameraRig.shotName;
       renderer.domElement.dataset.cameraPosition = camera.position.toArray().map(value => value.toFixed(5)).join(',');
       renderer.domElement.dataset.cameraDistance = camera.position.distanceTo(controls.target).toFixed(5);
       renderer.domElement.dataset.concert = 'true';
