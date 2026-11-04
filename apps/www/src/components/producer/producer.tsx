@@ -40,7 +40,7 @@ import { TrackEffects } from "./track-effects";
 import { PianoRoll } from "./piano-roll";
 import { TrackEditorTabs, type TrackEditorTab } from "./track-editor-tabs";
 import { usePlayer } from "./use-player";
-import { DesktopProjectWorkspace } from "./desktop-project-workspace";
+import { AddSongDialog, useProjectSongs } from "./project-songs";
 import type { FullSend } from "@/lib/full-send";
 import { readChats, writeChats, type ProjectChat, type ChatSnapshot } from "@/lib/chat-sessions";
 import { FirstSongDialog } from "./first-song-dialog";
@@ -143,14 +143,14 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   const initialFile = initialSnapshot ? { name: initialSnapshot.fileName, source: initialSnapshot.source } : openedFile;
   const initialFolder = initialSnapshot?.folder ?? openedFolder;
   const projectDialog = useRef<ModalHandle>(null);
-  const projectTrigger = useRef<HTMLButtonElement>(null);
+  const songDialog = useRef<ModalHandle>(null);
   const [libraryActionsTarget, setLibraryActionsTarget] = useState<HTMLDivElement | null>(null);
   const [vocalExportTarget, setVocalExportTarget] = useState<HTMLDivElement | null>(null);
   const [projectEpoch, setProjectEpoch] = useState(0);
   const [currentFolder, setCurrentFolder] = useState(initialFolder);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(initialSnapshot ? initialSnapshot.workspaceFile : initialFolder?.file ?? null);
-  function showProjects(trigger?: HTMLButtonElement) { if (trigger) projectTrigger.current = trigger; if (!hasProject) { onRequireProject("beat"); return; } projectDialog.current?.showModal(); }
+  function showProjects() { if (!hasProject) { onRequireProject("beat"); return; } projectDialog.current?.showModal(); }
   const lyricAgent=useRef<LyricAgent|null>(null);
   const setLyricAgent=useCallback((agent:LyricAgent|null)=>{lyricAgent.current=agent;},[]);
   const runFullSend=useCallback<FullSend>((input,signal,progress)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");return lyricAgent.current.fullSend(input,signal,progress);},[]);
@@ -249,7 +249,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   const agentEditing = isSongAgentEditing(chats, snapshot, activeChat);
   const editingDisabled = draft || fileBusy || agentEditing;
   function canSwitchChat() {
-    if (filePending.current || switchingChat.current) return false;
+    if (filePending.current || switchingChat.current || workspaceBusy) return false;
     if (chatsRef.current.some(chat => chat.blocksSwitch) || vocalEdits.busy || vocalEdits.dirty) {
       setNotice("Finish or stop the vocal operation and save lyric edits before switching projects. Beat tasks can keep running in the background.");
       return false;
@@ -313,6 +313,16 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
     catch (cause) { setNotice(message(cause)); }
     finally { switchingChat.current = false; setFileBusy(false); }
   }
+  const projectSongs = useProjectSongs({
+    folder: cloudBinding ? undefined : currentFolder, savedFile: workspaceFile,
+    busy: fileBusy || workspaceBusy || projectRunning || vocalEdits.busy,
+    canReplace: canReplaceSong, onBusyChange: setWorkspaceBusy, onError: setNotice,
+    onLoad: file => {
+      loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
+      setWorkspaceFile(file); setCloudBinding(null); setProjectName(currentFolder?.name ?? "");
+      setChatView(false); if (studio === "library") setStudio("beat");
+    },
+  });
   const audibleProgram = useMemo(() => previewSection && program.sections?.some(section => section.name === previewSection)
     ? { ...program, chainEnabled: true, timeline: [{ section: previewSection }] } : program, [program, previewSection]);
   const playback = usePlayer(audibleProgram);
@@ -740,7 +750,14 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   }
 
   return (
-    <AppShell onAddProject={showProjects} chats={hasProject ? chats : []} activeChat={chatView ? activeChat : undefined} onChat={id => void selectChat(id)} onNewChat={hasProject ? () => { if (canSwitchChat()) addChat(); } : undefined} onOpenRecent={id => void openRecent(id)} active={chatView ? "chat" : studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
+    <AppShell
+      songs={projectSongs.paths} activeSong={workspaceFile?.path} projectName={cloudBinding ? undefined : currentFolder?.name}
+      songsBusy={fileBusy || workspaceBusy || projectRunning || vocalEdits.busy}
+      onSong={path => void projectSongs.select(path)} onAddSong={currentFolder && !cloudBinding ? () => songDialog.current?.showModal() : undefined}
+      onAddProject={showProjects} onOpenRecent={id => void openRecent(id)}
+      chats={hasProject ? chats : []} activeChat={chatView ? activeChat : undefined} onChat={id => void selectChat(id)}
+      onNewChat={hasProject ? () => { if (canSwitchChat()) addChat(); } : undefined}
+      active={chatView ? "chat" : studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
     <main className="producer" data-view={chatView ? "chat" : beatStudio ? view : studio}>
       <header className="producer-header" hidden={chatView}>
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
@@ -758,39 +775,17 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         </div>
       </header>
 
-      {hasProject && <Modal ref={projectDialog} onClose={() => projectTrigger.current?.focus()} id="project-controls" className="producer-project-dialog" aria-labelledby="project-controls-title" aria-describedby="project-controls-description">
-        <div className="producer-project-dialog-heading">
-          <div className="project-dialog-title"><span className="project-dialog-emblem"><ProjectIcon name="folder" /></span><div><h2 id="project-controls-title">Projects</h2><p id="project-controls-description">Create a project, open a folder, or load the sample project.</p></div></div>
-          <Button variant="secondary" onClick={() => projectDialog.current?.close()} aria-label="Close project controls"><ProjectIcon name="close" />Close</Button>
-        </div>
-        <DesktopProjectWorkspace sample={sample} studioBusy={fileBusy || workspaceBusy} onBusyChange={setWorkspaceBusy} key={currentFolder?.id ?? projectEpoch} initialFolder={currentFolder} savedFile={workspaceFile}
-          onProjectOpened={() => { projectDialog.current?.close(); setStudio("beat"); setChatView(false); }}
-          canReplace={canReplaceSong} canChangeProject={canSwitchChat}
-          onFolderChange={folder => {
-            if (folder.file) {
-              const next: ChatSnapshot = { source: folder.file.source, appliedSource: folder.file.source, savedSource: folder.file.source, fileName: folder.file.path.split("/").pop()!, folder, workspaceFile: folder.file, cloudBinding: null };
-              addChat(next, false);
-            }
-            setCurrentFolder(folder); window.dispatchEvent(new Event("banger:projects-changed"));
-            setProjectEpoch(value => value + 1); setFolderName(folder.name); setProjectName(folder.name); setWorkspaceFile(null); setCloudBinding(null);
-          }}
-          onLoad={async (file, saved, name) => {
-            await getProjectWorkspace().activate();
-            loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
-            setProjectName(name); setSavedSource(saved); setWorkspaceFile({ ...file, source: saved }); setCloudBinding(null);
-          }}
-          songCard={<>
-            <div className="project-file-identity"><ProjectIcon name="file" /><div><h2>{fileName}</h2><p>{dirty ? "Unsaved changes" : hasProject ? "Saved" : "No saved song"}{workspaceFile ? ` · ${workspaceFile.path}` : ""}</p></div></div>
-            {notice && <p role="status">{notice}</p>}
-          </>}
-          cloudControls={<details className="project-cloud-controls"><summary>Cloud projects</summary>
-            <CloudProjectWorkspace onDirtyChange={setCloudDraftDirty} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(""); }} onLoad={(file, binding, name) => {
-              if (!canReplaceSong()) return false;
-              loadOpenedFile(file); setWorkspaceFile(null); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close(); return true;
-            }} />
-          </details>}
-        />
-      </Modal>}
+      {hasProject && <ProjectStart sample={sample} dialogRef={projectDialog} studioBusy={fileBusy || workspaceBusy} canChangeProject={canSwitchChat} onStart={(_file, _saved, folder) => {
+        if (folder) { openedRecent(folder); projectDialog.current?.close(); }
+      }}>
+        <details className="project-cloud-controls"><summary>Cloud projects</summary>
+          <CloudProjectWorkspace onDirtyChange={setCloudDraftDirty} onOpenMusic={()=>{projectDialog.current?.close();stopPlayback();setStudio("vocal");}} studioFile={{ name: fileName, source }} onDisconnect={() => { setCloudBinding(null); setProjectName(currentFolder?.name ?? ""); }} onLoad={(file, binding, name) => {
+            if (!canReplaceSong()) return false;
+            loadOpenedFile(file); setWorkspaceFile(null); setProjectName(name); setCloudBinding(binding); projectDialog.current?.close(); return true;
+          }} />
+        </details>
+      </ProjectStart>}
+      <AddSongDialog dialogRef={songDialog} busy={fileBusy || workspaceBusy || projectRunning || vocalEdits.busy} onCreate={projectSongs.create} />
 
       {agentEditing && !chatView && studio !== "library" && <div className="producer-agent-banner" role="status">Agent editing this song. Editing is temporarily disabled. You can play and explore; saved changes appear automatically.</div>}
       <section hidden={chatView || !beatStudio} className="producer-transport" aria-label="Transport">

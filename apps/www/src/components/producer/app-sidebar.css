@@ -24,11 +24,11 @@
 .app-sidebar-footer > button { width: 100%; }
 .producer.app-settings-host { min-height: 0; padding: 0; }
 
-.app-sidebar-chats, .app-sidebar-recents { margin-top: 24px; }
+.app-sidebar-chats, .app-sidebar-recents, .app-sidebar-songs { margin-top: 24px; }
 .app-sidebar-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; color: #93989e; font-size: 12px; }
 .app-sidebar-section-heading button { width: 36px; height: 32px; justify-content: center; padding: 4px; font-size: 22px; }
-.app-sidebar-chats > button, .app-sidebar-recents > button { width: 100%; margin-top: 4px; }
-.app-sidebar-chats > p { color: #93989e; padding: 0 8px; font-size: 12px; }
+.app-sidebar-chats > button, .app-sidebar-recents > button, .app-sidebar-songs > button { width: 100%; margin-top: 4px; }
+.app-sidebar-chats > p, .app-sidebar-songs > p { color: #93989e; padding: 0 8px; font-size: 12px; }
 .app-sidebar .app-sidebar-chat { height: 56px; }
 .app-sidebar button[aria-current="true"] { border-color: #4594ff55; background: #4594ff1c; color: #75b0ff; }
 .app-chat-label { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
@@ -47,3 +47,5 @@
 .app-sidebar-tooltip > span, .app-sidebar-tooltip > small { display: block; }
 .app-sidebar-tooltip > small { color: #b2bac5; font-size: 11px; }
 .app-sidebar-tooltip svg { fill: #252a31; background: #252a31; }
+
+.app-sidebar-project-name { margin: 4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

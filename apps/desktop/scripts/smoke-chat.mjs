@@ -203,8 +203,8 @@ async function exercise(window, desktop) {
   assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
   await closeChat();
   await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
-  await waitFor("document.querySelector('.project-file-identity p')");
-  assert.equal(await evaluate("document.querySelector('.project-file-identity p').textContent"), "Unsaved changes");
+  await waitFor("document.querySelector('#project-controls')?.getAttribute('data-state') === 'open'");
+  assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save').disabled"), false);
   await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
   await openChat();
   await evaluate("document.querySelectorAll('.ai-chat-file button')[3].click()");
