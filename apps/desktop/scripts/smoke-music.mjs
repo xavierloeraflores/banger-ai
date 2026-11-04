@@ -14,7 +14,7 @@ import {installSongStorage} from '../dist/song-storage-ipc.js';
 import {installWorkspaceHandlers} from '../dist/project-workspace.js';
 import {createSongStorage} from '../dist/song-storage.js';
 import {installMusicHandlers,musicStorageHooks} from '../dist/elevenlabs-ipc.js';
-import {fixtureProvider,wav,fixturePlan} from '../../../packages/elevenlabs/test/fixtures.mjs';
+import {fixtureProvider,wav,fixturePlan,fixtureMetadata,generatedMetadata} from '../../../packages/elevenlabs/test/fixtures.mjs';
 const cloud=process.argv.includes('--web');
 app.on('window-all-closed',()=>{});
 const root=await mkdtemp(join(tmpdir(),'banger-music-ui-'));app.setPath('userData',root);
@@ -215,6 +215,16 @@ async function run(){
    await wait("!document.querySelector('#performance-stage')?.open");
    assert.ok((await evaluate("document.querySelector('#producer-source').value")).includes('tempo 140'),'Stage preserves the studio draft');
 
+   if(!cloud){
+   const location=await store.location(imported.id);
+   const saved=JSON.parse(await readFile(join(location.root,`${location.name}.lyrics.json`),'utf8'));
+   assert.deepEqual(saved.audioMetadata,fixtureMetadata);assert.equal(saved.audioVersion,1);
+   const originalLocation=await store.location(id);
+   const generated=JSON.parse(await readFile(join(originalLocation.root,'.banger','history',originalLocation.name,'lyrics','lyrics-v005.json'),'utf8'));
+   assert.deepEqual(generated.audioMetadata,generatedMetadata);assert.equal(generated.audioVersion,5);
+   const draft=JSON.parse(await readFile(join(originalLocation.root,'.banger','history',originalLocation.name,'lyrics','lyrics-v003.json'),'utf8'));
+   assert.deepEqual(draft.audioMetadata,fixtureMetadata);assert.equal(draft.audioVersion,1);
+   }
   }
   // Library playback must leave both editors intact and release audio on exit.
   const selectView = value => fill('[aria-label="View"]',value);

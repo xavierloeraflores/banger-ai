@@ -6,7 +6,9 @@ export function wav(){
  for(let i=0;i<length;i++)bytes.writeInt16LE(Math.round(Math.sin(i/rate*2*Math.PI*(i<length/2?220:330))*2000),44+i*2);
  return bytes;
 }
+export const fixtureMetadata={wordsTimestamps:[{word:'Original',startMs:100,endMs:600}],waveformVisual:[-100,50,300,0]};
+export const generatedMetadata={wordsTimestamps:[{word:'Tomorrow',startMs:200,endMs:900}],waveformVisual:[-300,80,100,0]};
 export function fixtureProvider(){
  const calls={analyze:0,lyrics:0,generate:0};
- return {calls,async analyze(){calls.analyze++;return {songId:'original-song',plan:globalThis.structuredClone(fixturePlan)};},async lyrics(plan,_prompt,indices){calls.lyrics++;const next=globalThis.structuredClone(plan);for(const index of indices)next.chunks[index].text=next.chunks[index].text.split('\n')[0]+'\nThe morning lights our way';return next;},async generate(version){calls.generate++;return {songId:`generated-${calls.generate}`,plan:globalThis.structuredClone(version.plan),providerPlan:globalThis.structuredClone(version.plan),audio:Buffer.from('ID3fixture-audio')};}};
+ return {calls,async analyze(){calls.analyze++;return {songId:'original-song',audioMetadata:globalThis.structuredClone(fixtureMetadata),plan:globalThis.structuredClone(fixturePlan)};},async lyrics(plan,_prompt,indices){calls.lyrics++;const next=globalThis.structuredClone(plan);for(const index of indices)next.chunks[index].text=next.chunks[index].text.split('\n')[0]+'\nThe morning lights our way';return next;},async generate(version){calls.generate++;return {songId:`generated-${calls.generate}`,audioMetadata:globalThis.structuredClone(generatedMetadata),plan:globalThis.structuredClone(version.plan),providerPlan:globalThis.structuredClone(version.plan),audio:Buffer.from('ID3fixture-audio')};}};
 }

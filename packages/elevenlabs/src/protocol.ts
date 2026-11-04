@@ -31,10 +31,17 @@ export type CompositionPlan = z.infer<typeof planSchema>;
 export type ProviderPlan = z.infer<typeof providerPlanSchema>;
 export const associatedBeatSchema = z.object({ name: z.string().min(1).max(255), source: z.string().min(1).max(1024 * 1024) }).strict();
 export type AssociatedBeat = z.infer<typeof associatedBeatSchema>;
+/** Provider measurements describe the recorded audio, not subsequent lyric drafts.
+ * Times are milliseconds; waveform samples are mono, 4 Hz, in [-1000, 1000]. */
+export const audioMetadataSchema = z.object({
+  wordsTimestamps: z.array(z.object({ word: z.string(), startMs: z.number().nonnegative(), endMs: z.number().nonnegative() })).nullish(),
+  waveformVisual: z.array(z.number().int().min(-1000).max(1000)).nullish(),
+});
+export type AudioMetadata = z.infer<typeof audioMetadataSchema>;
 export type MusicVersion = {
   beat?: AssociatedBeat;
   id: string; version: number; name: string; songId: string; originalSongId?: string; plan: CompositionPlan; providerPlan?: ProviderPlan;
-  audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number;
+  audioId: string; audioType: 'audio/wav' | 'audio/mpeg'; audioVersion: number; audioMetadata?: AudioMetadata;
   createdAt: string; parentVersion?: number; operation: 'analyze' | 'edit' | 'lyrics' | 'generate';
 };
 export const lyricEditSchema = z.object({ index: z.number().int().min(0).max(29), lyrics: lyricTextSchema }).strict();

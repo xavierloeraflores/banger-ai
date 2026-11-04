@@ -94,3 +94,24 @@ API tests cover PostgreSQL concurrency and permissions, JWT verification, upload
 For development, set `ELEVENLABS_API_KEY` in `apps/desktop/.env.local`; packaged applications read it from their launch environment. The Electron main process owns the key and makes provider calls. The renderer receives only a scoped IPC bridge for importing WAVs, editing compositions, reading progress, and saving audio through native dialogs.
 
 Music is stored under Electron's user-data directory in `elevenlabs-music`: immutable version documents, audio files, operation records, and result receipts. Atomic current pointers and a serialized write queue prevent competing edits. On restart the workshop recovers saved receipts, while interrupted requests without a receipt require review. The desktop workflow runs without PostgreSQL, Blob, or a cloud login. Uploads for analysis must be PCM/float WAVs of 3 seconds to 10 minutes, up to 100 MiB; generated downloads are MP3.
+
+### Waveform and word timings
+
+Music upload and detailed generation both request `with_timestamps` and
+`with_waveform_visual`. Each immutable music version retains `audioMetadata`:
+`wordsTimestamps` contains `{ word, startMs, endMs }` entries in milliseconds;
+`waveformVisual` contains mono preview samples at four values per second, from
+-1000 to 1000. An empty timestamp array represents an instrumental response;
+missing or null fields mean the provider supplied no measurements.
+
+On desktop these fields are saved with `audioId`, `audioVersion`, `songId`, and
+the composition plan in `<song>.lyrics.json` beside the `.banger` source, and in
+`.banger/history/<song>/lyrics/lyrics-vNNN.json`. Original and generated audio
+remain in the song's instrumental/vocal history directories. Library exports
+retain the version documents too. Cloud versions and recovery receipts preserve
+the same metadata.
+
+Lyric drafts keep the measurements of their referenced audio. Generating audio
+replaces the measurements, including clearing old values when a response omits
+them. Consumers must use `audioVersion`, not the lyric document's `version`, when
+matching timings to a recording. This storage adds no waveform or karaoke view.
