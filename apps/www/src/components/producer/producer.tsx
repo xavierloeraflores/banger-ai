@@ -25,6 +25,7 @@ import { TrackRouting, LevelMeter } from "./mixer-routing";
 import { MixerView } from "./mixer-view";
 import { ProjectIcon } from "./project-icon";
 import { AudioExport } from "./audio-export";
+import { useRecordedStage, type StageRecording } from "./recorded-stage";
 import { SongLibrary } from "./song-library";
 import { MusicWorkshop } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
@@ -106,9 +107,10 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   });
   const [studio, setStudio] = useState<"beat" | "vocal" | "library">("beat");
   const [vocalBeat, setVocalBeat] = useState<BangerFile | null>(null);
+  const [vocalRecording, setVocalRecording] = useState<StageRecording | null>(null);
+  const [libraryRecording, setLibraryRecording] = useState<StageRecording | null>(null);
   const [libraryBeat, setLibraryBeat] = useState<BangerFile | null>(null);
   const [singAlongOpen, setSingAlongOpen] = useState(false);
-  const [stageOpen, setStageOpen] = useState(false);
   const vocalStudio = studio === "vocal";
   const beatStudio = studio === "beat";
   const [view, setView] = useState<StudioView>(initialProgram.source === initialFile.source ? "sequencer" : "source");
@@ -152,7 +154,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const stopAssociatedPlayback = associatedPlayback.stop;
   useEffect(() => { stopAssociatedPlayback(); }, [associatedBeat?.source, studio, stopAssociatedPlayback]);
   const stageProgram = beatStudio ? program : associatedProgram;
-  const stagePlayback = beatStudio ? playback : associatedPlayback;
+  const stageRecording = beatStudio ? null : vocalStudio ? vocalRecording : libraryRecording;
+  const recordedPlayback = useRecordedStage(associatedProgram ?? program, stageRecording);
+  const stagePlayback = beatStudio ? playback : stageRecording ? recordedPlayback : associatedPlayback;
   const arrangement = useMemo(() => resolveArrangement(audibleProgram), [audibleProgram]);
   const stopPlayback = () => { playback.stop(); setPreviewSection(undefined); };
   const preview = (name?: string) => { if (name || previewSection) playback.stop(); setPreviewSection(name); };
@@ -514,7 +518,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
         <div className="producer-file-actions">
           {studio === "library" && !stageProgram && <BandStageButton disabled title="Select a song with a beat to open the band stage." />}
-          {stageProgram && <PerformanceStage program={stageProgram} fileName={beatStudio ? fileName : associatedBeat!.name} heroDisabled={(beatStudio && draft) || fileBusy || workspaceBusy} stopGame={stagePlayback.stop} readPerformance={stagePlayback.readPerformance} playing={stagePlayback.state.playing} starting={stagePlayback.starting} tempo={stagePlayback.state.playing ? stagePlayback.state.tempo ?? stageProgram.tempo : stageProgram.tempo} tracks={stageProgram.tracks.length} error={stagePlayback.error} onPlay={stagePlayback.play} onStop={beatStudio ? stopPlayback : associatedPlayback.stop} onOpen={() => setStageOpen(true)} onClose={() => { setStageOpen(false); if (!beatStudio) associatedPlayback.stop(); }} />}
+          {stageProgram && <PerformanceStage program={stageProgram} fileName={beatStudio ? fileName : associatedBeat!.name} heroDisabled={(beatStudio && draft) || fileBusy || workspaceBusy} stopGame={stagePlayback.stop} readPerformance={stagePlayback.readPerformance} playing={stagePlayback.state.playing} starting={stagePlayback.starting} tempo={stagePlayback.state.playing ? stagePlayback.state.tempo ?? stageProgram.tempo : stageProgram.tempo} tracks={stageProgram.tracks.length} error={stagePlayback.error} onPlay={stagePlayback.play} onStop={beatStudio ? stopPlayback : stagePlayback.stop} onOpen={() => { if (stageRecording) { associatedPlayback.stop(); stageRecording.prepare?.(); } }} onClose={() => { if (!beatStudio) stagePlayback.stop(); }} />}
           {studio === "library" && <Button variant="secondary" aria-pressed={singAlongOpen} aria-controls="library-sing-along" onClick={() => setSingAlongOpen(value => !value)}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></svg>
             Sing along
@@ -673,9 +677,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !stageOpen} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
+          <MusicWorkshop key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
-        {studio === "library" && <SongLibrary active={!stageOpen} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
+        {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}

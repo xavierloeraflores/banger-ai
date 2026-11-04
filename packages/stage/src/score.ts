@@ -1,8 +1,9 @@
 import { programDurationBeats, type MusicProgram, type MusicTrack } from '@banger/compiler';
+import type { VocalPerformance } from './vocal.js';
 import { eventsForSong, type MusicEvent, type PlaybackState } from '@banger/engine';
 
 export type PerformanceRole = 'drums' | 'bass' | 'keys' | 'dance';
-export interface PerformanceSnapshot { program: MusicProgram; state: PlaybackState; fill: boolean }
+export interface PerformanceSnapshot { program: MusicProgram; state: PlaybackState; fill: boolean; vocals?: VocalPerformance }
 export interface TrackMotion {
   beat: number;
   playing: boolean;

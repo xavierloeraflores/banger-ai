@@ -184,3 +184,16 @@ test('nested songs keep separate vocal storage and reject traversal',async()=>{
   await assert.rejects(storage.prepare(root,'../escape.banger'),/inside/);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('library export retains the selected recording words and waveform with its lyrics', async t => {
+  const { root, storage, song } = await fixture(t);
+  const selected = { ...document('Recorded words'), audioId: 'selected-take', audioMetadata: {
+    wordsTimestamps: [{ word: 'Recorded', startMs: 1200, endMs: 1800 }, { word: 'words', startMs: 2000, endMs: 2900 }],
+    waveformVisual: [0, 312, -500, 20],
+  } };
+  await storage.saveLyrics(song, document('Newer unsung draft'));
+  await storage.addToLibrary(song, wav(), 'tempo 120;', selected);
+  const folder = (await readdir(join(root, 'library'))).find(name => name.startsWith('midnight-'));
+  const stored = JSON.parse(await readFile(join(root, 'library', folder, 'midnight.lyrics.json'), 'utf8'));
+  assert.deepEqual(stored, selected);
+});

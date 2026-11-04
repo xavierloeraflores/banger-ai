@@ -10,6 +10,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createCharacter, type CharacterRig } from './character.js';
 import { PerformanceScore, trackRole, type PerformanceSnapshot } from './score.js';
 import { PerformerAnimator, createInstrument } from './animation.js';
+import { createMicrophone, SingerAnimator } from './vocal.js';
 import { createAccessories } from './accessories.js';
 
 export interface StageOptions {
@@ -73,6 +74,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
   const score = new PerformanceScore();
   let signature = '';
   let performers: { rig: CharacterRig; animator: PerformerAnimator; accessories: ReturnType<typeof createAccessories>; anchor: THREE.Group; instrument: THREE.Group; role: ReturnType<typeof trackRole>; target: THREE.Vector3 }[] = [];
+  let singer: { rig: CharacterRig; animator: SingerAnimator; anchor: THREE.Group; target: THREE.Vector3 } | undefined;
   let positions: StagePosition[] = [];
   let previousFrame: number | undefined;
   let disposed = false;
@@ -103,6 +105,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
     sprite.scale.set(2.4, .6, 1); sprite.position.set(0, .34, 1.65); return sprite;
   }
   function rebuild(snapshot: PerformanceSnapshot) {
+    singer?.rig.dispose(); singer = undefined;
     performers.forEach(({ rig, accessories }) => { accessories.dispose(); rig.root.removeFromParent(); rig.dispose(); });
     disposeObjects(cast); cast.clear();
     ownedTextures.forEach(texture => texture.dispose()); ownedTextures.clear();
@@ -124,7 +127,14 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       cast.add(anchor);
       return { rig, animator: new PerformerAnimator(role, rig, instrument), accessories, anchor, instrument, role, target: new THREE.Vector3() };
     });
-    renderer.domElement.dataset.characterCount = String(performers.length);
+    if (snapshot.vocals) {
+      const anchor = new THREE.Group(), rig = createCharacter({ color: '#f0c0d9' });
+      anchor.add(rig.root, createMicrophone(), label('Muse', 'Vocals')); cast.add(anchor);
+      singer = { rig, anchor, animator: new SingerAnimator(rig), target: new THREE.Vector3() };
+    }
+    renderer.domElement.dataset.characterCount = String(performers.length + (singer ? 1 : 0));
+    renderer.domElement.dataset.singer = String(Boolean(singer));
+    renderer.domElement.setAttribute('aria-label', `Animated band, ${performers.length} instrumental performers${singer ? ' and a singing Muse with a microphone' : ''}`);
     renderer.domElement.dataset.outfits = JSON.stringify(performers.map(performer => performer.accessories.selection));
     layout(); frameCamera();
   }
@@ -137,6 +147,10 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       const height = Math.max(.05, position.y + .03);
       riser.scale.y = height / riser.userData.height; riser.position.y = -height / 2;
     });
+    if (singer) {
+      const position = { x: 0, y: 0, z: Math.max(-1.6, ...positions.map(position => position.z)) + 3.6 };
+      positions.push(position); singer.anchor.position.set(position.x, position.y, position.z);
+    }
     scenery.layout(positions);
   }
   function frameCamera() {
@@ -186,7 +200,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
     previousFrame = timestamp;
     try {
       const snapshot = options.readPerformance();
-      const nextSignature = JSON.stringify(snapshot.program.tracks.map(track => [track.name, track.source]));
+      const nextSignature = JSON.stringify([snapshot.program.tracks.map(track => [track.name, track.source]), Boolean(snapshot.vocals)]);
       if (nextSignature !== signature) { signature = nextSignature; rebuild(snapshot); }
       const motions = score.sample(snapshot);
       performers.forEach(({ rig, animator, target, anchor }, index) => {
@@ -194,9 +208,13 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
         animator.update(options.reducedMotion ? { ...motion, playing: false, active: false, energy: 0 } : motion, options.reducedMotion ? undefined : delta);
         target.copy(anchor.position).add(rig.body.position);
       });
+      const vocalMotion = singer?.animator.update(snapshot.vocals, snapshot.program.tempo, options.reducedMotion, delta);
+      if (singer) singer.target.copy(singer.anchor.position).add(singer.rig.body.position);
+      renderer.domElement.dataset.singing = String(vocalMotion?.active ?? false);
+      renderer.domElement.dataset.mouth = (vocalMotion?.mouth ?? 0).toFixed(3);
       const signals = concertSignals(snapshot.program, motions, options.reducedMotion);
       const time = options.reducedMotion ? 0 : (motions[0]?.beat ?? 0) * 60 / (snapshot.state.tempo ?? snapshot.program.tempo);
-      scenery.update(time, signals, performers.map(performer => performer.target));
+      scenery.update(time, signals, [...performers.map(performer => performer.target), ...(singer ? [singer.target] : [])]);
       if (cameraRig.manual) controls.update();
       cameraRig.update(delta);
       renderer.domElement.dataset.cameraShot = cameraRig.shotName;
@@ -221,6 +239,7 @@ export function createStage(container: HTMLElement, options: StageOptions): Stag
       renderer.setAnimationLoop(null); resizeObserver.disconnect(); controls.dispose();
       renderer.domElement.removeEventListener('webglcontextlost', contextLost);
       performers.forEach(({ rig, accessories }) => { accessories.dispose(); rig.root.removeFromParent(); rig.dispose(); });
+      singer?.rig.dispose();
       disposeObjects(scene); ownedTextures.forEach(texture => texture.dispose());
       scenery.dispose(); bloom.dispose(); output.dispose(); renderPass.dispose(); composer.dispose(); key.shadow.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();

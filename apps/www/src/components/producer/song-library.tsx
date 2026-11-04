@@ -4,6 +4,7 @@ import './audio-worklet';
 import './song-library.css';
 import { browserLibrarySongs } from '@/lib/browser-library';
 import { readSingAlong, type SingAlongData } from '@/lib/sing-along';
+import type { StageRecording } from './recorded-stage';
 import { SingAlong } from './sing-along';
 import { useEffect, useRef, useState } from 'react';
 import { compileMusic } from '@banger/compiler';
@@ -29,7 +30,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'Th
 const audioUrl = (bytes: ArrayBuffer | Uint8Array, type = 'audio/wav') => URL.createObjectURL(new Blob([new Uint8Array(bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).buffer)], { type }));
 async function beatUrl(source: string) { return audioUrl((await renderWav(compileMusic(source))).wav); }
 
-export function SongLibrary({ onBeatChange, active = true, singAlong = false, onCloseSingAlong }: { onBeatChange(beat: Beat | null): void; active?: boolean; singAlong?: boolean; onCloseSingAlong(): void }) {
+export function SongLibrary({ onBeatChange, onRecordingChange, active = true, singAlong = false, onCloseSingAlong }: { onBeatChange(beat: Beat | null): void; onRecordingChange(recording: StageRecording | null): void; active?: boolean; singAlong?: boolean; onCloseSingAlong(): void }) {
   const [lyricData, setLyricData] = useState<SingAlongData>(() => readSingAlong(null));
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [refresh, setRefresh] = useState(0);
@@ -66,7 +67,7 @@ export function SongLibrary({ onBeatChange, active = true, singAlong = false, on
     return () => { requests.current++; element?.pause(); if (url.current) URL.revokeObjectURL(url.current); };
   }, []);
   useEffect(() => { if (!active) player.current?.pause(); }, [active]);
-  useEffect(() => () => onBeatChange(null), [onBeatChange]);
+  useEffect(() => () => { onBeatChange(null); onRecordingChange(null); }, [onBeatChange, onRecordingChange]);
   useEffect(() => {
     if (!playing) return;
     let frame: number;
@@ -90,13 +91,15 @@ export function SongLibrary({ onBeatChange, active = true, singAlong = false, on
     const ticket = ++generation.current;
     element.pause(); element.removeAttribute('src'); element.load();
     if (url.current) URL.revokeObjectURL(url.current); url.current = '';
-    onBeatChange(null); setLyricData(readSingAlong(null));
+    onRecordingChange(null); onBeatChange(null); setLyricData(readSingAlong(null));
     setSelected(song); setPending(true); setPlaying(false); setPosition(0); setDuration(0); setError('');
     try {
       const next = await song.load();
       if (generation.current !== ticket) { URL.revokeObjectURL(next.url); return; }
       url.current = next.url; element.src = next.url;
-      onBeatChange(next.beat ?? null); setLyricData(readSingAlong(next.lyrics));
+      const data = readSingAlong(next.lyrics), words = data.lines.flatMap(line => line.words);
+      onBeatChange(next.beat ?? null); setLyricData(data);
+      onRecordingChange({ id: song.id, element, words, vocals: words.length > 0 || Boolean(data.lyrics) });
       await element.play();
     } catch (cause) { if (generation.current === ticket) setError(message(cause)); }
     finally { if (generation.current === ticket) setPending(false); }
@@ -120,7 +123,7 @@ export function SongLibrary({ onBeatChange, active = true, singAlong = false, on
     </div>}
     {!loading && songs.length === 0 && <p className="library-help">No songs added yet. Choose Export and save to library in Beat Studio or Vocal Studio.</p>}
     <footer className="library-player" aria-label="Library player">
-      <audio ref={player} aria-label="Library song preview" preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} onError={() => { setPending(false); setError('This song could not be played. Select it again to retry.'); if (url.current) URL.revokeObjectURL(url.current); url.current = ''; }} />
+      <audio ref={player} aria-label="Library song preview" preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} onError={() => { setPending(false); setError('This song could not be played. Select it again to retry.'); onRecordingChange(null); if (url.current) URL.revokeObjectURL(url.current); url.current = ''; }} />
       <div className="library-now-playing"><strong>{selected?.name ?? 'Pick a song'}</strong><span>{pending ? 'Preparing audio…' : playing ? 'Now playing' : selected ? 'Paused' : 'Select a cover to play'}</span></div>
       <button aria-label={playing ? 'Pause library song' : 'Play library song'} disabled={!selected || pending} onClick={() => { if (selected) void choose(selected); }}>{playing ? 'Ⅱ' : '▶'}</button>
       <time>{clockTime(position)}</time><input type="range" aria-label="Seek library song" min={0} max={duration || 1} step={.1} value={Math.min(position, duration)} disabled={!duration || pending} onChange={event => seek(Number(event.target.value))} /><time>{clockTime(duration)}</time>

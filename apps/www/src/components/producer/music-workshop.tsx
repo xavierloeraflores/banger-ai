@@ -1,5 +1,7 @@
 'use client';
 import './audio-worklet';
+import type {StageRecording} from './recorded-stage';
+import {readSingAlong} from '@/lib/sing-along';
 import './music-workshop.css';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {KeyHint,LLM_KEY_HINT,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
@@ -17,7 +19,7 @@ const mergeHistory=(history:MusicHistory,previous:MusicVersion[]=[])=>[...new Ma
 const audioName=(version:MusicVersion)=>version.audioVersion===1?'Original WAV':`Variation · v${version.audioVersion}`;
 type Pending={id:string;lyrics:string[];upload?:boolean};
 
-export function MusicWorkshop({cloud,studioFile,studioPath,active=true,onConnect,onBeatChange,onEditStateChange}:{cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
+export function MusicWorkshop({cloud,studioFile,studioPath,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
   const {languageModel,vocals}=useGenerationAccess();
   const lyricRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>lyricRequest.current?.abort(),[cloud]);
@@ -45,6 +47,11 @@ export function MusicWorkshop({cloud,studioFile,studioPath,active=true,onConnect
   const running=jobs.some(job=>['queued','running'].includes(job.status));
   const blocked=busy||running;
   const {attach:attachAudio,...audio}=useMusicAudio(backend,song,active,history);
+  useEffect(()=>{
+    const data=readSingAlong(song),words=data.lines.flatMap(line=>line.words);
+    onRecordingChange?.(song && audio.url && !audio.loading && audio.player.current ? {id:song.audioId,element:audio.player.current,words,vocals:words.length>0 || (song.audioVersion>1 && Boolean(data.lyrics)),prepare:audio.clearPreview}:null);
+    return()=>onRecordingChange?.(null);
+  },[song,audio.url,audio.loading,audio.player,audio.clearPreview,onRecordingChange]);
   const playSong=audio.play;
   useEffect(()=>{if(active&&audio.url&&!audio.loading&&audio.loadedId===song?.audioId&&autoplay.current===song?.audioId){autoplay.current=null;void playSong();}},[active,audio.url,audio.loadedId,audio.loading,song?.audioId,playSong]);
   function adopt(version:MusicVersion,latest=version){

@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import type {MusicVersion} from '@banger/elevenlabs/protocol';
 import type {MusicBackend} from '@/lib/elevenlabs';
 
@@ -72,5 +72,6 @@ export function useMusicAudio(backend:MusicBackend|undefined,song:MusicVersion|n
   function seek(seconds:number){const element=player.current;clipEnd.current=null;if(!element||!Number.isFinite(element.duration))return;element.currentTime=Math.max(0,Math.min(element.duration,seconds));setPosition(element.currentTime);}
   async function preview(start:number,end:number){seek(start);clipEnd.current=end;await play();}
   function updateTime(element:HTMLAudioElement){setPosition(element.currentTime);if(clipEnd.current!==null&&element.currentTime>=clipEnd.current){element.pause();clipEnd.current=null;}}
-  return {attach:(element:HTMLAudioElement|null)=>{player.current=element;},url:loadedId===audioId?url:'',loadedId,loading:loading||Boolean(song&&loadedId!==audioId),error,position:loadedId===audioId?position:0,duration:loadedId===audioId?duration:0,playing:loadedId===audioId&&playing,volume,waves,setVolume,toggle,play,pause,preview,seek,updateTime,setDuration,setPlaying,setError};
+  const clearPreview=useCallback(()=>{clipEnd.current=null;},[]);
+  return {player,clearPreview,attach:(element:HTMLAudioElement|null)=>{player.current=element;},url:loadedId===audioId?url:'',loadedId,loading:loading||Boolean(song&&loadedId!==audioId),error,position:loadedId===audioId?position:0,duration:loadedId===audioId?duration:0,playing:loadedId===audioId&&playing,volume,waves,setVolume,toggle,play,pause,preview,seek,updateTime,setDuration,setPlaying,setError};
 }

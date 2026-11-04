@@ -15,6 +15,7 @@ export interface CharacterRig {
   leftLeg: Group;
   rightLeg: Group;
   sockets: { leftHand: Group; rightHand: Group; head: Group; back: Group };
+  setMouth(open: number): void;
   resetPose(): void;
   setColor(color: ColorRepresentation): void;
   dispose(): void;
@@ -204,7 +205,9 @@ export function createCharacter(options: { color?: ColorRepresentation } = {}): 
     }
   }
   const mouth = new TubeGeometry(new SmileCurve(), 18, .009, 7, false);
-  volume(face, mouth, smile).name = 'smile';
+  const closedMouth = volume(face, mouth, smile); closedMouth.name = 'smile';
+  const openMouth = volume(face, plushVolume(.085, .105, .016), smile, 0, -.105, .099);
+  openMouth.name = 'singing-mouth'; openMouth.visible = false;
   const leftArm = joint('leftArm', body, -.64, .95), rightArm = joint('rightArm', body, .64, .95);
   for (const [arm, side] of [[leftArm, -1], [rightArm, 1]] as const) {
     const sleeve = volume(arm, plushVolume(.215, .50, .235, .85, -.08), fur, side * .16, -.37, .015, 620);
@@ -223,6 +226,11 @@ export function createCharacter(options: { color?: ColorRepresentation } = {}): 
   let disposed = false;
   return {
     root, body, head, leftArm, rightArm, leftLeg, rightLeg, sockets,
+    setMouth(open) {
+      const amount = Number.isFinite(open) ? Math.max(0, Math.min(1, open)) : 0;
+      closedMouth.visible = amount <= .01; openMouth.visible = amount > .01;
+      openMouth.scale.set(1 - amount * .18, Math.max(.05, amount), 1);
+    },
     resetPose() { for (const pose of rest) { pose.node.position.copy(pose.position); pose.node.quaternion.copy(pose.quaternion); pose.node.scale.copy(pose.scale); } },
     setColor(color) { fur.color.set(color); fibers.color.set(color); },
     dispose() {

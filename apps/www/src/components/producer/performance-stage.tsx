@@ -31,6 +31,8 @@ interface Props {
   onStop: () => void;
 }
 export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisabled, stopGame, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
+  const singer = Boolean(readPerformance().vocals);
+  const performers = tracks + (singer ? 1 : 0);
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -86,19 +88,19 @@ export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisab
     <BandStageButton ref={trigger} onClick={show} />
     <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } else { onClose?.(); } }} onClose={() => { setHero(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
-        <div><span className="performance-eyebrow">BANGER / LIVE ROOM</span><h2 id="performance-title">Meet your band<span className={playing ? "performance-live playing" : "performance-live"}>{playing ? "LIVE" : "READY"}</span></h2><p id="performance-description">One little performer for every track. Your music brings them to life.</p></div>
+        <div><span className="performance-eyebrow">BANGER / LIVE ROOM</span><h2 id="performance-title">Meet your band<span className={playing ? "performance-live playing" : "performance-live"}>{playing ? "LIVE" : "READY"}</span></h2><p id="performance-description">{singer ? "Your band and a singing Muse, following the recorded vocals." : "One little performer for every track. Your music brings them to life."}</p></div>
         <Button variant="secondary" onClick={close} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>
       </header>
       <div className="performance-viewport" ref={viewport}>
         {open && status === "loading" && <div className="performance-overlay" role="status">Getting the band together…</div>}
         {open && status === "error" && <div className="performance-overlay" role="alert"><strong>Couldn’t open the stage</strong><p>{failure}</p><p>Close and reopen to retry. The studio is still available.</p></div>}
-        {open && tracks === 0 && status === "ready" && <div className="performance-overlay">Add a track to meet your first performer.</div>}
+        {open && performers === 0 && status === "ready" && <div className="performance-overlay">Add a track to meet your first performer.</div>}
         {!hero && <div id="performance-camera-help" className="performance-camera-hint">{manualCamera ? "Drag to orbit · Right-drag to pan · Scroll or pinch to zoom" : still ? "Camera paused in still mode" : "Automatic camera · Take control to explore"}</div>}
       </div>
       {open && hero && <MuseHero program={program} fileName={fileName} readPerformance={readPerformance} play={onPlay} stop={stopGame} starting={starting} error={error} onPrepare={onStop} onClose={hideHero} />}
       <Button ref={heroTrigger} className="performance-hero-trigger" variant="secondary" hidden={hero} disabled={heroDisabled || status !== "ready" || tracks === 0} aria-expanded={hero} aria-controls="muse-hero" onClick={() => setHero(true)}>Muse Hero <span aria-hidden="true">↗</span></Button>
       <footer className="performance-footer" hidden={hero}>
-        <div className="performance-transport"><Button variant="primary" onClick={() => void onPlay()} disabled={playing || starting || status !== "ready" || tracks === 0}>{starting ? "Starting…" : playing ? "Playing" : "Play band"}</Button><Button variant="secondary" onClick={onStop} disabled={!playing && !starting}>Stop</Button><span>{tempo} BPM<span className="performance-divider">/</span>{tracks} {tracks === 1 ? "performer" : "performers"}</span></div>
+        <div className="performance-transport"><Button variant="primary" onClick={() => void onPlay()} disabled={playing || starting || status !== "ready" || performers === 0}>{starting ? "Starting…" : playing ? "Playing" : "Play band"}</Button><Button variant="secondary" onClick={onStop} disabled={!playing && !starting}>Stop</Button><span>{tempo} BPM<span className="performance-divider">/</span>{performers} {performers === 1 ? "performer" : "performers"}</span></div>
         <div className="performance-options"><div className="performance-camera-controls" role="group" aria-label="Camera controls">
           <Button variant="secondary" disabled={status !== "ready"} aria-pressed={manualCamera} aria-describedby="performance-camera-help" onClick={toggleCamera}>{manualCamera ? "Auto camera" : "Take control"}</Button>
           {manualCamera && <><Button variant="secondary" aria-label="Zoom in" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(.85)}>+</Button><Button variant="secondary" aria-label="Zoom out" disabled={status !== "ready"} onClick={() => stage.current?.zoomCamera(1 / .85)}>−</Button></>}

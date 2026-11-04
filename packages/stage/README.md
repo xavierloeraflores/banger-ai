@@ -12,3 +12,23 @@ Drum tracks play percussion, bass and pluck tracks play a bass guitar, keys/orga
 The stage blends each performer's displayed pose toward its current score pose with time-based damping. Position and scale interpolate linearly, while rotations use quaternion slerp. A fixed target settles 95% in about 165 ms, including when another note interrupts the movement. Drumsticks attach after blending so they stay in the hands. Score sampling, key presses and audio timing remain immediate. New performers and still mode use the target pose directly; long frame gaps have a bounded blend step.
 
 Run `pnpm --filter @banger/stage test` for rig and score tests. After `pnpm fullbuild`, run `pnpm --filter @banger/desktop exec electron scripts/smoke-stage.mjs` for the interactive modal check. Add `--keep-open` to leave the final window open.
+
+## Recorded vocals
+
+`PerformanceSnapshot` accepts optional `vocals` alongside the compiled `.banger`
+program. Pass `{ words, positionMs, playing }`, where `words` contains ElevenLabs
+`{ word, startMs, endMs }` timestamps from the selected recording. Omitting vocals
+keeps the instrumental band. Providing vocals adds a pink singer Muse and a
+microphone at the front of the stage. Empty timings keep its mouth closed.
+
+Vocal Studio and Library use the recording's media clock for both the band and
+singer. They play the saved recording, with no synthesized beat layered over it.
+Word times are absolute milliseconds, including after seeking; they never loop
+with the beat. Word envelopes animate the mouth and dancing, with a closed mouth
+in gaps, on pause and at the end. Still mode stops both animations.
+
+Native library songs store the selected recording's `audioMetadata` in the
+matching `.lyrics.json` file. Browser bundles retain the same document in
+`files['lyrics.json']`. This includes `wordsTimestamps` and `waveformVisual` as
+well as the lyric plan, so existing library files need no migration. A later lyric
+draft does not replace the recorded word timings.
