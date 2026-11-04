@@ -1,5 +1,6 @@
 import { Sandbox } from "@vercel/sandbox";
 import { z } from "zod";
+import { projectObjects } from "./project-objects";
 import { blobs } from "./blob";
 import { ApiError, hash, changeSchema } from "./domain";
 import { agentInput, checkpoint, type Job } from "./jobs";
@@ -14,7 +15,7 @@ export async function runAgentStep(job: Job) {
     const manifest = await readManifest(job.project_id, input.baseRevision);
     const files = [];
     for (const file of manifest.files) {
-      const source = await blobs.text(file.pathname);
+      const source = await projectObjects.text(file.pathname);
       if (hash(source) !== file.sha256) throw new ApiError(502, "Project integrity check failed.");
       files.push({ path: file.path, source });
     }
@@ -53,7 +54,7 @@ export async function runAgentStep(job: Job) {
     const base = await readManifest(job.project_id, input.baseRevision);
     const changes = [...result.files, ...base.files.filter(file => !result.files!.some(next => next.path === file.path)).map(file => ({path:file.path,source:null}))];
     try {
-      const manifest = await saveChanges(job.user_id, job.project_id, input.baseRevision, changes, blobs, { id: job.id, lease: job.lease_token });
+      const manifest = await saveChanges(job.user_id, job.project_id, input.baseRevision, changes, projectObjects, { id: job.id, lease: job.lease_token });
       await db().query("UPDATE agent_sessions SET status=$2 WHERE id=$1", [job.session_id, result.status]);
       return manifest;
     } catch (error) {

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { db, transaction } from "./db";
-import { blobs, type ObjectStore } from "./blob";
+import type { ObjectStore } from "./blob";
+import { projectObjects } from "./project-objects";
 import { ApiError, hash, validateChanges, type Change, type Manifest } from "./domain";
 type Queryable = Pick<Pool | PoolClient, "query">;
 export async function authorize(user: string, project: string, write = false, client: Queryable = db(), lock = false) {
@@ -15,7 +16,7 @@ export async function readManifest(project: string, revision: number): Promise<M
   if (!row) throw new ApiError(404, "Project revision not found.");
   return row.manifest;
 }
-export async function createProject(user: string, name: string, changes: Change[], store: ObjectStore = blobs) {
+export async function createProject(user: string, name: string, changes: Change[], store: ObjectStore = projectObjects) {
   validateChanges(changes);
   const project = randomUUID();
   const manifest: Manifest = { projectId: project, revision: 0, files: [] };
@@ -29,7 +30,7 @@ export async function createProject(user: string, name: string, changes: Change[
   if (changes.length) return saveChanges(user, project, 0, changes, store);
   return manifest;
 }
-export async function saveChanges(user: string, project: string, baseRevision: number, changes: Change[], store: ObjectStore = blobs, job?: { id: string; lease: string }) {
+export async function saveChanges(user: string, project: string, baseRevision: number, changes: Change[], store: ObjectStore = projectObjects, job?: { id: string; lease: string }) {
   const current = await authorize(user, project, true);
   if (current.revision !== baseRevision) throw new ApiError(409, "The project changed. Reload the saved revision before merging your draft.", { currentRevision: current.revision });
   validateChanges(changes);
@@ -69,7 +70,7 @@ export async function saveChanges(user: string, project: string, baseRevision: n
   });
   return manifest;
 }
-export async function projectFiles(user: string, project: string, since?: number, store: ObjectStore = blobs) {
+export async function projectFiles(user: string, project: string, since?: number, store: ObjectStore = projectObjects) {
   const current = await authorize(user, project);
   const manifest = await readManifest(project, current.revision);
   const before = since === undefined ? undefined : await readManifest(project, since);

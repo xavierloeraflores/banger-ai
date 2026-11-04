@@ -11,7 +11,6 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
   const {vocals}=useGenerationAccess();
   const [available,setAvailable]=useState(false);
   useEffect(()=>{queueMicrotask(()=>setAvailable(!window.bangerWorkspace));},[]);
-  const [password,setPassword]=useState('');
   const [signInEnabled,setSignInEnabled]=useState(false);
   const [storageReady,setStorageReady]=useState(false);
   const [checking,setChecking]=useState(true);
@@ -36,8 +35,6 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
     if(!available)return;let cancelled=false;
     void(async()=>{
       try{
-        const access=new URLSearchParams(window.location.hash.slice(1)).get('access');
-        if(access){window.history.replaceState(null,'',window.location.pathname+window.location.search);await cloudRequest({url:''},'/session','POST',{password:access});}
         const session=await cloudRequest<{authenticated:boolean;signInEnabled:boolean;services:{storage:boolean}}>({url:''},'/session');
         if(cancelled)return;setSignInEnabled(session.signInEnabled);setStorageReady(session.services.storage);
         if(session.authenticated){
@@ -97,14 +94,7 @@ export function CloudProjectWorkspace({studioFile,onLoad,onDisconnect,onOpenMusi
   async function refreshProjects(active:CloudConnection){setProjects((await cloudRequest<{projects:typeof projects}>(active,'/projects')).projects);}
   if(!available) return null;
   return <details id="cloud-projects" className="project-workspace producer-panel"><summary>Cloud projects</summary>
-    {!connection ? checking?<p role="status">Connecting to your workspace…</p>:signInEnabled?<form onSubmit={event=>{event.preventDefault();void action(async()=>{
-      await cloudRequest({url:''},'/session','POST',{password});setPassword('');
-      const session=await cloudRequest<{services:{storage:boolean}}>({url:''},'/session');setStorageReady(session.services.storage);setConnection({url:''});
-      if(session.services.storage)await refreshProjects({url:''});else setNotice('Project storage is being configured. You can still use the local studio.');
-    });}}>
-      <label>Workspace password<input type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)} required /></label>
-      <Button type="submit" disabled={busy}>Sign in</Button>
-    </form>:<p>Workspace sign-in is being configured. The local studio is ready to use.</p> : <>
+    {!connection ? checking?<p role="status">Connecting to your workspace…</p>:signInEnabled?<p>Sign in to your account to sync projects. <Button onClick={()=>window.location.reload()}>Open sign-in</Button></p>:<p>Account sign-in is being configured. The local studio is ready to use.</p> : <>
 
       <div className="project-workspace-actions"><Button disabled={busy||!storageReady} onClick={()=>void action(()=>refreshProjects(connection))}>Refresh projects</Button>
         <Button disabled={busy} onClick={()=>{if(!discard())return;void action(async()=>{await cloudRequest(connection,'/session','DELETE');setConnection(null);setSnapshot(null);setPlaying('');setDraftBase(null);onDisconnect();});}}>Sign out</Button>

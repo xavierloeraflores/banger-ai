@@ -1,10 +1,15 @@
+import { saveLibraryEntry, readLibraryEntry } from '../../../server/library';
+import { readSongDraft, saveSongDraft } from '../../../server/song-drafts';
+import { runWebTask } from '../../../server/web-task';
 import { after } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { z, ZodError } from 'zod';
-import { get } from '@vercel/blob';
+import { localMediaEnabled, mediaObjects, boundedAudio } from '../../../server/media-objects';
+import { validateWav } from '@banger/elevenlabs';
 import type { HandleUploadBody } from '@vercel/blob/client';
+import { browserGeneration } from '../../../server/web-ai';
 import { authenticate } from '../../../server/auth';
-import {assertWebOrigin,hasWebSession,sessionCookie,sessionUser,signIn,webOrigin,webSessionEnabled} from '../../../server/web-session';
+import {assertWebOrigin,hasWebSession,sessionAccount,signIn,signOut,webOrigin,webSessionEnabled} from '../../../server/web-session';
 import { ApiError, changeSchema, id, saveSchema } from '../../../server/domain';
 import { db } from '../../../server/db';
 import { authorize, createProject, projectFiles, saveChanges, setMember } from '../../../server/projects';
@@ -30,17 +35,17 @@ async function body(request: Request) {
 async function dispatch(request: Request, path: string[]) {
   const method = request.method;
   const url = new URL(request.url);
-  if(path.join('/')==='session') {
-    if(method==='GET') {
-      let authenticated=false;
-      try{await sessionUser(request);authenticated=true;}catch{/* A missing or expired session displays the sign-in form. */}
-      return json({authenticated,signInEnabled:webSessionEnabled(),services:{storage:Boolean(process.env.DATABASE_URL&&process.env.BLOB_READ_WRITE_TOKEN),agent:Boolean(process.env.SANDBOX_RUNNER_BLOB_PATH&&process.env.BANGER_MODEL&&process.env.BANGER_API_KEY)}});
+  if(path.join('/')==='session' || path.join('/')==='accounts') {
+    if(method==='GET' && path[0]==='session') {
+      let account: {id:string;username:string}|null=null;
+      try{account=await sessionAccount(request);}catch(error){if(!(error instanceof ApiError && error.status===401))throw error;}
+      return json({authenticated:Boolean(account),account,signInEnabled:webSessionEnabled(),services:{storage:Boolean(process.env.DATABASE_URL),audio:Boolean(process.env.BLOB_READ_WRITE_TOKEN||process.env.BANGER_LOCAL_DATA_DIR),agent:Boolean(process.env.SANDBOX_RUNNER_BLOB_PATH&&process.env.BANGER_MODEL&&process.env.BANGER_API_KEY)}});
     }
     if(method==='POST') {
-      const input=z.object({password:z.string().max(512)}).strict().parse(await body(request));
-      const cookie=await signIn(request,input.password);const response=json({authenticated:true});response.headers.set('Set-Cookie',cookie);return response;
+      const input=z.object({username:z.string().max(32),password:z.string().max(128)}).strict().parse(await body(request));
+      const cookie=await signIn(request,input.username,input.password,path[0]==='accounts');const response=json({authenticated:true});response.headers.set('Set-Cookie',cookie);return response;
     }
-    if(method==='DELETE') {assertWebOrigin(request);const response=json({authenticated:false});response.headers.set('Set-Cookie',sessionCookie(request,''));return response;}
+    if(method==='DELETE' && path[0]==='session') {assertWebOrigin(request);const response=json({authenticated:false});response.headers.set('Set-Cookie',await signOut(request));return response;}
   }
   if (path.join('/') === 'worker' && ['GET','POST'].includes(method)) {
     const secret = process.env.CRON_SECRET, provided = request.headers.get('authorization') ?? '';
@@ -50,8 +55,16 @@ async function dispatch(request: Request, path: string[]) {
   }
   if (path.join('/') === 'uploads' && method === 'POST') return json(await uploadCallback(request, await body(request) as HandleUploadBody));
   const user = await authenticate(request);
+  const expectedAccount=request.headers.get('x-banger-account');
+  if(expectedAccount && expectedAccount!==user)throw new ApiError(409,'The signed-in account changed. Reload the app before continuing.');
+  if (method === 'POST' && path.length === 1 && (path[0] === 'chat' || path[0] === 'lyrics')) return json(await browserGeneration(user, path[0], await body(request), request.signal));
   const elevenLabsKey = request.headers.get('x-banger-elevenlabs-key');
   if (elevenLabsKey !== null && (!elevenLabsKey || elevenLabsKey.length > 8192 || /[^\x21-\x7e]/.test(elevenLabsKey))) throw new ApiError(400,'Invalid ElevenLabs API key.');
+  if(path[0]==='library'){
+    if(path.length===1 && method==='GET')return json({songs:(await db().query(`SELECT l.id,l.name,'audio' AS kind,CASE WHEN l.scope='project' THEN p.name ELSE 'Library' END AS scope,l.song_type AS "songType" FROM library_entries l JOIN projects p ON p.id=l.project_id WHERE l.user_id=$1 ORDER BY l.created_at DESC LIMIT 1000`,[user])).rows});
+    if(path.length===1 && method==='POST')return json(await saveLibraryEntry(user,await body(request)),201);
+    if(path.length===2 && method==='GET')return json(await readLibraryEntry(user,id.parse(path[1])));
+  }
   if (path[0] === 'projects') {
     if (path.length === 1) {
       if (method === 'GET') return json({projects:(await db().query('SELECT p.id,p.name,p.revision FROM projects p WHERE p.owner_id=$1 OR EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=$1) ORDER BY p.created_at DESC LIMIT 100',[user])).rows});
@@ -61,6 +74,37 @@ async function dispatch(request: Request, path: string[]) {
       }
     }
     const project = id.parse(path[1]);
+    if(path[2]==='audio-history' && path.length===3){
+      const song=url.searchParams.get('path')??'';
+      await readSongDraft(user,project,song);
+      if(method==='POST'){
+        await authorize(user,project,true);
+        const input=z.object({artifactId:id}).strict().parse(await body(request));
+        const artifact=await getArtifact(user,input.artifactId,true);
+        if(artifact.project_id!==project||artifact.status!=='ready')throw new ApiError(400,'Choose saved audio from this project.');
+        await db().query('INSERT INTO song_audio_history(project_id,path,artifact_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[project,song,artifact.id]);return json({ok:true});
+      }
+      if(method==='GET')return json({audio:(await db().query('SELECT artifact_id AS id FROM song_audio_history WHERE project_id=$1 AND path=$2 ORDER BY created_at',[project,song])).rows});
+    }
+    if(path[2]==='task' && path.length===3 && method==='POST'){
+      const input=await body(request);
+      if(request.headers.get('accept')!=='application/x-ndjson')return json(await runWebTask(user,project,input,request.signal));
+      const stream=new ReadableStream({async start(controller){
+        const send=(value:unknown)=>{try{controller.enqueue(new TextEncoder().encode(JSON.stringify(value)+'\n'));}catch{/* Disconnected browser; validated saves still finish. */}};
+        try{const result=await runWebTask(user,project,input,request.signal,undefined,event=>send({event}));send({reply:result.reply});}
+        catch(error){send({error:error instanceof ApiError?error.message:'The project task could not finish.'});}
+        finally{try{controller.close();}catch{/* Already disconnected. */}}
+      }});
+      return new Response(stream,{headers:{'Content-Type':'application/x-ndjson','X-Accel-Buffering':'no'}});
+    }
+    if(path[2]==='draft' && path.length===3){
+      const song=url.searchParams.get('path')??'';
+      if(method==='GET')return json({draft:await readSongDraft(user,project,song)});
+      if(method==='PUT'||method==='DELETE'){
+        const input=z.object({draft:z.unknown().optional(),expected:z.unknown()}).strict().parse(await body(request));
+        await saveSongDraft(user,project,song,input.draft,input.expected,method==='DELETE');return json({ok:true});
+      }
+    }
     if (path.length === 2 && method === 'GET') return json(await projectFiles(user,project,url.searchParams.has('since') ? z.coerce.number().int().nonnegative().parse(url.searchParams.get('since')) : undefined));
     if (path.length === 2 && method === 'PATCH') { const input=saveSchema.parse(await body(request)); return json(await saveChanges(user,project,input.baseRevision,input.changes)); }
     if (path[2] === 'members' && path.length === 3 && method === 'PUT') { const input=z.object({userId:z.string().min(1).max(256),role:z.enum(['viewer','editor']).nullable()}).strict().parse(await body(request)); await setMember(user,project,input.userId,input.role); return json({ok:true}); }
@@ -102,13 +146,18 @@ async function dispatch(request: Request, path: string[]) {
     if (path[2] === 'candidate' && method === 'GET' && typeof job.checkpoint.candidate === 'string') return json(JSON.parse(await blobs.text(job.checkpoint.candidate)));
   }
   if (path[0] === 'artifacts') {
-    const artifact=await getArtifact(user,id.parse(path[1]),method === 'POST');
+    const artifact=await getArtifact(user,id.parse(path[1]),method === 'POST'||method==='PUT');
+    if(path[2]==='upload' && path.length===3 && method==='PUT' && localMediaEnabled()){
+      if(artifact.kind!=='wav'||artifact.status!=='pending'||artifact.user_id!==user)throw new ApiError(409,'This upload is not available.');
+      if(!request.body)throw new ApiError(400,'Choose a WAV file.');
+      const bytes=await boundedAudio(request.body);
+      try{validateWav(bytes,false);}catch{throw new ApiError(422,'Choose a valid WAV file.');}
+      await mediaObjects.write(artifact.pathname,bytes,'audio/wav');await finalizeWav(artifact.id);return json({ok:true});
+    }
     if (path[2] === 'complete' && method === 'POST') { await finalizeWav(artifact.id); return json({id:artifact.id,status:'ready'}); }
     if (path.length === 2 && method === 'GET') {
       if (artifact.status !== 'ready') throw new ApiError(409,'Audio is still uploading.');
-      const data=await get(artifact.pathname,{access:'private'});
-      if (!data || data.statusCode !== 200) throw new ApiError(404,'Audio unavailable.');
-      return new Response(data.stream,{headers:{'Content-Type':artifact.content_type,'Content-Disposition':`inline; filename="${artifact.id}.${artifact.content_type === 'audio/mpeg' ? 'mp3' : 'wav'}"`,'X-Content-Type-Options':'nosniff'}});
+      return new Response(await mediaObjects.stream(artifact.pathname),{headers:{'Content-Type':artifact.content_type,'Content-Disposition':`inline; filename="${artifact.id}.${artifact.content_type === 'audio/mpeg' ? 'mp3' : 'wav'}"`,'X-Content-Type-Options':'nosniff'}});
     }
   }
   throw new ApiError(404,'Endpoint not found.');
@@ -127,6 +176,8 @@ async function route(request:Request,context:{params:Promise<{path:string[]}>}) 
     else if (error instanceof ZodError) response=json({error:'Invalid request.',details:error.issues},400);
     else { console.error('API request failed', error instanceof Error ? error.name : 'UnknownError'); response=json({error:'The service could not complete the request.'},500); }
   }
+  if (response.status === 429) response.headers.set('Retry-After','900');
+  response.headers.set('X-Content-Type-Options','nosniff');
   response.headers.set('Cache-Control','private, no-store'); response.headers.set('Vary','Origin');
   if (origin && (same || allowed.includes(origin))) { response.headers.set('Access-Control-Allow-Origin',origin); response.headers.set('Access-Control-Allow-Headers','Authorization, Content-Type, X-Banger-ElevenLabs-Key'); response.headers.set('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, DELETE, OPTIONS'); }
   return response;

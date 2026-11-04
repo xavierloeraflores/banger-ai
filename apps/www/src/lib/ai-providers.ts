@@ -31,9 +31,11 @@ type StoredSettings = {
   providers: Partial<Record<ProviderId, { model: string; reasoningLevel?: ReasoningLevel; key: string }>>;
 };
 const STORAGE_KEY = "banger.ai-settings.v1";
+let storageKey = STORAGE_KEY;
+export function setBrowserSettingsAccount(id: string) { storageKey = `${STORAGE_KEY}:${id}`; }
 
 function read(): StoredSettings {
-  const raw = window.sessionStorage.getItem(STORAGE_KEY);
+  const raw = window.sessionStorage.getItem(storageKey);
   if (!raw) return { activeProvider: null, providers: {} };
   const parsed = JSON.parse(raw) as StoredSettings;
   if (!parsed || typeof parsed.providers !== "object" || !parsed.providers) throw new Error("Invalid settings.");
@@ -66,7 +68,7 @@ export function aiSettingsBridge(): AISettingsBridge {
       const value = settings.providers[option as ProviderId];
       if (!value) throw new Error("Configure this provider first.");
       value.reasoningLevel = checkedReasoningLevel(option, value.model, level);
-      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      window.sessionStorage.setItem(storageKey, JSON.stringify(settings));
       return summary(settings);
     },
     async saveElevenLabs(key) {
@@ -75,7 +77,7 @@ export function aiSettingsBridge(): AISettingsBridge {
       try {
         const settings = read();
         settings.elevenLabsKey = key;
-        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        window.sessionStorage.setItem(storageKey, JSON.stringify(settings));
         return summary(settings);
       } catch { throw new Error("Could not save the ElevenLabs key. Allow session storage for this site and try again."); }
     },
@@ -83,7 +85,7 @@ export function aiSettingsBridge(): AISettingsBridge {
       try {
         const settings = read();
         delete settings.elevenLabsKey;
-        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        window.sessionStorage.setItem(storageKey, JSON.stringify(settings));
         return summary(settings);
       } catch { throw new Error("Could not remove the ElevenLabs key. Allow session storage for this site and try again."); }
     },
@@ -93,7 +95,7 @@ export function aiSettingsBridge(): AISettingsBridge {
       const settings = read();
       if (!settings.providers[provider]) throw new Error("Configure this provider before selecting it.");
       settings.activeProvider = provider;
-      try { window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); }
+      try { window.sessionStorage.setItem(storageKey, JSON.stringify(settings)); }
       catch { throw new Error("Could not select the provider. Allow session storage for this site and try again."); }
       return summary(settings);
     },
@@ -109,7 +111,7 @@ export function aiSettingsBridge(): AISettingsBridge {
         if (!nextKey) throw new Error("missing-key");
         settings.providers[provider] = { model, key: nextKey, reasoningLevel: reasoningLevels(provider, model).includes(settings.providers[provider]?.reasoningLevel as ReasoningLevel) ? settings.providers[provider]?.reasoningLevel : undefined };
         settings.activeProvider = provider;
-        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        window.sessionStorage.setItem(storageKey, JSON.stringify(settings));
         return summary(settings);
       } catch (error) {
         if (error instanceof Error && error.message === "missing-key") throw new Error("Enter an API key for this provider.");
@@ -122,7 +124,7 @@ export function aiSettingsBridge(): AISettingsBridge {
         const settings = read();
         delete settings.providers[provider];
         if (settings.activeProvider === provider) settings.activeProvider = null;
-        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        window.sessionStorage.setItem(storageKey, JSON.stringify(settings));
         return summary(settings);
       } catch { throw new Error("Could not remove the key. Allow session storage for this site and try again."); }
     },

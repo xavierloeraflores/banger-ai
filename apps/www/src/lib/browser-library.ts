@@ -1,9 +1,10 @@
+import { browserStorageKey } from './browser-account';
 import { librarySongType, type LibrarySongType } from '@banger/elevenlabs/protocol';
 
 export type LibraryBundle = { id: string; name: string; songType?: LibrarySongType; wav: ArrayBuffer; files: Record<string, ArrayBuffer | string>; beat?: { name: string; source: string } };
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('banger-library', 1);
+    const request = indexedDB.open(browserStorageKey('banger-library'), 1);
     request.onupgradeneeded = () => request.result.createObjectStore('songs', { keyPath: 'id' });
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

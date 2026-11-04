@@ -1,10 +1,10 @@
 # Banger cloud backend
 
-`@banger/api` is a Next.js service. `@banger/www` stays a static export so Electron can keep packaging it. The browser connects through the Cloud projects panel. Access tokens stay in memory and are never placed in URLs or local storage. The panel currently accepts a JWT from your identity provider; it does not implement a hosted sign-in screen.
+`@banger/api` is a Next.js service. `@banger/www` stays a static export so Electron can keep packaging it. The hosted browser app starts with username/password signup or sign-in. Accounts own separate workspaces. Browser sessions use opaque HttpOnly cookies backed by PostgreSQL; logout revokes the session immediately. Electron continues to use the static studio without web authentication.
 
 ## Setup
 
-Use Node 24 and the repository's pnpm version. Provision PostgreSQL, a **private** Vercel Blob store, a Vercel project with Sandbox access, and a JWT issuer. Copy `.env.example` to `.env.local` and set the values for that environment. No credentials are required to build.
+Use Node 24 and the repository's pnpm version. Provision PostgreSQL, a **private** Vercel Blob store, a Vercel project with Sandbox access, and, for external API clients, a JWT issuer. Copy `.env.example` to `.env.local` and set the values for that environment. No credentials are required to build.
 
 From the repository root:
 
@@ -28,9 +28,9 @@ Deploy `apps/api` as its own Vercel project, including workspace files outside t
 
 ## Persistence and conflicts
 
-Every saved file version and manifest is an immutable private Blob object. PostgreSQL records the manifest's path and indexed revision metadata. It also records users, ownership, viewer/editor grants, agent sessions, jobs, and audio references.
+New source versions and manifests are immutable PostgreSQL objects. Existing Blob-backed source versions remain readable. PostgreSQL records revision metadata beside the source. It also records users, ownership, viewer/editor grants, agent sessions, jobs, and audio references.
 
-A save compiles all submitted `.banger` source before any publication. It writes immutable objects, then locks the project row, rechecks permissions and the expected revision, and publishes the new manifest and revision in one transaction. A stale client receives HTTP 409 and keeps its draft. Failed or conflicting writes can leave unreferenced Blob objects; they never become the current project. Garbage collection is deliberately not automatic. Any future collector must retain objects referenced by all historical manifests, artifacts, pending uploads, and job checkpoints.
+A save compiles all submitted `.banger` source before any publication. It writes immutable source objects, then locks the project row, rechecks permissions and the expected revision, and publishes the new manifest and revision in one transaction. A stale client receives HTTP 409 and keeps its draft. Failed or conflicting writes can leave unreferenced source or Blob objects; they never become the current project. Garbage collection is deliberately not automatic. Any future collector must retain objects referenced by all historical manifests, artifacts, pending uploads, and job checkpoints.
 
 Sync uses `GET /api/projects/:id?since=N` to return changed source and deleted paths. Projects are limited to 256 files, 64 KiB per file, and 4 MiB of total source. Lists return at most 100 projects, 50 jobs, or 50 artifacts. Older revisions remain available to the backend for manifests and artifact provenance; the panel displays current projects and recent activity.
 
@@ -50,10 +50,13 @@ ElevenLabs does not document idempotency for these operations. Workers disable S
 
 ## API
 
-All endpoints except signed Blob callbacks and the separately authenticated worker require `Authorization: Bearer <JWT>`.
+Authenticated endpoints accept either the hosted browser session or `Authorization: Bearer <JWT>` for external clients. Cookie-authenticated mutations require the exact app Origin. Account signup/sign-in, signed Blob callbacks and the separately authenticated worker have their own checks.
 
 | Route | Purpose |
 | --- | --- |
+| `POST /api/accounts` | Sign up with `{username, password}` and begin a session |
+| `GET/POST/DELETE /api/session` | Check the account, sign in with `{username, password}`, or revoke the session |
+| `POST /api/chat`, `POST /api/lyrics` | Authenticated BYOK generation; credentials are used for this request only |
 | `GET/POST /api/projects` | List accessible projects or create one with `name` and `files` |
 | `GET /api/projects/:id?since=N` | Read a full project or revision delta |
 | `PATCH /api/projects/:id` | Save `{baseRevision, changes: [{path, source}]}`; `source: null` deletes |
@@ -115,3 +118,89 @@ Lyric drafts keep the measurements of their referenced audio. Generating audio
 replaces the measurements, including clearing old values when a response omits
 them. Consumers must use `audioVersion`, not the lyric document's `version`, when
 matching timings to a recording. This storage adds no waveform or karaoke view.
+
+## Browser accounts
+
+Apply migration `003_web_accounts.sql` before deploying this version. Set
+`APP_ORIGIN` to the public HTTPS origin, and keep PostgreSQL private. Accounts
+use case-insensitive usernames with 3–32 ASCII letters, numbers or underscores,
+and passwords with 12–128 characters. Passwords use individually salted scrypt
+hashes. Session tokens expire after 12 hours, are stored only as hashes in the
+database, and are replaced on sign-in. Database counters throttle login and
+signup across server instances. Back up PostgreSQL along with the private Blob
+store; both contain durable user data.
+
+`BANGER_WEB_PASSWORD`, `BANGER_WEB_USER`, access-fragment URLs, and
+`BANGER_SESSION_SECRET` no longer grant browser access. Existing shared-workspace
+data remains owned by its previous user ID. To assign it to an account, a trusted
+database administrator must first verify the owner and sign up that account,
+then revoke its sessions and change its `web_accounts.user_id` to the existing
+owner ID in a transaction. Never assign the old workspace to the first signup.
+There is no email verification or self-service password recovery in this
+username-only flow.
+
+BYOK chat and lyric requests go through the same-origin authenticated API.
+Provider endpoints are fixed by the provider adapter; clients cannot supply a
+proxy destination. Keys are not saved in the server database or logged. Browser
+keys remain in account-scoped tab storage and are cleared on sign-out.
+
+## Hosted studio projects and storage
+
+The hosted entry point installs web implementations of the existing workspace,
+music, song-storage and library interfaces. Open Project, Create New Project,
+Save, project chat, Vocal Studio and library exports use the signed-in account.
+The separate cloud-source editor is hidden in the hosted app. The static export
+and Electron continue to use their existing adapters.
+
+Apply all migrations before updating the app. Projects, source revisions, lyric
+drafts, conversation history and library metadata use PostgreSQL. Project chat
+runs the same bounded file-tool agent in a temporary directory. It restores
+conversation history, streams activity, revalidates writes and checks source
+revisions before publication. Conflicting edits remain unchanged in the saved
+project and the task reports incomplete. Account-bound request headers prevent a
+stale tab from applying another account's credentials after sign-in changes.
+
+For Vercel, use the private Blob store for audio. For a self-hosted Node server,
+set `BANGER_LOCAL_DATA_DIR` to an absolute directory on persistent disk. The API
+stores media there with private permissions and streams it only after project
+authorization. The app uploads directly to that server with a 100 MiB bound.
+This directory must be shared by every server/worker instance and backed up
+alongside PostgreSQL. Do not point it at a public directory or ephemeral
+serverless filesystem. Leave it unset on Vercel. Changing storage backends does
+not migrate existing audio.
+
+The local renderer check uses a dedicated database and local media directory:
+
+```sh
+NODE_ENV=production DATABASE_URL=postgresql://localhost/banger_test \
+  APP_ORIGIN=http://127.0.0.1:3048 BANGER_LOCAL_DATA_DIR=/tmp/banger-test-media \
+  pnpm --filter @banger/api exec next start --hostname 127.0.0.1 --port 3048
+# In another terminal, after building and migrating:
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --projects
+```
+
+This check exercises account flows, project creation and reload, source saves,
+draft persistence, real WAV rendering, private uploads, library persistence and
+non-silent playback. It does not call a paid provider.
+
+For hosted vocal and Full Send checks, start that local server with the test-only
+provider preload (absolute path from the repository root):
+
+```sh
+NODE_OPTIONS="--import=$PWD/apps/api/test/fixtures/providers.mjs" \
+  NODE_ENV=production DATABASE_URL=postgresql://localhost/banger_test \
+  APP_ORIGIN=http://127.0.0.1:3048 BANGER_LOCAL_DATA_DIR=/tmp/banger-test-media \
+  pnpm --filter @banger/api exec next start --hostname 127.0.0.1 --port 3048
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --music
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --full-send=beat
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --full-send=lyrics
+pnpm --filter @banger/desktop exec electron ../api/scripts/smoke-accounts.cjs --full-send=both
+```
+
+The preload accepts only dummy provider keys, returns fixture model/audio
+responses, and rejects other external requests. The tests exercise the real
+production routes, database, private media storage, provider adapters and shared
+renderer. They cover draft fitting, lyric saves, full/selected generation,
+version history, vocal exports and permission-scoped Full Send. Never enable
+this preload in a deployed server. Live provider access and Vercel Blob still
+require deployment-specific validation.

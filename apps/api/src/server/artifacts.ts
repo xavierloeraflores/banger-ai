@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { get, head } from "@vercel/blob";
+import { localMediaEnabled, mediaObjects, MAX_AUDIO_BYTES } from "./media-objects";
+export { MAX_AUDIO_BYTES } from "./media-objects";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { z } from "zod";
 import { validateWav } from "@banger/elevenlabs";
@@ -7,14 +8,13 @@ import { db } from "./db";
 import { authenticate } from "./auth";
 import { authorize, readManifest } from "./projects";
 import { ApiError, id } from "./domain";
-export const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 export async function reserveWav(user: string, project: string, revision: number) {
   await authorize(user, project, true);
   await readManifest(project, revision);
   const artifactId = randomUUID();
   const pathname = `projects/${project}/audio/${artifactId}.wav`;
   await db().query("INSERT INTO artifacts(id,project_id,revision,user_id,kind,pathname,content_type) VALUES($1,$2,$3,$4,'wav',$5,'audio/wav')", [artifactId, project, revision, user, pathname]);
-  return { id: artifactId, pathname };
+  return { id: artifactId, pathname, ...(localMediaEnabled() ? {uploadUrl: `/artifacts/${artifactId}/upload`} : {}) };
 }
 export async function getArtifact(user: string, artifactId: string, write = false) {
   const artifact = (await db().query("SELECT * FROM artifacts WHERE id=$1", [artifactId])).rows[0];
@@ -26,16 +26,11 @@ export async function finalizeWav(artifactId: string) {
   const artifact = (await db().query("SELECT * FROM artifacts WHERE id=$1 AND kind='wav'", [artifactId])).rows[0];
   if (!artifact) throw new ApiError(404, "Upload not found.");
   if (artifact.status === 'ready') return;
-  const metadata = await head(artifact.pathname);
-  if (metadata.pathname !== artifact.pathname || metadata.contentType !== 'audio/wav' || metadata.size < 44 || metadata.size > MAX_AUDIO_BYTES) throw new ApiError(422, "Invalid WAV upload.");
-  const data = await get(artifact.pathname, { access: 'private' });
-  if (!data || data.statusCode !== 200) throw new ApiError(422, "Upload is not available yet.");
-  const reader = data.stream.getReader();
-  const chunks:Buffer[]=[];let size=0;
-  try { while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>MAX_AUDIO_BYTES)throw new ApiError(413,"WAV exceeds 100 MiB.");chunks.push(Buffer.from(part.value));} }
-  finally {await reader.cancel();}
-  try {validateWav(Buffer.concat(chunks),false);}catch(error){throw new ApiError(422,error instanceof Error?error.message:"Invalid WAV.");}
-  await db().query("UPDATE artifacts SET status='ready',size=$2 WHERE id=$1 AND status='pending'", [artifactId, metadata.size]);
+  const size = await mediaObjects.size(artifact.pathname);
+  if (size < 44 || size > MAX_AUDIO_BYTES) throw new ApiError(422, 'Invalid WAV upload.');
+  const bytes = await mediaObjects.read(artifact.pathname);
+  try {validateWav(bytes,false);}catch(error){throw new ApiError(422,error instanceof Error?error.message:"Invalid WAV.");}
+  await db().query("UPDATE artifacts SET status='ready',size=$2 WHERE id=$1 AND status='pending'", [artifactId, size]);
 }
 export async function uploadCallback(request: Request, body: HandleUploadBody) {
   return handleUpload({ request, body,
