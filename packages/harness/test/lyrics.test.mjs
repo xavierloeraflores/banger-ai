@@ -221,3 +221,42 @@ test('legacy lyrics remain discoverable and the next agent edit saves the canoni
  assert.match(await readFile(join(root,current),'utf8'),/Current words/);
  assert.match(await readFile(join(root,'song.lyrics.json'),'utf8'),/Legacy words/);
 });
+
+for (const beat of [false, true]) for (const lyrics of [false, true]) {
+  test(`project enforces beat=${beat}, lyrics=${lyrics} across turns`, async t => {
+    const { workspace } = await fixture(t, false);
+    const original = await workspace.read('song.banger');
+    const draft = JSON.stringify({ schemaVersion: 1, lyrics: 'Morning light' });
+    const model = new MockLanguageModelV4({ doGenerate: [
+      call('edit_file', { path: 'song.banger', search: '120', replacement: '95' }),
+      call('write_draft', { path: 'song.draft.json', source: draft }), finish(),
+      call('edit_file', { path: 'song.banger', search: '95', replacement: '80' }),
+      call('write_draft', { path: 'song.draft.json', source: draft }), finish(),
+    ] });
+    const session = new ProjectSession({ workspace, selected: { model, name: 'fixture' } });
+    const result = await session.run('Edit beat and lyrics', { activeFile: 'song.banger', permissions: { beat, lyrics } });
+    assert.deepEqual(result.changedPaths, [...(beat ? ['song.banger'] : []), ...(lyrics ? ['song.draft.json'] : [])]);
+    const saved = await workspace.read('song.banger');
+    assert.equal(saved.source, beat ? original.source.replace('120', '95') : original.source);
+    assert.equal(Boolean(await workspace.readLyrics('song.draft.json')), lyrics);
+    const names = model.doGenerateCalls[0].tools.map(tool => tool.name);
+    for (const name of ['write_file', 'edit_file']) assert.equal(names.includes(name), beat);
+    for (const name of ['write_draft', 'write_lyrics', 'edit_lyrics']) assert.equal(names.includes(name), lyrics);
+    const replyOnly = await session.run('Try editing again', { activeFile: 'song.banger', permissions: { beat: false, lyrics: false } });
+    assert.deepEqual(replyOnly.changedPaths, []);
+    assert.equal((await workspace.read('song.banger')).source, saved.source);
+  });
+}
+
+test('agent edits chunk lyrics and cannot recreate the draft once chunks exist', async t => {
+  const { workspace } = await fixture(t);
+  const model = new MockLanguageModelV4({ doGenerate: [
+    call('write_draft', { path: 'song.draft.json', source: JSON.stringify({ schemaVersion: 1, lyrics: 'Wrong destination' }) }),
+    call('read_lyrics', { path: current }),
+    call('edit_lyrics', { path: current, search: 'First line', replacement: 'Chunk line' }), finish(),
+  ] });
+  const result = await new ProjectSession({ workspace, selected: { model, name: 'fixture' } }).run('Revise lyrics', { activeFile: 'song.banger', permissions: { beat: false, lyrics: true } });
+  assert.deepEqual(result.changedPaths, [current]);
+  assert.equal(await workspace.readLyrics('song.draft.json'), null);
+  assert.equal(JSON.parse((await workspace.readLyrics(current)).source).plan.chunks[0].text, 'Chunk line');
+});

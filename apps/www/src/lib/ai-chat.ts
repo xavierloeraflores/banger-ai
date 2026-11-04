@@ -49,7 +49,10 @@ export async function sendChat(request: ChatRequest, signal: AbortSignal): Promi
   signal.throwIfAborted();
   if (!result || typeof result.ok !== "boolean") throw new Error("The AI service returned an invalid reply.");
   if (!result.ok) throw new Error(typeof result.error === "string" ? result.error.slice(0, 500) : "Could not generate a reply.");
-  return checkedReply(result.reply);
+  const reply = checkedReply(result.reply);
+  if (request.permissions?.beat === false) reply.files = [];
+  if (request.permissions?.lyrics === false) delete reply.lyricPrompt;
+  return reply;
 }
 
 export async function sendLyrics(request: LyricRequest, signal: AbortSignal): Promise<LyricEdit[]> {

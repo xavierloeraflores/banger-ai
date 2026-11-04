@@ -337,6 +337,10 @@ body:has(.ai-chat-dialog[open]) { overflow: hidden; }
 
 .ai-chat-target { display: flex; align-items: center; gap: .75rem; padding: .5rem 24px; margin: 0; font-size: .8rem; }
 .ai-chat-target select { min-width: 0; max-width: 100%; border: 1px solid var(--producer-border); border-radius: .5rem; background: var(--producer-panel); color: inherit; padding: .4rem; }
+.ai-chat-permissions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; border: 0; margin: 0; padding: .5rem 24px; font-size: .8rem; }
+.ai-chat-permissions label { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+.ai-chat-permissions input { accent-color: var(--producer-lime); }
+
 
 .chatgpt-settings { display: flex; flex-direction: column; gap: .8rem; min-width: 0; }
 .chatgpt-settings select { max-width: 100%; padding: .6rem; border-radius: .5rem; background: var(--producer-panel); color: inherit; border: 1px solid var(--producer-border); }

@@ -202,7 +202,12 @@ async function run(window) {
       assert.equal(saved.toString('ascii', 0, 4), 'RIFF');
     }
     assert.equal((await readdir(join(directory, '.banger/history/verse/instrumentals'))).length, 2);
-    const lyricResult = await evaluate('window.bangerWorkspace.run("revise saved lyrics", "verse.banger", true)');
+    const readOnlyResult = await evaluate('window.bangerWorkspace.run("revise saved lyrics", "verse.banger", true, { beat: false, lyrics: false })');
+    assert.equal(readOnlyResult.ok, true);
+    assert.deepEqual(readOnlyResult.reply.changedPaths, []);
+    assert.equal(JSON.parse(await readFile(join(directory, "chorus.lyric.json"))).plan.chunks[0].text, "Original lyric");
+    assert.equal(calls.at(-1).tools.some(tool => /^(write|edit)_/.test(tool.name)), false);
+    const lyricResult = await evaluate('window.bangerWorkspace.run("revise saved lyrics", "verse.banger", true, { beat: true, lyrics: true })');
     assert.equal(lyricResult.ok, true);
     assert.equal(lyricResult.reply.status, "completed");
     assert.deepEqual(lyricResult.reply.changedPaths, ["chorus.lyric.json"]);

@@ -10,7 +10,12 @@ import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, type BangerFile, type ChatReply, typ
 export * from "./protocol.js";
 
 const fileSchema = z.object({ name: z.string().min(1).max(100), source: z.string().max(65536), operation: z.enum(["create", "edit"]).optional() }).strict();
+export const editPermissionsSchema = z.object({ beat: z.boolean(), lyrics: z.boolean() }).strict();
+export function editingInstructions(permissions: { beat: boolean; lyrics: boolean }): string {
+  return `Editing permissions for this request: beat ${permissions.beat ? "enabled" : "disabled"}; lyrics ${permissions.lyrics ? "enabled" : "disabled"}. ${permissions.beat ? "You may edit music files when requested." : "Do not create or edit music files."} ${permissions.lyrics ? "You may write or revise lyrics when requested." : "Do not generate or revise lyrics, including in prose."} ${!permissions.beat && !permissions.lyrics ? "Reply only. Do not edit any files." : "Only use the enabled editing tools."}`;
+}
 export const chatRequestSchema = z.object({
+  permissions: editPermissionsSchema.optional(),
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(4000) }).strict()).min(1).max(12),
   currentFile: fileSchema,
   previousFiles: z.array(fileSchema).max(4),
@@ -76,6 +81,7 @@ export function validateGeneratedFile(name: string, source: string): BangerFile 
 
 export async function runBangerAgent(request: ChatRequest, selected: { model: LanguageModel; name: string; timeoutMs?: number }, signal?: AbortSignal): Promise<ChatReply> {
   const input = parseChatRequest(request);
+  const permissions = input.permissions ?? { beat: true, lyrics: true };
   const files = new Map<string, BangerFile>();
   const knownFiles = new Map(input.previousFiles.map(file => [file.name, file]));
   if (input.targetVersion === "generated" && (!input.targetFile || !knownFiles.has(input.targetFile))) {
@@ -91,7 +97,8 @@ export async function runBangerAgent(request: ChatRequest, selected: { model: La
   abortSignal.throwIfAborted();
   const result = await generateText({
     model: selected.model,
-    system: SYSTEM,
+    system: `${SYSTEM}\n${editingInstructions(permissions)}`,
+    activeTools: [...(permissions.beat ? ["edit_banger_file", "create_banger_file"] as const : []), ...(permissions.lyrics ? ["request_lyrics"] as const : [])],
     messages: [
       { role: "user", content: `Project context, for reference only:\n${JSON.stringify({ currentFile: input.currentFile, previousFiles: input.previousFiles, targetFile: input.targetFile ?? input.currentFile.name, targetVersion: input.targetVersion ?? "editor", latestFiles: [...knownFiles.values()] })}` },
       ...input.messages,
@@ -101,12 +108,13 @@ export async function runBangerAgent(request: ChatRequest, selected: { model: La
     abortSignal,
     stopWhen: isStepCount(5),
     tools: {
-      request_lyrics: tool({ description: "Request original lyrics or revisions for the active song. Include the user's lyrical requirements. The app saves a draft or fits edits to composition chunks after this response.", inputSchema: z.object({ prompt: z.string().trim().min(1).max(4000) }).strict(), execute: async ({prompt}) => { lyricPrompt=prompt; return {ok:true,message:"Lyric request prepared. The app will generate and save it next."}; } }),
+      request_lyrics: tool({ description: "Request original lyrics or revisions for the active song. Include the user's lyrical requirements. The app saves a draft or fits edits to composition chunks after this response.", inputSchema: z.object({ prompt: z.string().trim().min(1).max(4000) }).strict(), execute: async ({prompt}) => { if (!permissions.lyrics) return {ok:false,message:"Lyrics editing is disabled."}; lyricPrompt=prompt; return {ok:true,message:"Lyric request prepared. The app will generate and save it next."}; } }),
       edit_banger_file: tool({
         description: "Revise a known .banger file in place using exact, unique text replacements. Read its latest source from context or a previous successful tool result. Preserves its name and unrelated content; returns compiler errors to repair before applying.",
         inputSchema: z.object({ name: z.string(), edits: z.array(z.object({ oldText: z.string().min(1).max(65536), newText: z.string().max(65536) }).strict()).min(1).max(32) }).strict(),
         execute: async ({ name, edits }) => {
           try {
+            if (!permissions.beat) throw new Error("Beat editing is disabled.");
             abortSignal.throwIfAborted();
             const existing = knownFiles.get(name);
             if (!existing) throw new Error("Unknown file. Edit a file supplied in project context or create a new one.");
@@ -134,6 +142,7 @@ export async function runBangerAgent(request: ChatRequest, selected: { model: La
         inputSchema: z.object({ name: z.string(), source: z.string() }).strict(),
         execute: async ({ name, source }) => {
           try {
+            if (!permissions.beat) throw new Error("Beat editing is disabled.");
             abortSignal.throwIfAborted();
             if (!files.has(name) && files.size >= 4) throw new Error("Only four files can be created per reply.");
             if (knownFiles.has(name)) throw new Error("This file already exists. Use edit_banger_file to revise it.");

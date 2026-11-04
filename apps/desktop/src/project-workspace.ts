@@ -1,3 +1,4 @@
+import type { EditPermissions } from "@banger/agent";
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename } from "node:path";
 import { mkdir, rmdir } from "node:fs/promises";
@@ -107,7 +108,7 @@ export function installWorkspaceHandlers(options: {
     catch (error) { throw new Error(safeError(error, "Could not save the file. Reload it to check for external changes.")); }
   });
   ipcMain.handle("banger:workspace-cancel", event => { state(options.senderWindow(event)).controller?.abort(); });
-  ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown, resetHistory: unknown) => {
+  ipcMain.handle("banger:workspace-run", async (event, prompt: unknown, activeFile: unknown, resetHistory: unknown, permissions: unknown) => {
     const window = options.senderWindow(event);
     const current = state(window);
     if (current.controller || opening.has(window.id)) return { ok: false, error: "A project operation is already running." };
@@ -121,7 +122,7 @@ export function installWorkspaceHandlers(options: {
       // Keep task history, but refresh provider credentials and model selection each run.
       if (!current.session) current.session = new ProjectSession({ workspace: current.workspace, selected, onEvent: event => send(window, event) });
       else Object.assign(current.session.selected, { timeoutMs: undefined, ...selected });
-      return { ok: true, reply: await current.session.run(prompt, { signal: controller.signal, activeFile }) };
+      return { ok: true, reply: await current.session.run(prompt, { signal: controller.signal, activeFile, permissions: permissions as EditPermissions | undefined }) };
     } catch (error) {
       return { ok: false, error: controller.signal.aborted ? "Project task stopped. Completed saves are kept." : (options.modelError?.(error) ?? "Project task failed. Check the selected model and connection.") };
     } finally { delete current.controller; }

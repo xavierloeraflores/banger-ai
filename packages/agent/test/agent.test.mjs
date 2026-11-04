@@ -247,3 +247,23 @@ test('the floating agent routes lyric requests without inventing music files', a
  assert.equal(reply.lyricPrompt,'Write a hopeful chorus for this song');
  assert.deepEqual(reply.files,[]);
 });
+
+for (const beat of [false, true]) for (const lyrics of [false, true]) {
+  test(`chat enforces beat=${beat}, lyrics=${lyrics} even when the model calls disabled tools`, async () => {
+    const model = new MockLanguageModelV4({ doGenerate: [
+      response([
+        call("new", "new.banger", source),
+        { type: "tool-call", toolCallId: "edit", toolName: "edit_banger_file", input: JSON.stringify({ name: "loop.banger", edits: [{ oldText: "120", newText: "95" }] }) },
+        { type: "tool-call", toolCallId: "lyrics", toolName: "request_lyrics", input: JSON.stringify({ prompt: "Write a chorus" }) },
+      ], "tool-calls"),
+      response([{ type: "text", text: "Finished." }]),
+    ] });
+    const result = await runBangerAgent({ ...request, permissions: { beat, lyrics } }, { model, name: "fixture" });
+    assert.equal(result.files.length, beat ? 2 : 0);
+    assert.equal(Boolean(result.lyricPrompt), lyrics);
+    const names = (model.doGenerateCalls[0].tools ?? []).map(tool => tool.name);
+    assert.equal(names.includes("create_banger_file"), beat);
+    assert.equal(names.includes("edit_banger_file"), beat);
+    assert.equal(names.includes("request_lyrics"), lyrics);
+  });
+}

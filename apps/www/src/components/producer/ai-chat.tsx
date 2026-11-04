@@ -24,8 +24,7 @@ const suggestions = [
 ];
 
 export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectBusy, onProjectFile }: Props) {
-  const [target,setTarget]=useState<{view:boolean;scope:"music"|"lyrics"}>({view:vocalStudio,scope:vocalStudio?"lyrics":"music"});
-  const scope=target.view===vocalStudio?target.scope:vocalStudio?"lyrics":"music";
+  const [permissions, setPermissions] = useState({ beat: !vocalStudio, lyrics: vocalStudio });
   const { languageModel } = useGenerationAccess();
   const [desktop, setDesktop] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
@@ -108,7 +107,7 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
   async function send(action?: "save" | "discard") {
     const text = prompt.trim();
     if (!languageModel || !text || request.current || fileBusy) return;
-    if (scope === "music" && projectMode && projectDirty && !action) {
+    if (permissions.beat && projectMode && projectDirty && !action) {
       setError(null);
       editsDialog.current?.showModal();
       return;
@@ -119,7 +118,7 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
     setError(null);
     setNotice("");
     const snapshotRevision = revision;
-    if(scope === "lyrics") {
+    if(permissions.lyrics && !permissions.beat) {
       try {
         const answer=await onLyrics(text,controller.signal);
         setTurns(previous=>[...previous,{prompt:text,revision:snapshotRevision,reply:{text:answer,files:[],model:connection}}]);setPrompt("");
@@ -136,13 +135,13 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
       try {
         const snapshot = action ? await onResolveEdits(action) : { source, revision, activeFile };
         editsDialog.current?.close();
-        const result = await bridge.run(text, snapshot.activeFile, resetProjectHistory.current);
+        const result = await bridge.run(text, snapshot.activeFile, resetProjectHistory.current, permissions);
         resetProjectHistory.current = false;
         setTurns(previous => [...previous, { prompt: text, revision: snapshotRevision, project: folderName,
           reply: { text: result.ok ? result.reply.text : result.error, files: [], model: connection }, activity: activityRef.current }]);
         setPrompt("");
         // Cancelled tasks can still have saved files. Refresh only an unchanged studio.
-        if (snapshot.activeFile) {
+        if (permissions.beat && snapshot.activeFile) {
           const saved = await bridge.read(snapshot.activeFile);
           if (saved.source !== snapshot.source) onProjectFile(saved, snapshot.revision);
         }
@@ -164,8 +163,8 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
     ]);
     const previousFiles = availableFiles;
     try {
-      const reply = await sendChat({ messages: [...messages, { role: "user", content: text }], currentFile: { name: fileName, source }, previousFiles, targetFile: selectedTarget ?? fileName, targetVersion: selectedTarget ? "generated" : "editor" }, controller.signal);
-      if(reply.lyricPrompt)reply.text += `\n\n${await onLyrics(reply.lyricPrompt,controller.signal)}`;
+      const reply = await sendChat({ permissions, messages: [...messages, { role: "user", content: text }], currentFile: { name: fileName, source }, previousFiles, targetFile: selectedTarget ?? fileName, targetVersion: selectedTarget ? "generated" : "editor" }, controller.signal);
+      if(permissions.lyrics && reply.lyricPrompt)reply.text += `\n\n${await onLyrics(reply.lyricPrompt,controller.signal)}`;
       if (request.current !== controller) return;
       setTurns(previous => [...previous, { prompt: text, reply, revision: snapshotRevision }]);
       setPrompt("");
@@ -245,21 +244,24 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
         {!!turn.activity?.length && <details className="ai-chat-activity"><summary>Project activity</summary><ol>{turn.activity.map((item, index) => <li key={index}>{item}</li>)}</ol></details>}
         <p className="ai-chat-model">{turn.reply.model}</p>
       </div>)}
-      {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{projectMode ? "Working on your project…" : "Composing and checking your files…"}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
+      {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{!permissions.beat && !permissions.lyrics ? "Thinking…" : projectMode ? "Working on your project…" : "Composing and checking your files…"}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
     </div>
-    {projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
+    {permissions.beat && (projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
       <select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
         <option value="">{fileName} · current editor</option>
         {availableFiles.map(file => <option key={file.name} value={file.name}>{file.name} · latest proposal</option>)}
       </select>
-    </label>}
-    <label className="ai-chat-target">Edit
-      <select aria-label="AI editing target" value={scope} disabled={busy} onChange={event=>setTarget({view:vocalStudio,scope:event.target.value as "music"|"lyrics"})}><option value="music">Music and project files</option><option value="lyrics">Song lyrics</option></select>
-    </label>
+    </label>)}
+    <fieldset className="ai-chat-permissions" disabled={busy}>
+      <legend className="producer-sr-only">Allow AI edits</legend>
+      <label><input type="checkbox" checked={permissions.beat} onChange={event => setPermissions(previous => ({ ...previous, beat: event.target.checked }))} />Edit beat</label>
+      <label><input type="checkbox" checked={permissions.lyrics} onChange={event => setPermissions(previous => ({ ...previous, lyrics: event.target.checked }))} />Edit lyrics</label>
+      {!permissions.beat && !permissions.lyrics && <span>Reply only. No files will be edited.</span>}
+    </fieldset>
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
       <label className="producer-sr-only" htmlFor="ai-chat-prompt">Message Banger AI</label>
-      <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={scope === "lyrics" ? 4000 : projectMode ? 16000 : 4000} value={prompt} disabled={busy}
-        placeholder={scope==="lyrics"?"Write lyrics, or describe changes to this song’s lyrics…":projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
+      <textarea id="ai-chat-prompt" ref={input} rows={2} maxLength={permissions.lyrics && !permissions.beat ? 4000 : projectMode ? 16000 : 4000} value={prompt} disabled={busy}
+        placeholder={!permissions.beat && !permissions.lyrics ? "Ask about your song or project…" : permissions.lyrics && !permissions.beat?"Write lyrics, or describe changes to this song’s lyrics…":projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
         : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy}>Send</Button></KeyHint>}

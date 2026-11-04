@@ -87,6 +87,8 @@ async function exercise(window, desktop) {
   await waitFor("!document.querySelector('.ai-chat-launcher').disabled");
   await openChat();
   await waitFor("document.activeElement.id === 'ai-chat-prompt'");
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => [input.parentElement.textContent, input.checked])"), [["Edit beat", true], ["Edit lyrics", false]]);
+  assert.equal(await evaluate("!!document.querySelector('[aria-label=\"AI editing target\"]')"), false);
   await input("ai-chat-prompt", "Keep this draft");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
@@ -216,6 +218,26 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 9);
   await click("New chat");
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
+  const beforeReadOnly = await evaluate("document.querySelector('#producer-source').value");
+  await evaluate("document.querySelector('.ai-chat-permissions input').click()");
+  await waitFor("document.querySelector('.ai-chat-permissions').textContent.includes('Reply only')");
+  await input("ai-chat-prompt", "Please edit the beat and write lyrics anyway");
+  await click("Send");
+  await waitFor("document.querySelector('.ai-chat-answer')?.textContent.includes('Your song is unchanged')");
+  assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file').length"), 0);
+  assert.equal(await evaluate("document.querySelector('#producer-source').value"), beforeReadOnly);
+  const readOnlyCalls = desktop ? calls : await evaluate("window.__chatCalls");
+  assert.equal((readOnlyCalls.at(-1).tools ?? []).length, 0);
+  await closeChat();
+  await openChat();
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => input.checked)"), [false, false]);
+  await evaluate("document.querySelectorAll('.ai-chat-permissions input')[0].click(); document.querySelectorAll('.ai-chat-permissions input')[1].click()");
+  await input("ai-chat-prompt", "Create three more loops with both permissions enabled");
+  await click("Send");
+  await waitFor("document.querySelectorAll('.ai-chat-file').length === 3");
+  const bothCalls = desktop ? calls : await evaluate("window.__chatCalls");
+  assert.deepEqual(bothCalls.at(-2).tools.map(tool => tool.name).sort(), ["create_banger_file", "edit_banger_file", "request_lyrics"]);
+  await click("New chat");
   // The popup stays inside a narrow viewport, and its backdrop dismisses it.
   window.setContentSize(390, 700);
   await delay(100);

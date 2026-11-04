@@ -1,5 +1,6 @@
 // A deterministic Gateway response, used only by smoke tests. No paid calls.
 export function chatFixture(body) {
+  if (!body.tools?.length) return { content: [{ type: "text", text: "Reply only. Your song is unchanged." }], finishReason: { unified: "stop", raw: "stop" }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] };
   const source = 'tempo 105; meter 4/4; track agent_kick { sound "drums/kick"; rhythm "x . x ."; gain 0.5; }';
   const prompt = body.prompt;
   const last = prompt.at(-1);

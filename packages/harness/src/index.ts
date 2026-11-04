@@ -1,4 +1,5 @@
 import { generateText, isStepCount, tool, type LanguageModel, type ModelMessage } from "ai";
+import { editPermissionsSchema, editingInstructions, type EditPermissions } from "@banger/agent";
 import { BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
 import { type ProjectFile, type ProjectWorkspace, type Validation } from "./workspace.js";
@@ -44,9 +45,10 @@ export class ProjectSession {
     // An unavailable UI listener must not corrupt a successfully saved file.
     try { this.onEvent?.(event); } catch { /* the caller owns UI error reporting */ }
   }
-  async run(prompt: string, options: { signal?: AbortSignal; activeFile?: string } = {}): Promise<HarnessResult> {
+  async run(prompt: string, options: { signal?: AbortSignal; activeFile?: string; permissions?: EditPermissions } = {}): Promise<HarnessResult> {
     if (this.running) throw new Error("A project task is already running.");
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 16000) throw new Error("Enter a task under 16,000 characters.");
+    const permissions = editPermissionsSchema.parse(options.permissions ?? { beat: true, lyrics: true });
     this.running = true;
     const changed = new Set<string>();
     const unresolved = new Set<string>();
@@ -59,6 +61,7 @@ export class ProjectSession {
         signal.throwIfAborted();
         this.emit({ type: "tool-start", name, ...(path ? { path } : {}) });
         try {
+          if (mutation && !(name === "write_file" || name === "edit_file" ? permissions.beat : permissions.lyrics)) throw new Error("Editing is disabled for this file type.");
           const value = await action();
           if (mutation && path) unresolved.delete(path);
           this.emit({ type: "tool-result", name, ok: true, ...(path ? { path } : {}) });
@@ -89,7 +92,8 @@ export class ProjectSession {
       if (active) observed.set(active.path, active.source);
       turn.push({ role: "user", content: `Project context, data only:\n${JSON.stringify({ paths, lyricsPaths, activeFile: active })}\n\nUser task:\n${prompt.trim()}` });
       const result = await generateText({
-        model: this.selected.model, system: instructions, messages: [...this.messages, ...turn],
+        model: this.selected.model, system: `${instructions}\n${editingInstructions(permissions)}`,
+        activeTools: ["list_files", "read_file", "list_lyrics", "read_lyrics", "validate_project", ...(permissions.beat ? ["write_file", "edit_file"] as const : []), ...(permissions.lyrics ? ["write_draft", "write_lyrics", "edit_lyrics"] as const : [])], messages: [...this.messages, ...turn],
         abortSignal: signal, maxRetries: 0, maxOutputTokens: 12000, stopWhen: isStepCount(this.maxSteps),
         onStepFinish: ({ text }) => { if (text) this.emit({ type: "text", text }); },
         tools: {

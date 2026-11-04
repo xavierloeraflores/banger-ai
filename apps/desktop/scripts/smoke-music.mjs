@@ -134,7 +134,7 @@ async function run(){
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
   if(process.argv.includes('--draft')){
-    await click('Open AI chat');await fill('[aria-label="AI editing target"]','lyrics');
+    await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions input')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if (input.checked !== checked) input.click(); } })()`);
     await fill('#ai-chat-prompt','Write a hopeful morning song');await click('Send');
     await wait("document.querySelector('.ai-chat-transcript').textContent.includes('.draft.json')");
     await click('Close AI chat');
@@ -212,7 +212,7 @@ async function run(){
   assert.deepEqual({...((await store.get(id)).plan.chunks[0]),text:fixturePlan.chunks[0].text},fixturePlan.chunks[0]);
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.removeElevenLabs();else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));delete settings.elevenLabsKey;sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
-  await click('Open AI chat');await fill('[aria-label="AI editing target"]','lyrics');await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await click('Close AI chat');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
+  await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions input')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if (input.checked !== checked) input.click(); } })()`);await fill('#ai-chat-prompt','A hopeful morning');await click('Send');await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Saved the chunk lyrics')");await click('Close AI chat');await wait("document.querySelector('.music-workshop').textContent.includes('Composition version 3')");
   assert.equal(provider.calls.lyrics,0,'LLM lyrics must not call ElevenLabs');
   await evaluate(`(async()=>{if(window.bangerAI)await window.bangerAI.saveElevenLabs('fake-vocal-key');else{const settings=JSON.parse(sessionStorage.getItem('banger.ai-settings.v1'));settings.elevenLabsKey='fake-vocal-key';sessionStorage.setItem('banger.ai-settings.v1',JSON.stringify(settings));}window.dispatchEvent(new Event('banger:ai-settings-changed'));})()`);
   await wait("!document.querySelector('[aria-label=\"Generate new variation\"]').disabled");
