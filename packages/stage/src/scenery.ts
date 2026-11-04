@@ -124,7 +124,7 @@ export function createScenery() {
           light.target.position.x += Math.sin(phase) * width * .23 * sweep;
           light.target.position.z += Math.cos(phase * .8) * 1.4 * sweep;
         }
-        light.color.setHSL((.55 + time * .035 + i * .12) % 1, .82, .62);
+        light.color.setHSL(.6 + Math.sin(time * .035 + i * .12) * .035, .82, .62);
         material.uniforms.color!.value.copy(light.color);
         lensMaterial.color.copy(light.color); lensMaterial.emissive.copy(light.color);
         lensMaterial.emissiveIntensity = 2.5 + signals.snare * 1.5;

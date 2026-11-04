@@ -1,16 +1,16 @@
 .song-library[data-sing-along="true"] { gap: 16px; padding-top: 16px; }
 .sing-along { --sing-muted: #9aa9bc; overflow: hidden; border: 1px solid #ffffff18; border-radius: 20px; background: radial-gradient(ellipse at 28% 10%, #2b3843 0, transparent 55%), #111921; color: #f4f6f8; }
 .sing-along-title { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 30px; border-bottom: 1px solid #ffffff10; }
-.sing-along-title p { margin: 0 0 8px; color: #d4f780; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+.sing-along-title p { margin: 0 0 8px; color: #75b5ff; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
 .producer .sing-along-title h2 { margin: 0; font-size: clamp(22px, 3vw, 34px); letter-spacing: -1px; overflow-wrap: anywhere; }
 .sing-along-title > span { flex-shrink: 0; color: #c2d0df; padding: 7px 11px; border-radius: 20px; border: 1px solid #ffffff20; font-size: 11px; }
 .sing-along-body { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
 .sing-along-performance { padding: 26px 30px 20px; min-width: 0; }
 .sing-along-cue { display: flex; align-items: center; gap: 8px; color: var(--sing-muted); font-size: 11px; letter-spacing: .5px; }
-.sing-along-dot { width: 6px; height: 6px; border-radius: 50%; background: #d4f780; box-shadow: 0 0 16px #d4f78077; }
+.sing-along-dot { width: 6px; height: 6px; border-radius: 50%; background: #75b5ff; box-shadow: 0 0 16px #75b5ff77; }
 .sing-along-current { min-height: 110px; display: block; margin: 26px 0 12px; font-size: clamp(28px, 3.5vw, 52px); font-weight: 650; line-height: 1.2; letter-spacing: -1.5px; overflow-wrap: anywhere; }
 .sing-along-current [data-state="upcoming"] { color: #8291a4; }
-.sing-along-current [data-state="singing"] { color: #d4f780; text-shadow: 0 0 30px #d4f78044; }
+.sing-along-current [data-state="singing"] { color: #75b5ff; text-shadow: 0 0 30px #75b5ff44; }
 .sing-along-current [data-state="sung"] { color: #f4f6f8; }
 .sing-along-next { min-height: 40px; color: var(--sing-muted); font-size: 15px; line-height: 1.6; }
 .sing-along-detail { margin-top: 20px; padding: 18px; border: 1px solid #ffffff12; border-radius: 12px; background: #0b111955; }
@@ -24,12 +24,12 @@
 .sing-along-lines button { display: flex; width: 100%; align-items: baseline; gap: 14px; border: 1px solid transparent; border-radius: 10px; text-align: left; padding: 15px 10px; background: transparent; color: #a2b0c2; font-size: 17px; line-height: 1.5; }
 .sing-along-lines time { color: #8495aa; flex-shrink: 0; }
 .sing-along-lines button:hover { background: #ffffff08; color: #fff; }
-.sing-along-lines button[aria-current="true"] { background: #d4f7800c; border-color: #d4f78022; color: #d4f780; }
-.sing-along button:focus-visible, .sing-along-lines:focus-visible { outline: 2px solid #d4f780; outline-offset: -2px; }
+.sing-along-lines button[aria-current="true"] { background: #75b5ff0c; border-color: #75b5ff22; color: #75b5ff; }
+.sing-along button:focus-visible, .sing-along-lines:focus-visible { outline: 2px solid #75b5ff; outline-offset: -2px; }
 .sing-along-overview { padding: 20px 30px; border-top: 1px solid #ffffff10; }
 .sing-along-seek { position: relative; border-radius: 8px; }
 .sing-along-seek input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: crosshair; }
-.sing-along-seek:focus-within { outline: 2px solid #d4f780; outline-offset: 4px; }
+.sing-along-seek:focus-within { outline: 2px solid #75b5ff; outline-offset: 4px; }
 .sing-along-empty { color: var(--sing-muted); font-size: 13px; white-space: pre-line; line-height: 1.8; padding: 12px; }
 .library-sing-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .library-sing-controls button, .library-sing-controls select { border: 1px solid var(--producer-border); border-radius: 8px; padding: 9px 12px; background: var(--producer-bg); color: var(--producer-text); max-width: 100%; }

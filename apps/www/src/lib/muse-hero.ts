@@ -2,7 +2,7 @@ import { programDurationBeats, type MusicProgram } from '@banger/compiler';
 import { eventsForSong } from '@banger/engine';
 
 export const HERO_KEYS = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG'];
-export const HERO_COLORS = ['#70ff8b', '#ff67b7', '#ffda62', '#62ddff', '#cf83ff'];
+export const HERO_COLORS = ['#4594ff', '#ff67b7', '#ffda62', '#62ddff', '#cf83ff'];
 export const HIT_WINDOW = .18;
 export type Judgment = 'Perfect' | 'Great' | 'Good' | 'Miss';
 export interface HeroNote { id: number; lane: number; time: number; end: number }

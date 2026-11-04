@@ -19,7 +19,7 @@ export interface CharacterAccessories {
   readonly selection: Readonly<AccessorySelection>;
   dispose(): void;
 }
-const colors = ['#b86848', '#527880', '#77598e', '#4c637e', '#977048', '#566f54'];
+const colors = ['#b86848', '#527880', '#77598e', '#4c637e', '#977048', '#54606f'];
 
 /** Outfits are chosen once when a performer loads, never during animation. */
 export function createAccessories(rig: CharacterRig, options: { random?: () => number; selection?: Partial<AccessorySelection> } = {}): CharacterAccessories {

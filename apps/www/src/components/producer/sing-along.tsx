@@ -17,12 +17,12 @@ function Waveform({ samples, start, end, position, detail = false }: { samples: 
   for (let i = first; i < last; i += stride) {
     const amplitude = Math.max(...samples.slice(i, Math.min(last, i + stride)).map(Math.abs));
     const height = Math.max(2, amplitude / peak * 88);
-    bars.push(<rect key={i} x={(i / 4 - start) / span * 1000} y={50 - height / 2} width={Math.max(1, stride / 4 / span * 1000 * .7)} height={height} rx={1.5} fill={i / 4 <= position ? '#d4f780' : detail ? '#637a96' : '#445366'} />);
+    bars.push(<rect key={i} x={(i / 4 - start) / span * 1000} y={50 - height / 2} width={Math.max(1, stride / 4 / span * 1000 * .7)} height={height} rx={1.5} fill={i / 4 <= position ? '#75b5ff' : detail ? '#637a96' : '#445366'} />);
   }
   const playhead = Math.max(0, Math.min(1000, (position - start) / span * 1000));
   return <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
     <path d="M0 50H1000" stroke="#ffffff12" />{bars}
-    <path d={`M${playhead} 0V100`} stroke="#f3ffdc" strokeWidth="2" />
+    <path d={`M${playhead} 0V100`} stroke="#dcebff" strokeWidth="2" />
   </svg>;
 }
 
