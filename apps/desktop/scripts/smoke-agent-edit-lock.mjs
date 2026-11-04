@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog } from 'electron';
+import { gatewayFixtureResponse } from './chat-fixture.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -31,7 +32,7 @@ globalThis.fetch = async (_url, options) => {
     : index === 1 ? [call('edit_file', { path: 'a-song.banger', search: 'tempo 120', replacement: 'tempo 90' })]
     : [{ type: 'text', text: 'Saved the new tempo.' }];
   const reason = index < 2 ? 'tool-calls' : 'stop';
-  return Response.json({ content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] });
+  return gatewayFixtureResponse({ content, finishReason: { unified: reason, raw: reason }, usage: { inputTokens: { total: 10 }, outputTokens: { total: 10 } }, warnings: [] }, options);
 };
 const timeout = setTimeout(() => { console.error('Agent editing lock smoke timed out'); app.exit(1); }, 90000);
 app.on('before-quit', event => event.preventDefault());
@@ -51,11 +52,13 @@ async function run(window) {
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 120')");
     await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fixture-key')");
     await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
-    await click('[aria-label="Expand sidebar"]');
+    if (await evaluate("Boolean(document.querySelector('[aria-label=\"Expand sidebar\"]'))")) await click('[aria-label="Expand sidebar"]');
     await click('.app-sidebar-chat');
     await setPrompt('Change the tempo to 90'); await textClick('Send');
     await wait("document.querySelector('.ai-chat-working')");
-    await click('[aria-label="Beat Studio"]');
+    assert.equal(await disabled('[aria-label="Open song a-song.banger"]'), false);
+    assert.equal(await disabled('[aria-label="Add song"]'), true);
+    await click('[aria-label="Open song a-song.banger"]');
     await wait("document.querySelector('.producer-agent-banner')");
     assert.equal(await disabled('#producer-tempo'), true);
     assert.equal(await evaluate("document.querySelector('#producer-source').readOnly"), true);
@@ -90,6 +93,13 @@ async function run(window) {
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'X' });
     await delay(60);
     assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
+    // Browse other songs without rebinding the running chat or releasing its lock.
+    await click('[aria-label="Open song b-song.banger"]');
+    await wait("document.querySelector('.producer-project').textContent.includes('b-song.banger')");
+    await click('.app-sidebar-chat');
+    await wait("document.querySelector('#ai-chat-view') && document.querySelector('.producer-project').textContent.includes('a-song.banger')");
+    await click('[aria-label="Open song a-song.banger"]');
+    await wait("document.querySelector('.producer-agent-banner')");
     // A different chat bound to the same song must stay locked and refresh too.
     await click('[aria-label="New chat"]');
     await click('[aria-label="Beat Studio"]');
@@ -113,6 +123,22 @@ async function run(window) {
     await wait("!document.querySelector('.producer-agent-banner')");
     assert.equal(await disabled('#producer-tempo'), false);
     assert.equal(await disabled('[aria-label="Stop playback"]'), false, 'completion keeps playback running');
+    await click('[aria-label="Open song b-song.banger"]');
+    await wait("document.querySelector('.producer-project').textContent.includes('b-song.banger')");
+    await click('[aria-label="Open song a-song.banger"]');
+    await wait("document.querySelector('#producer-source').value.includes('tempo 90')");
+    assert.equal(await disabled('#producer-tempo'), false);
+    assert.equal(await evaluate("document.querySelector('#producer-source').readOnly"), false);
+    window.focus();
+    await evaluate("document.querySelector('#producer-tempo').focus(); document.querySelector('#producer-tempo').select()");
+    await window.webContents.insertText('95');
+    await delay(50);
+    await evaluate("document.querySelector('#producer-tempo').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))");
+    await wait("document.querySelector('#producer-source').value.includes('tempo 95')");
+    await textClick('Save');
+    await wait("document.body.innerText.includes('Saved a-song.banger.')");
+    assert.match(await readFile(join(directory, 'a-song.banger'), 'utf8'), /tempo 95/);
+    assert.equal(await readFile(join(directory, 'b-song.banger'), 'utf8'), source);
     // Failure and cancellation also release the song.
     await click('.app-sidebar-chat');
     mode = 'cancel'; await setPrompt('Wait until cancelled'); await textClick('Send');
@@ -129,7 +155,7 @@ async function run(window) {
     await wait("!document.querySelector('.ai-chat-working')");
     await click('[aria-label="Beat Studio"]');
     assert.equal(await disabled('#producer-tempo'), false);
-    console.log('Agent editing lock smoke passed: editing blocked, browsing/playback available, live saved edits across chats, playback continuity, success/cancel/error unlock. Real IPC and project agent with fixture provider.');
+    console.log('Agent editing lock smoke passed: song selection during/after tasks, running chat binding, editing blocked, live saves across chats, playback continuity, editing and saving after completion, success/cancel/error unlock. Real IPC and project agent with fixture provider.');
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { release?.(); finish?.(); clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); app.exit(process.exitCode ?? 0); }
 }

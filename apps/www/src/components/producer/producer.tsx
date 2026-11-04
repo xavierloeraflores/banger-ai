@@ -324,9 +324,15 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   }
   const projectSongs = useProjectSongs({
     folder: cloudBinding ? undefined : currentFolder, savedFile: workspaceFile,
-    busy: fileBusy || workspaceBusy || projectRunning || vocalEdits.busy,
-    canReplace: canReplaceSong, onBusyChange: setWorkspaceBusy, onError: setNotice,
+    busy: fileBusy || workspaceBusy || vocalEdits.busy,
+    createDisabled: projectRunning,
+    canReplace: () => canSwitchChat() && canReplaceSong(), onBusyChange: setWorkspaceBusy, onError: setNotice,
     onLoad: file => {
+      // Browsing another song must not rebind the chat that is still writing.
+      if (chatsRef.current.some(chat => chat.id === activeChatRef.current && chat.status === "running")) {
+        updateChat(activeChatRef.current, { snapshot: snapshotRef.current });
+        activeChatRef.current = ""; setActiveChat("");
+      }
       loadOpenedFile({ name: file.path.split("/").pop()!, source: file.source });
       setWorkspaceFile(file); setCloudBinding(null); setProjectName(currentFolder?.name ?? "");
       setChatView(false); if (studio === "library") setStudio("beat");
@@ -761,8 +767,8 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
   return (
     <AppShell
       songs={projectSongs.paths} activeSong={workspaceFile?.path} activeProject={cloudBinding ? undefined : currentFolder?.id} projectName={cloudBinding ? undefined : currentFolder?.name}
-      songsBusy={fileBusy || workspaceBusy || projectRunning || vocalEdits.busy}
-      onSong={path => void projectSongs.select(path)} onAddSong={currentFolder && !cloudBinding ? () => songDialog.current?.showModal() : undefined}
+      songsBusy={fileBusy || workspaceBusy} addSongDisabled={projectRunning || vocalEdits.busy}
+      onSong={path => { if (path === workspaceFile?.path) navigateStudio("beat"); else void projectSongs.select(path); }} onAddSong={currentFolder && !cloudBinding ? () => songDialog.current?.showModal() : undefined}
       onAddProject={showProjects} onOpenRecent={id => void openRecent(id)}
       chats={hasProject ? chats : []} activeChat={chatView ? activeChat : undefined} onChat={id => void selectChat(id)}
       onNewChat={hasProject ? () => { if (canSwitchChat()) addChat(); } : undefined}

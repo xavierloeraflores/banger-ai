@@ -160,7 +160,8 @@ and narrow layouts. Also run `smoke:chat`, `smoke:workspace`, and
 Agent editing locks use
 `pnpm --filter @banger/desktop exec electron scripts/smoke-agent-edit-lock.mjs`.
 This holds a fixture agent request open while checking disabled editing controls,
-source keyboard protection, track and mixer inspection, arrangement previews,
+song selection during and after tasks, source keyboard protection, track and mixer inspection, arrangement previews,
 live saves across chats, uninterrupted playback, and unlocking on completion,
-cancellation, and provider failure. Desktop saves refresh the score as they arrive;
+cancellation, and provider failure. It also edits and saves the completed song.
+Desktop saves refresh the score as they arrive;
 hosted saves refresh after the server publishes the task's changes.

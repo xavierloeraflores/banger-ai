@@ -6,10 +6,11 @@ import { Button, Input, Modal, type ModalHandle } from "@banger/shadcn";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import type { ProjectFolder, WorkspaceFile } from "@/lib/project-workspace";
 
-export function useProjectSongs({ folder, savedFile, busy, canReplace, onBusyChange, onLoad, onError }: {
+export function useProjectSongs({ folder, savedFile, busy, createDisabled, canReplace, onBusyChange, onLoad, onError }: {
   folder?: ProjectFolder;
   savedFile: WorkspaceFile | null;
   busy: boolean;
+  createDisabled: boolean;
   canReplace(): boolean;
   onBusyChange(busy: boolean): void;
   onLoad(file: WorkspaceFile): void;
@@ -32,7 +33,7 @@ export function useProjectSongs({ folder, savedFile, busy, canReplace, onBusyCha
   }, [folder]);
   const paths = folder ? [...new Set([...(listing.folder === folder ? listing.paths : folder.paths), ...(savedFile ? [savedFile.path] : [])])].sort() : [];
   async function load(path: string, create = false) {
-    if (!folder || busy || pending.current || !canReplace()) return false;
+    if (!folder || busy || (create && createDisabled) || pending.current || !canReplace()) return false;
     pending.current = true; onBusyChange(true);
     try {
       const bridge = getProjectWorkspace();

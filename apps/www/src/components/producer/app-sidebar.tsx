@@ -15,7 +15,7 @@ const destinations = [
   { id: "vocal", label: "Vocal Studio", icon: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> },
 ] as const;
 
-export function AppShell({ active, expanded: requestedExpanded, hasProject = false, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, songs = [], activeSong, activeProject, projectName, songsBusy = false, onSong, onAddSong, children }: {
+export function AppShell({ active, expanded: requestedExpanded, hasProject = false, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, songs = [], activeSong, activeProject, projectName, songsBusy = false, addSongDisabled = false, onSong, onAddSong, children }: {
   active: AppDestination | "chat";
   expanded: boolean;
   hasProject?: boolean;
@@ -32,6 +32,7 @@ export function AppShell({ active, expanded: requestedExpanded, hasProject = fal
   activeProject?: string;
   projectName?: string;
   songsBusy?: boolean;
+  addSongDisabled?: boolean;
   onSong?(path: string): void;
   onAddSong?(): void;
   children: ReactNode;
@@ -71,7 +72,7 @@ export function AppShell({ active, expanded: requestedExpanded, hasProject = fal
     }}>
       <div className="app-sidebar-heading"><span className="app-sidebar-brand">banger<span>_</span></span></div>
       <section className="app-sidebar-songs" aria-label="Songs">
-        <div className="app-sidebar-section-heading"><span>Songs</span><button type="button" aria-label="Add song" title="Add song" aria-haspopup="dialog" disabled={songsBusy || !onAddSong} onClick={onAddSong}>+</button></div>
+        <div className="app-sidebar-section-heading"><span>Songs</span><button type="button" aria-label="Add song" title="Add song" aria-haspopup="dialog" disabled={songsBusy || addSongDisabled || !onAddSong} onClick={onAddSong}>+</button></div>
         {projectName && <p className="app-sidebar-project-name" title={projectName}>{projectName}</p>}
         {songs.map(path => <Tooltip key={path}><TooltipTrigger asChild><button type="button" className="app-sidebar-song" data-song-path={path} aria-label={`Open song ${path}`} aria-current={path === activeSong ? "true" : undefined} disabled={songsBusy || !onSong} onClick={() => onSong?.(path)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M9 18V5l12-2v13M9 8l12-2" /><ellipse cx="6" cy="18" rx="3" ry="2" /><ellipse cx="18" cy="16" rx="3" ry="2" /></svg>
