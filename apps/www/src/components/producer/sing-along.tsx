@@ -40,11 +40,11 @@ export function SingAlong({ name, data, position, duration, pending, onSeek }: P
   }, [focused]);
   const windowStart = Math.max(0, Math.min(position - 4, duration - 8));
   const windowEnd = Math.min(duration || 8, windowStart + 8);
-  return <section className="sing-along" id="library-sing-along" aria-label={`Sing along to ${name}`} aria-busy={pending}>
-    <div className="sing-along-title"><div><p>Sing along</p><h2 id="sing-along-title">{name}</h2></div><span>{data.lines.length ? 'Word-synced lyrics' : 'Lyrics'}</span></div>
+  return <section className="sing-along" id="library-sing-along" aria-label={`Lyrics for ${name}`} aria-busy={pending}>
+    <div className="sing-along-title"><h2 id="sing-along-title">{name}</h2></div>
     <div className="sing-along-body">
       <div className="sing-along-performance">
-        <div className="sing-along-cue"><span className="sing-along-dot" />{pending ? 'Preparing audio…' : active >= 0 ? 'Sing along' : next >= 0 ? `Vocals in ${Math.ceil((data.lines[next]!.startMs / 1000) - position)}s` : data.lines.length ? 'Let it ring out' : 'Listen along'}</div>
+        <div className="sing-along-cue"><span className="sing-along-dot" />{pending ? 'Preparing audio…' : active >= 0 ? null : next >= 0 ? `Vocals in ${Math.ceil((data.lines[next]!.startMs / 1000) - position)}s` : data.lines.length ? 'Let it ring out' : 'Listen along'}</div>
         <div className="sing-along-current" aria-label="Current lyric">
           {focused >= 0 ? data.lines[focused]!.words.map((word, index) => <span key={index} data-state={position * 1000 >= word.endMs ? 'sung' : position * 1000 >= word.startMs ? 'singing' : 'upcoming'}>{word.word}{' '}</span>) : <span>{data.lines.length ? '♪' : 'Find your voice'}</span>}
         </div>
@@ -54,16 +54,16 @@ export function SingAlong({ name, data, position, duration, pending, onSeek }: P
           <div><time>{clockTime(windowStart)}</time><time>{clockTime(windowEnd)}</time></div>
         </div>
       </div>
-      <div className="sing-along-transcript"><h3>Lyrics <span>{data.lines.length ? 'Click a line to jump' : 'Without timing'}</span></h3>
+      <div className="sing-along-transcript"><h3>Lyrics {!data.lines.length && <span>Without timing</span>}</h3>
         <div ref={transcript} className="sing-along-lines" tabIndex={0} aria-label="Song lyrics">
           {data.lines.length ? data.lines.map((line, index) => <Button type="button" key={index} data-line={index} aria-current={index === active ? 'true' : undefined} disabled={pending || !duration} onClick={() => onSeek(line.startMs / 1000)}><time>{clockTime(line.startMs / 1000)}</time><span>{line.words.map(word => word.word).join(' ')}</span></Button>) : <p className="sing-along-empty">{data.lyrics || 'No lyrics saved for this song. Songs exported from Vocal Studio can include lyrics and word timings.'}</p>}
         </div>
       </div>
     </div>
-    <div className="sing-along-overview"><div><span>Full song</span><span>Drag to find your place</span></div>
+    <div className="sing-along-overview">
       <div className="sing-along-seek">
         {data.waveform.length ? <Waveform samples={data.waveform} start={0} end={duration || data.waveform.length / 4} position={position} /> : <div className="sing-along-empty">Waveform unavailable</div>}
-        <input type="range" aria-label="Seek sing-along waveform" min="0" max={duration || 1} step="0.01" value={Math.min(position, duration)} disabled={!duration || pending} onChange={event => onSeek(Number(event.target.value))} />
+        <input type="range" aria-label="Seek lyrics waveform" min="0" max={duration || 1} step="0.01" value={Math.min(position, duration)} disabled={!duration || pending} onChange={event => onSeek(Number(event.target.value))} />
       </div><div><time>0:00</time><time>{clockTime(duration)}</time></div>
     </div>
   </section>;
