@@ -12,7 +12,7 @@ export function SequencerStep({ step, index, name, current, selected, onSelect, 
   const locked = Object.keys(step?.locks ?? {}).length > 0;
   const label = `${name}, step ${index + 1}`;
   return <div className="producer-step-cell">
-    <StepButton active={active} current={current} accent="var(--producer-lime)" data-current={current} data-selected={selected} className="producer-step"
+    <StepButton active={active} current={current} accent="var(--producer-accent)" data-current={current} data-selected={selected} className="producer-step"
       aria-label={`${label}, ${step ? step.kind === "note" ? pitchName(step.midi) : "hit" : "rest"}, velocity ${Math.round(level * 100)}%${locked ? ", parameter locks" : ""}`} aria-pressed={active}
       aria-describedby="producer-step-help" aria-details={selected ? "producer-step-inspector" : undefined}
       title="Click to toggle. Shift-click to inspect. Drag to adjust velocity."

@@ -54,7 +54,7 @@
 .muse-stats { position: absolute; bottom: 18%; right: 32px; width: 174px; padding: 16px; }
 .muse-stats > span { display: flex; justify-content: space-between; gap: 10px; font-size: 8px; letter-spacing: 1px; color: #beabd3; padding-bottom: 12px; border-bottom: 1px solid #bb8ce926; margin-bottom: 9px; }
 .muse-stats > div { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; text-transform: uppercase; font-style: italic; }
-.muse-stats .perfect { color: #9be7ff; } .muse-stats .great { color: #a1e5a8; } .muse-stats .good { color: #f1d58d; } .muse-stats .miss { color: #f88eb7; }
+.muse-stats .perfect { color: #9be7ff; } .muse-stats .great { color: #a1bee5; } .muse-stats .good { color: #f1d58d; } .muse-stats .miss { color: #f88eb7; }
 .muse-footer { position: absolute; left: 32px; right: 32px; bottom: 20px; display: flex; align-items: center; justify-content: center; gap: 14px; color: #9d8eae; font-size: 8px; letter-spacing: 1.2px; }
 .muse-footer button { border: 1px solid #c5a3f54d; border-radius: 6px; background: #2113329c; padding: 8px 15px; font-size: 11px; letter-spacing: 0; }
 .muse-error { position: absolute; bottom: 55px; left: 25%; right: 25%; color: #ffc7dc; background: #26132fdb; border: 1px solid #a76697; border-radius: 8px; padding: 12px; font-size: 11px; text-align: center; }

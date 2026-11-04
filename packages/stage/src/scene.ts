@@ -19,7 +19,7 @@ export interface StageOptions {
   reducedMotion?: boolean;
 }
 export interface StageView { dispose(): void; resetCamera(): void; setManualCamera(manual: boolean): void; setLabelsVisible(visible: boolean): void; zoomCamera(factor: number): void }
-const palette = ['#e5d6b5', '#c1b7e4', '#b6d4c5', '#e6bcb4', '#b8cee5', '#c6dfc2', '#d9c1e5', '#c4dce2'];
+const palette = ['#e5d6b5', '#c1b7e4', '#b6c3d4', '#e6bcb4', '#b8cee5', '#c2cfdf', '#d9c1e5', '#c4dce2'];
 
 /** Owns one WebGL context. Call dispose whenever the modal closes. */
 export function createStage(container: HTMLElement, options: StageOptions): StageView {

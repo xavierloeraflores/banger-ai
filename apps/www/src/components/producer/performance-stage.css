@@ -32,7 +32,7 @@ body:has(.performance-dialog[open]) { overflow: hidden; }
   .performance-hero-trigger { top: 18px; right: 122px; }
   .performance-footer { padding: 30px 18px 18px; }
 }
-.banger-button.performance-stage-trigger { background: #4ade80; border-color: #4ade80; color: #082414; box-shadow: 0 0 18px #4ade8026; }
-.banger-button.performance-stage-trigger:hover:not(:disabled) { background: #6aeb96; border-color: #86efac; }
-.banger-button.performance-stage-trigger:focus-visible { outline-color: #86efac; }
-.banger-button.performance-stage-trigger:disabled { background: #292d2a; border-color: #414842; color: #929b94; box-shadow: none; opacity: 1; }
+.banger-button.performance-stage-trigger { background: #0866ff; border-color: #0866ff; color: #ffffff; box-shadow: 0 0 18px #0866ff26; }
+.banger-button.performance-stage-trigger:hover:not(:disabled) { background: #267aff; border-color: #75b5ff; }
+.banger-button.performance-stage-trigger:focus-visible { outline-color: #75b5ff; }
+.banger-button.performance-stage-trigger:disabled { background: #292b2d; border-color: #414448; color: #92969b; box-shadow: none; opacity: 1; }

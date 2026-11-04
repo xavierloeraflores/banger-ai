@@ -1,11 +1,11 @@
 :root {
-  --banger-background: #141513;
-  --banger-panel: #1e201d;
-  --banger-panel-raised: #292c27;
-  --banger-border: #7b8073;
+  --banger-background: #131415;
+  --banger-panel: #1d1e20;
+  --banger-panel-raised: #27292c;
+  --banger-border: #737980;
   --banger-text: #f1f0e7;
-  --banger-muted: #b1b5a8;
-  --banger-accent: #d3f85b;
+  --banger-muted: #a8aeb5;
+  --banger-accent: #0866ff;
   --banger-danger: #ffb0a5;
   --banger-radius: 8px;
   --banger-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -54,7 +54,7 @@
 .banger-button--primary {
   background: var(--banger-accent);
   border-color: var(--banger-accent);
-  color: #202616;
+  color: #ffffff;
 }
 
 .banger-button--ghost {
@@ -100,7 +100,7 @@
 
 .banger-panel {
   padding: clamp(1rem, 2vw, 1.5rem);
-  border: 1px solid #3a3e35;
+  border: 1px solid #35393e;
   border-radius: 12px;
   background: var(--banger-panel);
   color: var(--banger-text);
