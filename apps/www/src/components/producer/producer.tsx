@@ -799,7 +799,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
             <div className="producer-panel-heading">
               <div className="producer-rack-title"><h1 id="sequence-title">Sequencer</h1><span>{program.tracks.length} tracks</span>
                 <TooltipProvider delayDuration={150}><Tooltip>
-                  <TooltipTrigger asChild><IconButton className="producer-help-button" variant="ghost" aria-label="Sequencer help"><ProjectIcon name="eye" /></IconButton></TooltipTrigger>
+                  <TooltipTrigger asChild><IconButton className="producer-help-button" variant="ghost" aria-label="Sequencer help"><span aria-hidden="true">i</span></IconButton></TooltipTrigger>
                   <TooltipContent className="producer-help-tooltip" side="bottom" align="start" sideOffset={8} collisionPadding={16}>
                     <p>Click or Space to toggle. Shift-click or focus to inspect. Arrow keys move; Shift + ↑ / ↓ adjusts velocity; E opens the inspector.</p>
                     <p><strong>Select a step</strong><br />Focus a step or Shift-click to inspect it.</p>
