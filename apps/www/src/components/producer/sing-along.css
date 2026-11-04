@@ -4,8 +4,6 @@
 .producer .sing-along-title h2 { margin: 0; font-size: clamp(22px, 3vw, 34px); letter-spacing: -1px; overflow-wrap: anywhere; }
 .sing-along-body { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
 .sing-along-performance { padding: 26px 30px 20px; min-width: 0; }
-.sing-along-cue { display: flex; align-items: center; gap: 8px; color: var(--sing-muted); font-size: 11px; letter-spacing: .5px; }
-.sing-along-dot { width: 6px; height: 6px; border-radius: 50%; background: #75b5ff; box-shadow: 0 0 16px #75b5ff77; }
 .sing-along-current { min-height: 110px; display: block; margin: 26px 0 12px; font-size: clamp(28px, 3.5vw, 52px); font-weight: 650; line-height: 1.2; letter-spacing: -1.5px; overflow-wrap: anywhere; }
 .sing-along-current [data-state="upcoming"] { color: #8291a4; }
 .sing-along-current [data-state="singing"] { color: #75b5ff; text-shadow: 0 0 30px #75b5ff44; }

@@ -44,7 +44,6 @@ export function SingAlong({ name, data, position, duration, pending, onSeek }: P
     <div className="sing-along-title"><h2 id="sing-along-title">{name}</h2></div>
     <div className="sing-along-body">
       <div className="sing-along-performance">
-        <div className="sing-along-cue"><span className="sing-along-dot" />{pending ? 'Preparing audio…' : active >= 0 ? null : next >= 0 ? `Vocals in ${Math.ceil((data.lines[next]!.startMs / 1000) - position)}s` : data.lines.length ? 'Let it ring out' : 'Listen along'}</div>
         <div className="sing-along-current" aria-label="Current lyric">
           {focused >= 0 ? data.lines[focused]!.words.map((word, index) => <span key={index} data-state={position * 1000 >= word.endMs ? 'sung' : position * 1000 >= word.startMs ? 'singing' : 'upcoming'}>{word.word}{' '}</span>) : <span>{data.lines.length ? '♪' : 'Find your voice'}</span>}
         </div>
