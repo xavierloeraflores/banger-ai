@@ -631,6 +631,10 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
 :is(.first-song-dialog, .create-song-dialog) input { width: 100%; min-width: 0; box-sizing: border-box; padding: 12px; border: 1px solid var(--producer-border); border-radius: 8px; background: var(--producer-bg); color: var(--producer-text); font: inherit; }
 :is(.first-song-dialog, .create-song-dialog) [role="alert"] { color: #ffb4ab; }
 .ai-chat-scope-note { margin: 0; padding: 8px 24px; font-size: 12px; color: var(--producer-dim); overflow-wrap: anywhere; }
+.ai-chat-edits-dialog { width: min(520px, calc(100vw - 32px)); padding: 24px; }
+.ai-chat-edits-dialog h2 { margin: 0 0 12px; }
+.ai-chat-edits-dialog p { color: var(--producer-dim); overflow-wrap: anywhere; }
+.ai-chat-edits-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 .ai-chat-activity { font-size: 12px; color: var(--producer-dim); overflow-wrap: anywhere; }
 .ai-chat-activity summary { cursor: pointer; }
 

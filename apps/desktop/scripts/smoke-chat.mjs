@@ -125,7 +125,6 @@ async function exercise(window, desktop) {
       };
     })()`);
   }
-  if (desktop) await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
   await input("ai-chat-prompt", "Create two loops");
   await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/test-model'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
@@ -233,11 +232,12 @@ async function exercise(window, desktop) {
 
 async function run(desktop) {
   try {
-    await exercise(desktop, true);
+    // Desktop project chat is covered by smoke:workspace. This exercises the browser proposal fallback.
+    desktop.hide();
     const web = new BrowserWindow({ width: 1100, height: 900, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
     await web.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await exercise(web, false);
-    console.log("Chat smoke passed on desktop and static web: modal opening, Escape, focus containment and restoration, draft and request persistence, mobile bounds, backdrop dismissal, missing key, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
+    console.log("Chat smoke passed on static web: modal opening, Escape, focus containment and restoration, draft and request persistence, mobile bounds, backdrop dismissal, missing key, generation, follow-up context, preview, save, draft protection, load, cancellation, and new chat. Provider responses were mocked; no paid calls.");
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally {
     clearTimeout(timeout);

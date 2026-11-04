@@ -11,8 +11,10 @@ import { AI_PROVIDERS, aiSettingsBridge } from "@/lib/ai-providers";
 import type { WorkspaceFile } from "@/lib/project-workspace";
 
 type Turn = { prompt: string; reply: ChatReply; revision: number; project?: string; activity?: string[] };
+type ProjectSnapshot = { source: string; revision: number; activeFile?: string };
 type Props = { source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number): void;
   folderName: string; projectEpoch: number; activeFile?: string; projectDirty: boolean;
+  onResolveEdits(action: "save" | "discard"): Promise<ProjectSnapshot>;
   onProjectBusy(busy: boolean): void; onProjectFile(file: WorkspaceFile, revision: number): void;
 };
 const suggestions = [
@@ -21,15 +23,15 @@ const suggestions = [
   "Create an ambient piece with sustained pads, bells and reverb",
 ];
 
-export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onProjectBusy, onProjectFile }: Props) {
+export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectBusy, onProjectFile }: Props) {
   const { languageModel } = useGenerationAccess();
-  const [scope, setScope] = useState<"studio" | "project">("studio");
   const [desktop, setDesktop] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
   const activityRef = useRef<string[]>([]);
   const projectRequest = useRef(false);
   const resetProjectHistory = useRef(false);
-  const projectMode = desktop && !!folderName && scope === "project";
+  const projectMode = desktop && !!folderName;
+  const editsDialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const launcher = useRef<HTMLButtonElement>(null);
@@ -62,7 +64,6 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
   useEffect(() => {
     queueMicrotask(() => {
       setDesktop(Boolean(window.bangerWorkspace));
-      setScope(window.bangerWorkspace && folderName ? "project" : "studio");
     });
   }, [folderName, projectEpoch]);
 
@@ -102,9 +103,14 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
     transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: "instant" });
   }, [turns, pendingPrompt, error, open, activity]);
 
-  async function send() {
+  async function send(action?: "save" | "discard") {
     const text = prompt.trim();
-    if (!languageModel || !text || request.current || fileBusy || (projectMode && projectDirty)) return;
+    if (!languageModel || !text || request.current || fileBusy) return;
+    if (projectMode && projectDirty && !action) {
+      setError(null);
+      editsDialog.current?.showModal();
+      return;
+    }
     const controller = new AbortController();
     request.current = controller;
     setPendingPrompt(text);
@@ -118,15 +124,17 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
       setActivity([]);
       onProjectBusy(true);
       try {
-        const result = await bridge.run(text, activeFile, resetProjectHistory.current);
+        const snapshot = action ? await onResolveEdits(action) : { source, revision, activeFile };
+        editsDialog.current?.close();
+        const result = await bridge.run(text, snapshot.activeFile, resetProjectHistory.current);
         resetProjectHistory.current = false;
         setTurns(previous => [...previous, { prompt: text, revision: snapshotRevision, project: folderName,
           reply: { text: result.ok ? result.reply.text : result.error, files: [], model: connection }, activity: activityRef.current }]);
         setPrompt("");
         // Cancelled tasks can still have saved files. Refresh only an unchanged studio.
-        if (activeFile) {
-          const saved = await bridge.read(activeFile);
-          if (saved.source !== source) onProjectFile(saved, snapshotRevision);
+        if (snapshot.activeFile) {
+          const saved = await bridge.read(snapshot.activeFile);
+          if (saved.source !== snapshot.source) onProjectFile(saved, snapshot.revision);
         }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Could not run the project task.");
@@ -219,7 +227,7 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
           <details><summary>Preview source</summary><pre>{file.source}</pre></details>
           <div className="ai-chat-file-actions">
             <Button variant="primary" disabled={fileBusy || saving} onClick={() => onLoad(file, turn.revision)}>Load in studio</Button>
-            <Button disabled={busy} onClick={() => { setScope("studio"); setTargetFile(file.name); input.current?.focus(); }}>Edit this file</Button>
+            <Button disabled={busy} onClick={() => { setTargetFile(file.name); input.current?.focus(); }}>Edit this file</Button>
             <Button disabled={fileBusy || saving} onClick={() => void save(file)}>Save file</Button>
           </div>
         </article>)}</div>
@@ -228,11 +236,6 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
       </div>)}
       {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{projectMode ? "Working on your project…" : "Composing and checking your files…"}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
     </div>
-    {desktop && folderName && <label className="ai-chat-target">Scope
-      <select aria-label="Chat scope" value={scope} disabled={busy} onChange={event => setScope(event.target.value as "studio" | "project")}>
-        <option value="studio">Studio proposals</option><option value="project">Project folder · {folderName}</option>
-      </select>
-    </label>}
     {projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
       <select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
         <option value="">{fileName} · current editor</option>
@@ -245,14 +248,25 @@ export function AIChat({ source, fileName, revision, fileBusy, onLoad, folderNam
         placeholder={projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
-        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy || (projectMode && projectDirty)}>Send</Button></KeyHint>}
+        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy}>Send</Button></KeyHint>}
     </form>
     <div className="ai-chat-footer">
-      {projectMode && projectDirty && <p role="status">Save your studio changes before running a project task.</p>}
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>
     </Panel>
+    </dialog>
+    <dialog ref={editsDialog} className="producer-project-dialog ai-chat-edits-dialog" aria-labelledby="ai-chat-edits-title" aria-describedby="ai-chat-edits-description"
+      onCancel={event => { if (busy) event.preventDefault(); }}
+      onClose={() => input.current?.focus()}>
+      <h2 id="ai-chat-edits-title">Unsaved changes</h2>
+      <p id="ai-chat-edits-description">Save your edits to {fileName}, or discard them before starting the AI task.</p>
+      {error && <p className="has-error" role="alert">{error}</p>}
+      <div className="ai-chat-edits-actions">
+        <Button disabled={busy} onClick={() => editsDialog.current?.close()}>Cancel</Button>
+        <Button disabled={busy} onClick={() => void send("discard")}>Discard and start</Button>
+        <Button variant="primary" disabled={busy} onClick={() => void send("save")}>Save and start</Button>
+      </div>
     </dialog>
   </>;
 }

@@ -296,6 +296,35 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     finally { filePending.current = false; setFileBusy(false); }
   }
 
+  async function resolveEditsForAI(action: "save" | "discard") {
+    if (filePending.current) throw new Error("Wait for the current file operation to finish.");
+    filePending.current = true;
+    setFileBusy(true);
+    const snapshot = sourceRef.current;
+    const snapshotRevision = revision.current;
+    try {
+      const bridge = getProjectWorkspace();
+      await bridge.activate();
+      const file = action === "save"
+        ? await bridge.save(workspaceFile?.path ?? fileName, snapshot, workspaceFile?.source ?? null)
+        : workspaceFile ? await bridge.read(workspaceFile.path) : null;
+      if (revision.current !== snapshotRevision) throw new Error("Your edits changed. Send again to start with the latest version.");
+      if (action === "discard") {
+        loadOpenedFile({ name: file?.path.split("/").pop() ?? fileName, source: file?.source ?? savedSource });
+      } else if (file) {
+        setSavedSource(file.source);
+        setFileName(file.path.split("/").pop()!);
+        setHasProject(true);
+      }
+      setWorkspaceFile(file);
+      setProjectName(folderName);
+      return { source: sourceRef.current, revision: revision.current, activeFile: file?.path };
+    } finally {
+      filePending.current = false;
+      setFileBusy(false);
+    }
+  }
+
   function loadGeneratedFile(file: BangerFile, generatedRevision: number) {
     if (filePending.current || workspaceBusy) return;
     if (revision.current !== generatedRevision && !window.confirm("Your project changed after this request. Load the generated file and replace the current editor?")) return;
@@ -622,6 +651,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         {studio === "library" && <SongLibrary key={`${projectEpoch}-${cloudMusicContext?.projectId ?? "local"}`} cloud={cloudMusicContext} studioFile={{ name: fileName, source }} folderName={folderName} onOpenProject={showProjects} />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
+          onResolveEdits={resolveEditsForAI}
           onProjectBusy={setWorkspaceBusy} onProjectFile={(file, requestRevision) => {
             if (revision.current !== requestRevision) {
               setNotice("The agent saved project changes. Your newer studio edits are preserved. Reopen the song from Project to review the saved version.");

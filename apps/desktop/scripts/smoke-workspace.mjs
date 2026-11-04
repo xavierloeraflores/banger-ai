@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+const chatOnly = process.argv.includes("--chat-only");
 const directory = await mkdtemp(join(tmpdir(), "banger-workspace-smoke-"));
 app.setPath("userData", directory);
 const source = 'tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain 0.5; }';
@@ -17,6 +18,7 @@ const calls = [];
 globalThis.fetch = async (url, options) => {
   assert.equal(String(url), "https://ai-gateway.vercel.sh/v4/ai/language-model");
   const body = JSON.parse(options.body); calls.push(body);
+  if (calls.length === 1) assert.equal(await readFile(join(directory, "chorus.banger"), "utf8"), source + "\n// unsaved");
   const messages = body.prompt;
   const index = messages.findLastIndex(message => message.role === "user");
   const current = messages.slice(index);
@@ -52,7 +54,7 @@ await import("../dist/main.js");
 async function run(window) {
   const startupDirectory = join(directory, "startup-checks");
   await mkdir(startupDirectory);
-  await smokeStartup(window, startupDirectory);
+  if (!chatOnly) await smokeStartup(window, startupDirectory);
   await rm(startupDirectory, { recursive: true, force: true });
   await enterStudio(window);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
@@ -82,39 +84,55 @@ async function run(window) {
     const openChat = () => evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
     const closeChat = () => evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
     await openChat();
-    await input("ai-chat-prompt", "Change both files");
-    assert.equal(await evaluate("document.querySelector('[aria-label=\"Chat scope\"]').value"), "project");
-    assert.equal(await evaluate("[...document.querySelectorAll('.ai-chat-compose button')].find(b=>b.textContent==='Send').disabled"), true);
-    // Enter must obey the same dirty guard as the Send button.
+    await input("ai-chat-prompt", "fresh task");
+    assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"Chat scope\"]'))"), false);
+    assert.equal(await evaluate("[...document.querySelectorAll('.ai-chat-compose button')].find(b=>b.textContent==='Send').disabled"), false);
+    // Enter and Send both ask how to handle edits before any provider request.
     await evaluate("document.querySelector('#ai-chat-prompt').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))");
+    await wait("document.querySelector('.ai-chat-edits-dialog').matches(':modal')");
     assert.equal(calls.length, 0);
+    await evaluate("[...document.querySelectorAll('.ai-chat-edits-dialog button')].find(b => b.textContent === 'Cancel').click()");
+    await wait("!document.querySelector('.ai-chat-edits-dialog').open");
+    assert.equal(await evaluate("document.querySelector('#ai-chat-prompt').value"), "fresh task");
+    assert.match(await evaluate("document.querySelector('#producer-source').value"), /unsaved/);
+    assert.equal(calls.length, 0);
+    await click("Send");
+    await wait("document.querySelector('.ai-chat-edits-dialog').matches(':modal')");
+    window.setMinimumSize(0, 0); window.setContentSize(390, 700);
+    await delay(100);
+    assert.equal(await evaluate("(() => { const b = document.querySelector('.ai-chat-edits-dialog').getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight; })()"), true);
+    await writeFile(join(tmpdir(), "banger-ai-unsaved-mobile.png"), (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1440, 1000);
+    await evaluate("(() => { const button = [...document.querySelectorAll('.ai-chat-edits-dialog button')].find(b => b.textContent === 'Save and start'); button.click(); button.click(); })()");
+    await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('Fresh conversation')");
+    await wait("!document.querySelector('.ai-chat-working')");
+    assert.equal(calls.length, 1);
+    assert.equal(await readFile(join(directory, "chorus.banger"), "utf8"), source + "\n// unsaved");
+    assert.match(await evaluate("document.querySelector('.project-file-identity p').textContent"), /^Saved/);
+    // External edits reject a stale save and leave both versions intact.
     await closeChat();
-    await click("Project");
-    await click("Save .banger");
-    await wait("document.querySelector('.project-file-card [role=status]')?.textContent.includes('Saved chorus')");
-    // An external edit rejects stale studio saves instead of losing external content.
     await writeFile(join(directory, "chorus.banger"), source);
     await input("producer-source", source + "\n// conflicting draft");
-    await click("Save .banger");
-    await wait("document.querySelector('.project-file-card [role=status]')?.textContent.includes('changed')");
-    assert.equal(await readFile(join(directory, "chorus.banger"), "utf8"), source);
-    await evaluate("void (window.confirm = () => true)");
-    await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'chorus.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
-    await wait("document.querySelector('#producer-source').value === " + JSON.stringify(source));
-    await evaluate("document.querySelector('#project-controls').close()");
     await openChat();
+    await input("ai-chat-prompt", "Change both files");
     await click("Send");
+    await wait("document.querySelector('.ai-chat-edits-dialog').open");
+    await click("Save and start");
+    await wait("document.querySelector('.ai-chat-edits-dialog [role=alert]')?.textContent.includes('changed')");
+    assert.equal(calls.length, 1);
+    assert.equal(await readFile(join(directory, "chorus.banger"), "utf8"), source);
+    assert.match(await evaluate("document.querySelector('#producer-source').value"), /conflicting draft/);
+    // Discard reloads the saved song before starting, including its new revision.
+    await click("Discard and start");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('Updated verse and chorus')");
     await wait("!document.querySelector('.ai-chat-working')");
     assert.match(await readFile(join(directory, "verse.banger"), "utf8"), /tempo 110/);
     assert.match(await readFile(join(directory, "chorus.banger"), "utf8"), /gain 0.4/);
     assert.match(await evaluate("document.querySelector('#producer-source').value"), /gain 0.4/);
     assert.ok(await evaluate("document.querySelector('.ai-chat-activity').textContent.includes('Saved verse.banger')"));
-    // Both workflows use the same composer and retain the visible conversation.
-    await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
-    assert.ok(await evaluate("Boolean(document.querySelector('[aria-label=\"File to edit\"]'))"));
-    assert.ok(await evaluate("document.querySelector('.ai-chat-transcript').textContent.includes('Updated verse and chorus')"));
-    await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'project'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
+    // An unchanged song starts immediately without another dialog.
+    assert.equal(await evaluate("document.querySelector('.ai-chat-edits-dialog').open"), false);
+    assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"File to edit\"]'))"), false);
     await input("ai-chat-prompt", "Make it softer again");
     await click("Send");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('Revised chorus again')");
@@ -142,6 +160,7 @@ async function run(window) {
     assert.match(await readFile(join(directory, "chorus.banger"), "utf8"), /gain 0.1/);
     await closeChat();
     await click("Project");
+    await evaluate("void (window.confirm = () => true)");
     await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'chorus.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
     await wait("!document.querySelector('#producer-source').value.includes('newer studio draft')");
     await evaluate("document.querySelector('#project-controls').close()");
@@ -162,6 +181,10 @@ async function run(window) {
     await closeChat();
     await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await click("Project");
+    if (chatOnly) {
+      console.log("AI chat smoke passed: automatic harness, save/discard/cancel, duplicate-send guard, save conflict, editor refresh, clean send, mobile bounds, conversation history, and cancellation. Real harness and IPC; mocked model responses.");
+      return;
+    }
     // Renderer receives relative names, and traversal is rejected by the real IPC handler.
     await assert.rejects(evaluate("window.bangerWorkspace.read('../secret.banger')"));
     assert.ok((await evaluate("window.bangerWorkspace.list()")).includes("verse.banger"));
@@ -190,7 +213,7 @@ async function run(window) {
     await evaluate("document.querySelector('.project-workspace').scrollIntoView({ block:'start' })");
     await delay(100);
     await writeFile(join(tmpdir(), "banger-workspace-desktop.png"), (await window.webContents.capturePage()).toPNG());
-    console.log("Workspace Electron smoke passed: unified floating chat, scope switching, mobile bounds, new conversation reset, native folder open, manual edits, dirty draft protection, external save conflict, cross-file harness edits, repeated same-file edit, continued history, real events, cancellation, and path confinement. Model network responses mocked; real harness and IPC used.");
+    console.log("Workspace Electron smoke passed: unified floating chat, automatic harness, save/discard/cancel decisions, mobile bounds, new conversation reset, native folder open, manual edits, dirty draft protection, external save conflict, cross-file harness edits, repeated same-file edit, continued history, real events, cancellation, and path confinement. Model network responses mocked; real harness and IPC used.");
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); app.exit(process.exitCode ?? 0); }
 }
