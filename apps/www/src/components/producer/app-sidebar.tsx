@@ -15,7 +15,7 @@ const destinations = [
   { id: "vocal", label: "Vocal Studio", icon: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> },
 ] as const;
 
-export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, songs = [], activeSong, projectName, songsBusy = false, onSong, onAddSong, children }: {
+export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, songs = [], activeSong, activeProject, projectName, songsBusy = false, onSong, onAddSong, children }: {
   active: AppDestination | "chat";
   expanded: boolean;
   onToggle(): void;
@@ -28,6 +28,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
   onAddProject?(trigger: HTMLButtonElement): void;
   songs?: string[];
   activeSong?: string;
+  activeProject?: string;
   projectName?: string;
   songsBusy?: boolean;
   onSong?(path: string): void;
@@ -81,7 +82,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
       </section>
       <section className="app-sidebar-recents" aria-label="Projects">
         <div className="app-sidebar-section-heading"><span hidden={!expanded}>Projects</span><button type="button" aria-label="Add project" title="Add project" aria-haspopup="dialog" disabled={!onAddProject} onClick={event => onAddProject?.(event.currentTarget)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button></div>
-        {recent.map(project => <Tooltip key={project.id}><TooltipTrigger asChild><button type="button" aria-label={`Open project ${project.name}`} title={expanded ? project.name : undefined} onClick={() => onOpenRecent?.(project.id)} disabled={!onOpenRecent}>
+        {recent.map(project => <Tooltip key={project.id}><TooltipTrigger asChild><button type="button" aria-label={`Open project ${project.name}`} aria-current={project.id === activeProject ? "true" : undefined} title={expanded ? project.name : undefined} onClick={() => onOpenRecent?.(project.id)} disabled={!onOpenRecent}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3z" /></svg><span hidden={!expanded} className="app-chat-label">{project.name}</span>
         </button></TooltipTrigger>
           {!expanded && <TooltipContent className="app-sidebar-tooltip" side="right" sideOffset={12} collisionPadding={12}>{project.name}</TooltipContent>}

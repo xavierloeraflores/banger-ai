@@ -751,7 +751,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
 
   return (
     <AppShell
-      songs={projectSongs.paths} activeSong={workspaceFile?.path} projectName={cloudBinding ? undefined : currentFolder?.name}
+      songs={projectSongs.paths} activeSong={workspaceFile?.path} activeProject={cloudBinding ? undefined : currentFolder?.id} projectName={cloudBinding ? undefined : currentFolder?.name}
       songsBusy={fileBusy || workspaceBusy || projectRunning || vocalEdits.busy}
       onSong={path => void projectSongs.select(path)} onAddSong={currentFolder && !cloudBinding ? () => songDialog.current?.showModal() : undefined}
       onAddProject={showProjects} onOpenRecent={id => void openRecent(id)}
