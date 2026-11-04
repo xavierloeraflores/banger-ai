@@ -87,7 +87,22 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     assert.equal(await evaluate("getComputedStyle(document.querySelector('.muse-game')).backgroundColor"), 'rgba(0, 0, 0, 0)');
     assert.ok(await evaluate("document.querySelector('#performance-stage').getBoundingClientRect().width === innerWidth && document.querySelector('#performance-stage').getBoundingClientRect().height === innerHeight"));
     await activate('.muse-start');
+    await wait("document.querySelector('.muse-game').dataset.phase === 'countdown'", 'countdown begins');
+    // Sample the receptor fill to verify that real key events reach the canvas during the count-in.
+    const lit = lane => `(() => { const canvas = document.querySelector('.muse-highway'); const pixel = canvas.getContext('2d').getImageData(Math.round((500 + (${lane} - 2) * 154) / 1000 * canvas.width), Math.round(.852 * canvas.height), 1, 1).data; return pixel[3] > 230; })()`;
+    for (const [lane, code] of ['A', 'S', 'D', 'F', 'G'].entries()) {
+      key('keyDown', code);
+      await wait(lit(lane), `countdown fret ${code} lights`);
+      key('keyUp', code);
+      await wait(`!${lit(lane)}`, `countdown fret ${code} releases`);
+    }
+    assert.equal(await evaluate("document.querySelector('.muse-game').dataset.phase"), 'countdown');
+    assert.equal(await evaluate("document.querySelector('.muse-game').dataset.score"), '0');
+    key('keyDown', 'G');
     await wait("document.querySelector('.muse-game').dataset.phase === 'playing' && +document.querySelector('.muse-game').dataset.time >= .47", 'manual note');
+    assert.ok(await evaluate(lit(4)), 'countdown key remains held when playback starts');
+    key('keyUp', 'G');
+    await wait(`!${lit(4)}`, 'held countdown key releases during playback');
     key('keyDown', 'A');
     await wait("+document.querySelector('.muse-game').dataset.score > 0", 'keyboard hit scored');
     await delay(120); key('keyUp', 'A');
@@ -148,7 +163,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount === '8'", 'final open');
     assert.deepEqual(graphicsErrors, []);
     clearTimeout(timeout);
-    console.log('Muse Hero smoke passed: all four difficulty settings and persistence, transparent fullscreen overlay, live Three.js band, keyboard and pointer hits, early hold release, misses, finite run, autoplay with holds, restart, mobile, cleanup and Escape.');
+    console.log('Muse Hero smoke passed: all four difficulty settings and persistence, transparent fullscreen overlay, live Three.js band, countdown key presses and releases, keys held into playback, keyboard and pointer hits, early hold release, misses, finite run, autoplay with holds, restart, mobile, cleanup and Escape.');
     if (!keepOpen) app.exit(0);
     else { window.show(); window.focus(); console.log('Leaving Muse Hero open.'); }
   } catch (error) { console.error(await evaluate("document.querySelector('.muse-game')?.dataset.time + ' / ' + document.querySelector('.muse-menu')?.textContent")); await writeFile('/tmp/muse-hero-failure.png', (await window.webContents.capturePage()).toPNG()); console.error(error); clearTimeout(timeout); app.exit(1); }

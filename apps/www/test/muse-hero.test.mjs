@@ -79,6 +79,27 @@ test('hit windows, misses, combo multiplier, duplicate hits and holds', () => {
   assert.equal(run.stats.miss, 0);
 });
 
+test('countdown presses warm up freely and opening sustains can be hit and released before playback', () => {
+  const chart = { notes: [{ id: 0, lane: 0, time: 0, end: 1 }], duration: 2 };
+  const run = new HeroRun(chart);
+  for (const time of [-3, -2, -1]) assert.equal(run.hit(0, time), false);
+  assert.equal(run.judgment, '');
+  assert.equal(run.stats.score, 0);
+  assert.equal(run.judged.size, 0);
+  assert.equal(run.hit(0, -.1), true);
+  assert.equal(run.stats.great, 1);
+  run.release(0, -.05);
+  run.advance(1, false);
+  assert.equal(run.stats.held, 0);
+  assert.equal(run.judgment, 'Hold lost');
+
+  const held = new HeroRun(chart);
+  held.hit(0, -.05);
+  held.advance(1, false);
+  assert.equal(held.stats.perfect, 1);
+  assert.equal(held.stats.held, 1);
+});
+
 test('unplayed notes expire once, autoplay completes chords and holds, and released sustains lose their bonus', () => {
   const chart = { notes: [{ id: 0, lane: 0, time: 1, end: 3 }, { id: 1, lane: 2, time: 1, end: 1 }, { id: 2, lane: 4, time: 2, end: 2 }], duration: 4 };
   const missed = new HeroRun(chart);

@@ -100,12 +100,12 @@ function MuseHeroGame({ program, fileName, readPerformance, play, stop, starting
     return mode.current === 'playing' ? (Math.max(1, state.bar) - 1 + state.phase) * 240 / program.tempo : currentTime.current;
   }, [program.tempo, readPerformance]);
   const press = useCallback((lane: number) => {
-    if (pressed.current.has(lane) || mode.current !== 'playing' || auto.current) return;
+    if (pressed.current.has(lane) || (mode.current !== 'playing' && mode.current !== 'countdown') || auto.current) return;
     pressed.current.add(lane); run.current.hit(lane, inputTime());
   }, [inputTime]);
   const release = useCallback((lane: number) => {
     pressed.current.delete(lane);
-    if (mode.current === 'playing' && !auto.current) run.current.release(lane, inputTime());
+    if ((mode.current === 'playing' || mode.current === 'countdown') && !auto.current) run.current.release(lane, inputTime());
   }, [inputTime]);
   const end = useCallback(() => { request.current++; stop(); pressed.current.clear(); setMode('finished'); }, [setMode, stop]);
   useEffect(() => {

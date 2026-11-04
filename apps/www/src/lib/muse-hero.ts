@@ -54,7 +54,8 @@ export class HeroRun {
   private announce(judgment: typeof this.judgment, time: number) { this.judgment = judgment; this.judgmentAt = time; }
   hit(lane: number, time: number) {
     const note = this.chart.notes.find(note => note.lane === lane && !this.judged.has(note.id) && Math.abs(note.time - time) <= HIT_WINDOW);
-    if (!note) { this.stats.combo = 0; this.announce('Miss', time); return false; }
+    // Countdown presses warm up the frets; opening notes still use the normal hit window.
+    if (!note) { if (time >= 0) { this.stats.combo = 0; this.announce('Miss', time); } return false; }
     const delta = Math.abs(note.time - time);
     const judgment = delta <= .055 ? 'Perfect' : delta <= .11 ? 'Great' : 'Good';
     this.judged.add(note.id);
