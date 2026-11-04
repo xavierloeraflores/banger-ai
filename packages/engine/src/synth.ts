@@ -35,26 +35,33 @@ export function scheduleSynth(context: BaseAudioContext, input: AudioNode, event
   const cutoff=Math.max(20,Math.min(context.sampleRate*.45,config.cutoff*(1+config.velocityFilter*event.velocity*3)));
   for(const filter of [filter1,filter2]) {
     filter.type=config.filterType;filter.Q.value=config.resonance/2;
+    if (config.filterSweep) {
+      const target=Math.max(20,Math.min(context.sampleRate*.45,cutoff*2**(config.filterSweep*5)));
+      filter.frequency.setValueAtTime(cutoff,time);filter.frequency.exponentialRampToValueAtTime(target,off);
+      continue;
+    }
     const elevated=Math.max(20,Math.min(context.sampleRate*.45,cutoff*2**(config.filterEnv*5)));
-    filter.frequency.setValueAtTime(cutoff,time);filter.frequency.exponentialRampToValueAtTime(elevated,time+Math.min(config.attack,duration/2));
-    filter.frequency.exponentialRampToValueAtTime(cutoff,off);
+    const filterPeak=time+Math.min(config.attack,duration/2);
+    filter.frequency.setValueAtTime(cutoff,time);filter.frequency.exponentialRampToValueAtTime(elevated,filterPeak);
+    filter.frequency.exponentialRampToValueAtTime(cutoff,config.filterDecay ? Math.min(off,filterPeak+config.filterDecay) : off);
   }
   const mix=own(context.createGain());mix.connect(filter1);filter1.connect(filter2);
   if(config.drive>0) { const drive=own(context.createWaveShaper()), curve=new Float32Array(256), amount=1+config.drive*30;for(let i=0;i<256;i++)curve[i]=Math.tanh((i/127.5-1)*amount)/Math.tanh(amount);drive.curve=curve;filter2.connect(drive).connect(amp); } else filter2.connect(amp);
   const pitchEnv=own(context.createConstantSource());pitchEnv.offset.setValueAtTime(config.pitchEnv*100,time);pitchEnv.offset.linearRampToValueAtTime(0,time+config.pitchDecay);sources.push(pitchEnv);
   const allOscillators: OscillatorNode[]=[];
-  for(let voice=0;voice<config.voices;voice++) {
+  const tone=config.tone ?? 1;
+  for(let voice=0;tone>0&&voice<config.voices;voice++) {
     const spread=config.voices===1?0:voice/(config.voices-1)*2-1;
     const pan=own(context.createStereoPanner());pan.pan.value=spread*config.spread;pan.connect(mix);
     const fmGain=config.fm>0?gain(frequency*config.fm*2):null; if(fmGain)oscillator('sine',frequency*config.fmRatio).connect(fmGain);
     for(const [wave,level,detune] of [[config.osc1,1-config.mix,0],[config.osc2,config.mix,config.detune]] as const) {
-      const osc=oscillator(wave,frequency), levelNode=gain(level/config.voices);
+      const osc=oscillator(wave,frequency), levelNode=gain(tone*level/config.voices);
       osc.detune.value=detune+spread*config.unisonDetune;pitchEnv.connect(osc.detune);fmGain?.connect(osc.frequency);allOscillators.push(osc);
       if(config.glide>0&&previousMidi!==undefined) { osc.frequency.setValueAtTime(Math.min(context.sampleRate*.4,440*2**((previousMidi-69)/12)),time);osc.frequency.exponentialRampToValueAtTime(frequency,time+config.glide); }
       osc.connect(levelNode).connect(pan);
     }
   }
-  if(config.sub>0) { const sub=oscillator('sine',frequency/2);pitchEnv.connect(sub.detune);allOscillators.push(sub);sub.connect(gain(config.sub)).connect(mix); }
+  if(config.sub>0&&tone>0) { const sub=oscillator('sine',frequency/2);pitchEnv.connect(sub.detune);allOscillators.push(sub);sub.connect(gain(tone*config.sub)).connect(mix); }
   if(config.noise>0) { const noise=own(context.createBufferSource());noise.buffer=noiseBuffer(context,config.noiseType==='metal');noise.loop=true;sources.push(noise);noise.connect(gain(config.noise)).connect(mix); }
   for(const id of [1,2] as const) {
     const depth=config[`lfo${id}Depth`];if(depth===0)continue;

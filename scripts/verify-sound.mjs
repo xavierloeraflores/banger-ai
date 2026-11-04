@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const root = new URL('../',import.meta.url);
 const server=createServer(async(req,res)=>{
   if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><script type="importmap">{"imports":{"@banger/compiler":"/packages/compiler/dist/index.js"}}</script>');return;}
@@ -20,7 +22,7 @@ try {
     const energy=b=>b.getChannelData(0).reduce((sum,value)=>{assert(Number.isFinite(value),'nonfinite audio');return sum+value*value;},0)/b.length;
     const render=async p=>(await e.renderWav(c.compileMusic(c.serializeMusic(p)),{sampleRate:22050}));
     const reference=await render(base());assert(energy(reference.buffer)>1e-6,'synth silent');assert(new TextDecoder().decode(reference.wav.slice(0,4))==='RIFF','export missing WAV');
-    const changes={osc1:'square',osc2:'sawtooth',mix:.95,drive:.7,fm:.8,fmRatio:3,detune:80,sub:1,noise:.7,voices:4,unisonDetune:80,spread:0,filterType:'highpass',cutoff:400,resonance:12,filterEnv:-.8,velocityFilter:.9,lfo1Wave:'square',lfo1Rate:12,lfo1Depth:.9,lfo1Target:'pitch',lfo2Wave:'square',lfo2Rate:12,lfo2Depth:.9,lfo2Target:'pitch',attack:.3,decay:.6,sustain:.1,release:.5,glide:.4,pitchEnv:24,pitchDecay:.6,volume:.15};
+    const changes={tone:.2,filterSweep:1,filterDecay:.05,osc1:'square',osc2:'sawtooth',mix:.95,drive:.7,fm:.8,fmRatio:3,detune:80,sub:1,noise:.7,voices:4,unisonDetune:80,spread:0,filterType:'highpass',cutoff:400,resonance:12,filterEnv:-.8,velocityFilter:.9,lfo1Wave:'square',lfo1Rate:12,lfo1Depth:.9,lfo1Target:'pitch',lfo2Wave:'square',lfo2Rate:12,lfo2Depth:.9,lfo2Target:'pitch',attack:.3,decay:.6,sustain:.1,release:.5,glide:.4,pitchEnv:24,pitchDecay:.6,volume:.15};
     const deltas={};
     for(const [key,value] of Object.entries(changes)){
       const p=base();p.tracks[0].synth[key]=value;
@@ -40,8 +42,37 @@ try {
     const glide=base();glide.tracks[0].synth.glide=.4;const first=await render(glide),second=await render(glide);assert(energy(first.buffer)===energy(second.buffer),'glide depends on prior session');
     const pitch=base();pitch.tracks[0].automation=[{target:'pitch',points:[{beat:0,value:12}]}];assert(energy((await render(pitch)).buffer)!==energy(reference.buffer),'pitch automation bypassed');
     const factories={};for(const patch of c.FACTORY_PATCHES){const p=base();p.tracks[0].modular=patch;const result=await render(p);factories[patch.name]=energy(result.buffer);assert(factories[patch.name]>1e-9,patch.name+' silent');}
-    return {controlChanges:Object.keys(deltas),factories,lockIsolation:true,disabledSilence:true,emptyPatchSilence:true,releaseTail:tail.tailSeconds,saveReopen:true,wavBytes:reference.wav.byteLength};
+    const presets={}, demos=[];
+    const stats=(buffer,start=0,end=buffer.duration)=>{
+      let power=0,difference=0,peak=0,count=0;
+      for(let ch=0;ch<buffer.numberOfChannels;ch++){
+        const data=buffer.getChannelData(ch);
+        for(let i=Math.floor(start*buffer.sampleRate);i<Math.min(data.length,Math.floor(end*buffer.sampleRate));i++){
+          assert(Number.isFinite(data[i]),'nonfinite preset audio');power+=data[i]**2;peak=Math.max(peak,Math.abs(data[i]));count++;
+          if(i>0)difference+=(data[i]-data[i-1])**2;
+        }
+      }
+      return {rms:Math.sqrt(power/Math.max(1,count)),peak,brightness:difference/Math.max(1e-20,power)};
+    };
+    for(const name of ['Synth Brass','Flute Lead','Chiptune Lead','String Ensemble','Kalimba Pluck','Noise Riser']){
+      const patch=c.FACTORY_PATCHES.find(p=>p.name===name),p=base();
+      p.tracks[0].synth=patch.config;p.tracks[0].steps=[];p.tracks[0].pianoRoll=[{midi:60,start:0,duration:4,velocity:1}];
+      const result=await render(p),all=stats(result.buffer),early=stats(result.buffer,.02,.1),late=stats(result.buffer,1.5,1.9);
+      assert(all.rms>1e-4 && all.peak<.99,name+' silent or clipped');
+      if(name==='String Ensemble')assert(stats(result.buffer,.7,1).rms>early.rms*3,'strings do not swell');
+      if(name==='Kalimba Pluck')assert(late.rms<early.rms*.001,'kalimba keeps sustaining');
+      if(name==='Noise Riser'){assert(late.rms>early.rms*3,'riser does not swell');assert(late.brightness>early.brightness*2,'riser does not brighten');}
+      assert(stats(result.buffer,2+patch.config.release+.01).peak<1e-6,name+' release does not end');
+      presets[name]={...all,early,late};demos.push({name,wav:Array.from(new Uint8Array(result.wav))});
+      p.tracks[0].pianoRoll=[60,64,67].map(midi=>({midi,start:0,duration:4,velocity:.8}));
+      assert(stats((await render(p)).buffer).peak<.99,name+' chord clips');
+    }
+    const silent=base();silent.tracks[0].synth={...c.INIT_SYNTH,tone:0,noise:0};assert(energy((await render(silent)).buffer)===0,'oscillator level zero still has tone');
+    return {controlChanges:Object.keys(deltas),factories,presets,demos,lockIsolation:true,disabledSilence:true,emptyPatchSilence:true,releaseTail:tail.tailSeconds,saveReopen:true,wavBytes:reference.wav.byteLength};
   })()`);
+  const demoDirectory=join(tmpdir(),'banger-preset-demos');await mkdir(demoDirectory,{recursive:true});
+  for(const demo of report.demos)await writeFile(join(demoDirectory,demo.name.toLowerCase().replaceAll(' ','-')+'.wav'),new Uint8Array(demo.wav));
+  delete report.demos;report.demoDirectory=demoDirectory;
   console.log(JSON.stringify(report,null,2));clearTimeout(timeout);server.close();app.exit(0);
 }catch(error){console.error(error);clearTimeout(timeout);server.close();app.exit(1);}
 

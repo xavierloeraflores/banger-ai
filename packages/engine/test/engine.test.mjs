@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compileMusic, createDefaultProgram } from '@banger/compiler';
 import { AudioRenderer, BangerPlayer, eventsForBar, eventsForSong, barDuration } from '../dist/index.js';
+import { scheduleSynth } from '../dist/synth.js';
+import { FACTORY_PATCHES, INIT_SYNTH } from '@banger/compiler';
 
 class Param {
   value = 0;
@@ -53,6 +55,45 @@ function environment(t) {
 }
 const song = () => compileMusic('tempo 120; track kick { sound "drums/kick"; rhythm "x x x x"; gain .8; }');
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+test('noise riser has no pitched sources and sweeps for the whole held note', () => {
+  const config = FACTORY_PATCHES.find(patch => patch.name === 'Noise Riser').config;
+  for (const duration of [.1, 2, 8]) {
+    const context = new Context(); context.sampleRate=44100;
+    const voice=scheduleSynth(context,context.destination,{time:1,duration,sustained:true,velocity:1,step:{kind:'note',midi:84}},config);
+    assert.equal(voice.pitchOscillators.length,0);
+    assert.equal(context.sources.filter(node=>node.kind==='oscillator').length,0);
+    assert.equal(context.sources.filter(node=>node.kind==='buffer').length,1);
+    for (const filter of context.nodes.filter(node=>node.kind==='filter')) {
+      assert.deepEqual(filter.frequency.events,[{value:300,time:1},{value:9600,time:1+duration}]);
+    }
+    near(voice.end,1+duration+config.release);
+  }
+});
+
+test('sweep direction clamps to the audio rate and legacy configs keep oscillators', () => {
+  const event={time:0,duration:2,sustained:true,velocity:1,step:{kind:'note',midi:60}};
+  for (const [cutoff,filterSweep,target] of [[2000,1,3600],[300,-1,20]]) {
+    const context=new Context();
+    scheduleSynth(context,context.destination,event,{...INIT_SYNTH,cutoff,filterSweep});
+    assert.equal(context.nodes.find(node=>node.kind==='filter').frequency.events.at(-1).value,target);
+  }
+  const context=new Context(),legacy={...INIT_SYNTH};delete legacy.tone;delete legacy.filterSweep;delete legacy.filterDecay;
+  const voice=scheduleSynth(context,context.destination,event,legacy);
+  assert.equal(voice.pitchOscillators.length,3);
+  assert.equal(context.nodes.find(node=>node.kind==='filter').frequency.events.length,3);
+});
+
+test('brass filter stab decays briefly even when a note is held', () => {
+  const config=FACTORY_PATCHES.find(patch=>patch.name==='Synth Brass').config;
+  for(const duration of [.01,2]) {
+    const context=new Context();
+    scheduleSynth(context,context.destination,{time:0,duration,sustained:true,velocity:1,step:{kind:'note',midi:60}},config);
+    const events=context.nodes.find(node=>node.kind==='filter').frequency.events;
+    near(events.at(-1).time,Math.min(duration,Math.min(config.attack,duration/2)+.18));
+    assert.equal(events.at(-1).value,config.cutoff);
+  }
+});
 
 test('event timing divides each track across one bar', () => {
   const program = createDefaultProgram();

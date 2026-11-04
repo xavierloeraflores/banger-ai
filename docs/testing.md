@@ -76,6 +76,7 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 | Sequencer and piano roll | `pnpm --filter @banger/desktop smoke:grid`, `smoke:sequencer`, `smoke`, `smoke:web` |
 | Arrangement and mixer | `pnpm --filter @banger/desktop smoke:song`, `smoke:song:web`; `pnpm verify:song` |
 | Audio synthesis and DSP | `pnpm verify:audio` |
+| Synth presets and sound design | `pnpm --filter @banger/desktop exec electron ../../scripts/verify-sound.mjs`; `pnpm --filter @banger/desktop exec electron ../../scripts/smoke-presets.mjs`, repeat with `--web` |
 | Startup and project prompts | `pnpm --filter @banger/desktop exec electron scripts/smoke-project-entry.mjs`, repeat with `--web` |
 | Native workspace | `pnpm --filter @banger/desktop smoke:workspace` |
 | AI settings and authentication | `pnpm --filter @banger/desktop smoke:byok`, `smoke:chatgpt`, `smoke:local`, `smoke:chat` |
@@ -92,6 +93,10 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 Each abbreviated `smoke:*` command in the table uses the same
 `pnpm --filter @banger/desktop` prefix. Run the full browser/audio matrix for a
 release or a change spanning these areas, not for every merge.
+
+`verify-sound.mjs` checks synth controls, preset rendering, chords, release tails,
+and the string, kalimba and riser envelopes. It writes six WAV previews to
+`banger-preset-demos` under the system temporary directory for listening checks.
 
 Full Send uses the music fixture smoke with `--full-send-beat`, `--full-send`,
 and `--full-send-both` for beat-only, lyrics-only, and combined edits. Run each

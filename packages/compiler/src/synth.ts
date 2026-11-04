@@ -1,6 +1,8 @@
 export type SynthWave = 'sine' | 'triangle' | 'sawtooth' | 'square';
 export type SynthTarget = 'filter' | 'pitch' | 'amp';
 export interface SynthConfig {
+  /** Optional for projects saved before noise-only sweeps were introduced. */
+  tone?: number; filterSweep?: number; filterDecay?: number;
   enabled: boolean; osc1: SynthWave; osc2: SynthWave; mix: number; drive: number; fm: number; fmRatio: number;
   detune: number; sub: number; noise: number; noiseType: 'white' | 'metal'; voices: number; unisonDetune: number; spread: number;
   filterType: 'lowpass' | 'bandpass' | 'highpass'; cutoff: number; resonance: number; filterEnv: number; velocityFilter: number;
@@ -9,6 +11,7 @@ export interface SynthConfig {
   attack: number; decay: number; sustain: number; release: number; glide: number; pitchEnv: number; pitchDecay: number; volume: number;
 }
 export const SYNTH_RANGES = {
+  tone: [0,1], filterSweep: [-1,1], filterDecay: [0,2],
   mix: [0,1], drive: [0,1], fm: [0,1], fmRatio: [.25,16], detune: [-100,100], sub: [0,1], noise: [0,1],
   voices: [1,4], unisonDetune: [0,100], spread: [0,1], cutoff: [20,20000], resonance: [0,20], filterEnv: [-1,1], velocityFilter: [0,1],
   lfo1Rate: [.01,30], lfo1Depth: [0,1], lfo2Rate: [.01,30], lfo2Depth: [0,1],
@@ -17,7 +20,8 @@ export const SYNTH_RANGES = {
 export type SynthParameter = keyof typeof SYNTH_RANGES;
 export type SynthLocks = Partial<Record<SynthParameter, number>>;
 export interface SynthPatch { name: string; config: SynthConfig }
-export const INIT_SYNTH: Readonly<SynthConfig> = Object.freeze({
+export const INIT_SYNTH: Readonly<Required<SynthConfig>> = Object.freeze({
+  tone: 1, filterSweep: 0, filterDecay: 0,
   enabled: true, osc1: 'sine', osc2: 'triangle', mix: .5, drive: 0, fm: 0, fmRatio: 2, detune: 7, sub: .25, noise: 0, noiseType: 'white',
   voices: 1, unisonDetune: 10, spread: .8, filterType: 'lowpass', cutoff: 1800, resonance: 1.5, filterEnv: .4, velocityFilter: 0,
   lfo1Wave: 'sine', lfo1Rate: .9, lfo1Depth: .3, lfo1Target: 'filter', lfo2Wave: 'sine', lfo2Rate: .3, lfo2Depth: 0, lfo2Target: 'amp',
@@ -39,7 +43,10 @@ export function validateSynth(value: unknown): asserts value is SynthConfig {
   for (const key of Object.keys(value)) if (!Object.hasOwn(INIT_SYNTH,key)) throw new RangeError(`Unknown synth parameter '${key}'`);
   if (typeof config.enabled !== 'boolean') throw new RangeError('Synth enabled must be boolean');
   for (const [key, choices] of Object.entries(enums)) if (!choices.includes(config[key as keyof SynthConfig] as string)) throw new RangeError(`Invalid synth ${key}`);
-  for (const key of Object.keys(SYNTH_RANGES) as SynthParameter[]) validateSynthLocks({[key]:config[key]});
+  for (const key of Object.keys(SYNTH_RANGES) as SynthParameter[]) {
+    if ((key === 'tone' || key === 'filterSweep' || key === 'filterDecay') && config[key] === undefined) continue;
+    validateSynthLocks({[key]:config[key]});
+  }
 }
 export function validatePatch(patch: SynthPatch): void {
   if (!patch || typeof patch.name !== 'string' || patch.name.length < 1 || patch.name.length > 64) throw new RangeError('Patch name must have 1 to 64 characters');
@@ -76,4 +83,10 @@ export const FACTORY_PATCHES: readonly SynthPatch[] = [
   patch('Acoustic Piano',{osc1:'triangle',osc2:'sine',fm:.08,fmRatio:2,sub:0,decay:.7,sustain:.15,release:.2,cutoff:6000}),
   patch('Electric Piano',{osc1:'sine',osc2:'triangle',fm:.2,fmRatio:2,sub:0,decay:.6,sustain:.2,cutoff:5000}),
   patch('FM Electric Piano',{fm:.4,fmRatio:3,sub:0,decay:.8,sustain:.1,cutoff:7000}),
+  patch('Synth Brass',{osc1:'sawtooth',osc2:'sawtooth',mix:.35,detune:5,sub:0,attack:.015,decay:.18,sustain:.55,release:.12,cutoff:1100,filterEnv:.55,filterDecay:.18,resonance:.7,volume:.45}),
+  patch('Flute Lead',{osc1:'sine',osc2:'triangle',mix:.18,detune:0,sub:0,noise:.025,attack:.045,decay:.15,sustain:.8,release:.18,cutoff:3200,filterEnv:.08,resonance:.3,lfo1Target:'pitch',lfo1Rate:5,lfo1Depth:.012,volume:.65}),
+  patch('Chiptune Lead',{osc1:'square',osc2:'square',mix:0,detune:0,sub:0,attack:.002,decay:.09,sustain:.25,release:.035,cutoff:14000,filterEnv:0,resonance:0,volume:.35}),
+  patch('String Ensemble',{osc1:'sawtooth',osc2:'sawtooth',mix:.5,detune:7,sub:0,voices:3,unisonDetune:12,spread:.85,attack:.65,decay:.5,sustain:.8,release:.9,cutoff:2400,filterEnv:.12,resonance:.3,lfo1Target:'pitch',lfo1Rate:4.5,lfo1Depth:.004,volume:.45}),
+  patch('Kalimba Pluck',{osc1:'sine',osc2:'sine',mix:0,detune:0,sub:0,fm:.12,fmRatio:3.5,attack:.002,decay:.32,sustain:0,release:.15,cutoff:6500,filterEnv:0,resonance:.2,volume:.65}),
+  patch('Noise Riser',{tone:0,sub:0,noise:1,attack:1.6,decay:.1,sustain:1,release:.15,cutoff:300,filterEnv:0,filterSweep:1,resonance:.2,volume:.65}),
 ];

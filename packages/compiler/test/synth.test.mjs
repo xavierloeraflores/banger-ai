@@ -14,10 +14,23 @@ test('editable synth, step locks, named-pattern locks and saved modular patches 
   assert.deepEqual(compileMusic(serializeMusic(program)),program);
 });
 test('all visible factory patches validate and round trip independently', () => {
-  for (const patch of FACTORY_PATCHES) { const program=song(); program.tracks[0].modular=patch; assert.deepEqual(compileMusic(serializeMusic(program)),program); }
+  assert.equal(new Set(FACTORY_PATCHES.map(patch => patch.name)).size, FACTORY_PATCHES.length);
+  for (const patch of FACTORY_PATCHES) {
+    for (const mode of ['synth','modular']) {
+      const program=song(); program.tracks[0][mode]=mode==='synth'?patch.config:patch;
+      assert.deepEqual(compileMusic(serializeMusic(program)),program);
+    }
+  }
+});
+test('older synth configs retain their tone and filter envelope defaults', () => {
+  const program=song(); program.tracks[0].synth={...INIT_SYNTH};
+  delete program.tracks[0].synth.tone; delete program.tracks[0].synth.filterSweep; delete program.tracks[0].synth.filterDecay;
+  assert.doesNotThrow(()=>validateMusicProgram(program));
+  const restored=compileMusic(serializeMusic(program)).tracks[0].synth;
+  assert.equal(restored.tone,1); assert.equal(restored.filterSweep,0); assert.equal(restored.filterDecay,0);
 });
 test('untrusted synth config, lock indices, scalar ranges and graph budgets are rejected', () => {
-  for (const [key,value] of [['voices',5],['voices',1.5],['release',9],['cutoff',Infinity],['enabled',1],['osc1','custom'],['extra',1]]) {
+  for (const [key,value] of [['tone',-1],['tone',NaN],['filterSweep',2],['filterDecay',-1],['filterDecay',3],['voices',5],['voices',1.5],['release',9],['cutoff',Infinity],['enabled',1],['osc1','custom'],['extra',1]]) {
     const program=song();program.tracks[0].synth={...INIT_SYNTH,[key]:value};assert.throws(()=>validateMusicProgram(program));
   }
   for (const source of ['lock 1 { cutoff 20; }','lock 0 { bogus 1; }','lock 0 { cutoff 20; cutoff 40; }','lock 0 { voices 9; }','synth { enabled 3; }']) assert.throws(()=>compileMusic(`track lead { instrument "synth/lead"; notes "C3 ."; ${source} }`));
