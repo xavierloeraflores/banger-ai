@@ -862,7 +862,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         <div id="vocal-studio" hidden={!vocalStudio}>
           {hasProject && <MusicWorkshop exportTarget={vocalExportTarget} hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio && !chatView} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
-        {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
+        {studio === "library" && <SongLibrary onOpenProject={id => void openRecent(id)} onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
       </Tabs>
         {hasProject && !chatView && <AIChatLauncher onNewChat={() => { if (canSwitchChat()) addChat(snapshotRef.current, true, beatStudio || vocalStudio); }} />}
         {hasProject && chats.map(chat => {

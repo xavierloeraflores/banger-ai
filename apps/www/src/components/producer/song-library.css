@@ -76,3 +76,19 @@
 .library-record-dialog label { display: block; margin-bottom: 8px; font-size: 13px; }
 .library-record-dialog input { width: 100%; }
 .library-record-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+.library-single { position: relative; min-width: 0; }
+.library-single > .library-card { width: 100%; }
+.library-record-options { z-index: 1; }
+.library-record-menu-trigger { opacity: 1; background: #111c; color: white; border-radius: 50%; }
+.library-record-menu-trigger:hover { background: #333; }
+.library-record-songs > li { position: relative; padding-right: 36px; }
+.library-record-songs .library-record-options { top: 10px; right: 0; }
+.library-record-dialog select { width: 100%; margin-bottom: 12px; }
+.library-edit-songs { list-style: none; padding: 0; margin: 0 0 20px; max-height: 45vh; overflow-y: auto; }
+.library-edit-songs li { display: flex; gap: 4px; align-items: center; margin: 8px 0; }
+.library-edit-songs li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.library-edit-songs button { padding: 6px; }
+.song-library .library-record-menu-trigger { width: 36px; height: 36px; min-height: 36px; padding: 0; font-size: 24px; }
+.library-record-menu { font: 14px Arial, Helvetica, sans-serif; }
+@media (hover: none) { .song-library .library-record-menu-trigger { width: 44px; height: 44px; min-height: 44px; } }
