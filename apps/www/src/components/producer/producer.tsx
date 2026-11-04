@@ -899,7 +899,7 @@ function Studio({ initialChatId, initialFile: openedFile, sample, initiallySaved
         {hasProject && chats.map(chat => {
           const selected = chat.id === activeChat;
           const bound = selected ? snapshot : chat.snapshot;
-          return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected && chatView} initialHistory={chat.history} onUpdate={updateChat}
+          return <AIChat key={chat.id} chatId={chat.id} projectId={bound.folder?.id} active={selected && chatView} initialHistory={chat.history} onUpdate={updateChat} onClose={() => setChatView(false)}
             onFullSend={runFullSend} onFullSendCheck={checkFullSend} onLyrics={runLyrics} vocalStudio={vocalStudio} source={bound.source} fileName={bound.fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy}
             onLoad={(file, requestRevision, automatic) => { if (activeChatRef.current === chat.id) loadGeneratedFile(file, requestRevision, automatic); }}
             folderName={bound.folder?.name ?? ""} projectPaths={bound.folder?.paths} projectEpoch={projectEpoch} activeFile={bound.workspaceFile?.path} projectDirty={bound.source !== bound.savedSource}

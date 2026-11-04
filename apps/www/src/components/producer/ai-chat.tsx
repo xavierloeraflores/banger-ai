@@ -17,7 +17,7 @@ import type { WorkspaceFile } from "@/lib/project-workspace";
 
 type ProjectSnapshot = { source: string; revision: number; activeFile?: string };
 type Props = { chatId: string; projectId?: string; active: boolean; initialHistory?: ChatHistory;
-  onUpdate(id: string, update: Partial<ProjectChat>): void; onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
+  onClose(): void; onUpdate(id: string, update: Partial<ProjectChat>): void; onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
   folderName: string; projectPaths?: string[]; projectEpoch: number; activeFile?: string; projectDirty: boolean;
   onResolveEdits(action: "save" | "discard"): Promise<ProjectSnapshot>;
   onProjectComplete(): void; onProjectFile(file: WorkspaceFile, revision: number): void;
@@ -28,7 +28,7 @@ const suggestions = [
   "Make a rap song with lyrics for the verses and hook",
 ];
 
-export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectPaths, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
+export function AIChat({ chatId, projectId, active, initialHistory, onClose, onUpdate, onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectPaths, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectComplete, onProjectFile }: Props) {
   const [permissions, setPermissions] = useState<EditPermissions>(initialHistory?.permissions ?? { beat: !vocalStudio, lyrics: vocalStudio });
   const [listedSongs, setListedSongs] = useState(projectPaths ?? []);
   const [songsError, setSongsError] = useState("");
@@ -304,6 +304,9 @@ export function AIChat({ chatId, projectId, active, initialHistory, onUpdate, on
           {editTargets.length ? editTargets.map(path => <li key={path} title={path}>{path}</li>) : <li>No files selected for editing</li>}
         </ul>
       </div>
+      <IconButton variant="ghost" aria-label="Close chat" title={busy ? "Wait for the task to finish or stop it before closing" : "Close chat"} disabled={busy} onClick={() => { if (!request.current) onClose(); }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+      </IconButton>
     </header>
     <div ref={transcript} onScroll={event => { const element = event.currentTarget; followTranscript.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
       {!turns.length && !busy && <div className="ai-chat-empty">

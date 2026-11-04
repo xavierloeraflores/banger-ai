@@ -69,7 +69,9 @@ async function exercise(window, desktop) {
     await waitFor("document.querySelector('#ai-chat-view')");
   };
   const closeChat = async () => {
-    await evaluate(`document.querySelector('[aria-label="Beat Studio"]').click()`);
+    if (!await evaluate("Boolean(document.querySelector('#ai-chat-view'))")) return;
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Close chat"]').disabled`), false);
+    await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
     await waitFor("!document.querySelector('#ai-chat-view')");
   };
   const newChat = () => evaluate(`document.querySelector('[aria-label="New chat"]').click()`);
@@ -265,7 +267,10 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('.ai-chat-working')");
   await delay(100);
   assert.equal(await evaluate("document.querySelector('#chat-ai-model').disabled && document.querySelector('#chat-ai-reasoning').disabled"), true);
-  await closeChat();
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Close chat"]').disabled`), true);
+  await evaluate(`document.querySelector('[aria-label="Close chat"]').click()`);
+  assert.equal(await evaluate("Boolean(document.querySelector('#ai-chat-view'))"), true);
+  await evaluate(`document.querySelector('[aria-label="Beat Studio"]').click()`);
   await waitFor("document.querySelector('.producer-agent-banner')");
   assert.equal(await evaluate("document.querySelector('#producer-tempo').disabled && document.querySelector('#producer-source').readOnly"), true);
   assert.equal(await evaluate("document.querySelector('.producer-play').disabled"), false);
