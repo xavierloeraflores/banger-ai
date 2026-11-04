@@ -55,7 +55,7 @@ export function AudioExport({ program, fileName, source, disabled, cloud, compac
     <h2 id="project-export-title"><ProjectIcon name="audio" />Export Controls</h2>
     <fieldset disabled={disabled || busy}>
       <div className="project-export-controls">
-        <div className="project-export-group">
+        <div className="project-export-group project-export-song">
           <label>Sample rate<Select aria-label="Export sample rate" value={sampleRate} onChange={e => setSampleRate(Number(e.target.value))}><option value={44100}>44.1 kHz</option><option value={48000}>48 kHz</option></Select></label>
           {menu}
         </div>
