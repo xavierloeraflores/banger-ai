@@ -18,9 +18,9 @@ type Props = { onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocal
   onProjectBusy(busy: boolean): void; onProjectFile(file: WorkspaceFile, revision: number): void;
 };
 const suggestions = [
-  "Write a synth-pop song with an intro, verse, chorus and outro",
-  "Make a lo-fi beat at 85 BPM with swung drums and mellow keys chords",
-  "Create an ambient piece with sustained pads, bells and reverb",
+  "Make a beat",
+  "Make a pop song with lyrics for the verses and chorus",
+  "Make a rap song with lyrics for the verses and hook",
 ];
 
 export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectBusy, onProjectFile }: Props) {
