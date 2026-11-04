@@ -312,17 +312,16 @@ async function run(){
     return;
   }
   if(!cloud){
-   await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");await wait("document.querySelector('#workspace-file')");
-   const originalPath=await evaluate("document.querySelector('#workspace-file').value");
-   await click('Create Song');
+   await wait("document.querySelector('.app-sidebar-song')");
+   const originalPath=await evaluate("document.querySelector('.app-sidebar-song[aria-current]').dataset.songPath");
+   await evaluate("document.querySelector('[aria-label=\"Add song\"]').click()");
    await fill('[aria-label="New song name"]','second');await click('Create New Song');
-   await wait("document.querySelector('#workspace-file').value==='second.banger'");
-   await click('Close project controls');
+   await wait("document.querySelector('.app-sidebar-song[aria-current]').dataset.songPath==='second.banger'");
    await wait("document.querySelector('.music-empty h2')?.textContent==='No vocals yet.'");
    await delay(1700);
    assert.equal(await evaluate("document.querySelectorAll('.music-chunk').length"),0,'Polling never falls back to another song');
    assert.equal(await evaluate("document.querySelector('[aria-label=\"Vocal take\"]')"),null);
-   await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");await fill('#workspace-file',originalPath);await click('Close project controls');
+   await evaluate(`[...document.querySelectorAll('.app-sidebar-song')].find(button => button.dataset.songPath === ${JSON.stringify(originalPath)}).click()`);
    await wait("document.querySelectorAll('.music-chunk').length===2");
    assert.equal(await evaluate("document.querySelector('[aria-label=\"Vocal take\"]').value"),id);
   }
@@ -399,7 +398,7 @@ async function run(){
   assert.deepEqual(await chunkLines(1),originalSecond,'Rejected moves preserve the source');
   if(!cloud){
    await evaluate('void(window.confirm=()=>false)');
-   await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");await fill('#workspace-file','second.banger');await click('Close project controls');
+   await evaluate("[...document.querySelectorAll('.app-sidebar-song')].find(button => button.dataset.songPath === 'second.banger').click()");
    assert.equal(await evaluate(`document.querySelector('[aria-label="Vocal take"]').value`),id,'Canceling a song switch preserves its lyric draft');
    assert.deepEqual(await chunkLines(0),Array(29).fill('a'.repeat(200)));
    await evaluate('void(window.confirm=()=>true)');

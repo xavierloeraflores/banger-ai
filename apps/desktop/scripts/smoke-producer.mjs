@@ -79,14 +79,12 @@ export async function smokeProducer(window) {
   }
   async function saveAs(path, filename) {
     const snapshot = await evaluate("document.querySelector('#producer-source').value");
-    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate("void (window.confirm = () => true)");
-    await clickText("Create Song");
+    await evaluate("document.querySelector('[aria-label=\"Add song\"]').click()");
     await waitFor("document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open' && !!document.querySelector('[aria-label=\"New song name\"]')", "new song dialog");
     await evaluate(`(() => { const field = document.querySelector('[aria-label="New song name"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, ${JSON.stringify(filename)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await clickText("Create New Song");
-    await waitFor(`document.querySelector('#workspace-file').value === ${JSON.stringify(filename)}`, "new song");
-    await clickText("Close");
+    await waitFor(`document.querySelector('.app-sidebar-song[aria-current]').dataset.songPath === ${JSON.stringify(filename)}`, "new song");
     await editSource(snapshot);
     await clickText("Apply source");
     await clickText("Save");
@@ -94,10 +92,8 @@ export async function smokeProducer(window) {
     assert.equal(await readFile(path, "utf8"), snapshot);
   }
   async function switchSong(filename) {
-    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
-    await evaluate(`(() => { const field = document.querySelector('#workspace-file'); field.value = ${JSON.stringify(filename)}; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await evaluate(`[...document.querySelectorAll('.app-sidebar-song')].find(button => button.dataset.songPath === ${JSON.stringify(filename)}).click()`);
     await waitFor(`document.querySelector('#source-title').textContent === ${JSON.stringify(filename)}`, "song switch");
-    await clickText("Close");
   }
 
   await waitFor("document.querySelectorAll('.producer-track').length === 8 && Boolean(document.querySelector('#producer-source')?.value)", "producer hydration", 10_000);
@@ -197,7 +193,7 @@ export async function smokeProducer(window) {
   assert.deepEqual(await evaluate(gridSnapshot), savedGrid, "Reopening must compile the saved track names, lengths, and steps.");
   assert.equal(await evaluate("document.querySelector('.producer-source-status').textContent"), "In sync");
   await click('.producer-track:first-child .producer-step:first-child');
-  await waitFor("document.querySelector('.project-file-identity p')?.textContent.startsWith('Unsaved changes')", "dirty close setup");
+  await waitFor("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save')?.disabled === false", "dirty close setup");
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   const unsavedSource = await evaluate("document.querySelector('#producer-source').value");
   let closeChoice = 0;

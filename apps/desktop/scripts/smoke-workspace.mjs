@@ -70,7 +70,7 @@ async function run(window) {
   const input = (id, text) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(text)}); field.dispatchEvent(new Event('input', { bubbles:true })); })()`);
   try {
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
-    await wait("window.bangerWorkspace && document.querySelector('.project-workspace')");
+    await wait("window.bangerWorkspace && document.querySelector('#project-controls')");
     await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-project-key')");
     await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
     await wait("(document.querySelector('#project-controls')?.getAttribute('data-state') === 'open')");
@@ -78,8 +78,8 @@ async function run(window) {
     assert.equal(await evaluate("Boolean(document.querySelector('#workspace-source, #workspace-prompt, .project-song-advanced'))"), false);
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 120')");
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
-    await wait("document.querySelector('#workspace-file')");
-    assert.equal(await evaluate("document.querySelector('#workspace-file').value"), "chorus.banger");
+    await wait("document.querySelector('.app-sidebar-song')");
+    assert.equal(await evaluate("document.querySelector('.app-sidebar-song[aria-current]').dataset.songPath"), "chorus.banger");
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await click("Raw .banger");
     await input("producer-source", source + "\n// unsaved");
@@ -110,7 +110,7 @@ async function run(window) {
     await wait("!document.querySelector('.ai-chat-working')");
     assert.equal(calls.length, 1);
     assert.equal(await readFile(join(directory, "chorus.banger"), "utf8"), source + "\n// unsaved");
-    assert.match(await evaluate("document.querySelector('.project-file-identity p').textContent"), /^Saved/);
+    assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save').disabled"), true);
     // External edits reject a stale save and leave both versions intact.
     await closeChat();
     await writeFile(join(directory, "chorus.banger"), source);
@@ -174,7 +174,8 @@ async function run(window) {
     await closeChat();
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate("void (window.confirm = () => true)");
-    await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'chorus.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
+    await evaluate("document.querySelector('[aria-label=\"Close project controls\"]')?.click()");
+    await evaluate("[...document.querySelectorAll('.app-sidebar-song')].find(button => button.dataset.songPath === 'chorus.banger').click()");
     await wait("!document.querySelector('#producer-source').value.includes('newer studio draft')");
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await openChat();
@@ -201,9 +202,10 @@ async function run(window) {
     // Renderer receives relative names, and traversal is rejected by the real IPC handler.
     await assert.rejects(evaluate("window.bangerWorkspace.read('../secret.banger')"));
     assert.ok((await evaluate("window.bangerWorkspace.list()")).includes("verse.banger"));
-    await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'verse.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
+    await evaluate("document.querySelector('[aria-label=\"Close project controls\"]')?.click()");
+    await evaluate("[...document.querySelectorAll('.app-sidebar-song')].find(button => button.dataset.songPath === 'verse.banger').click()");
     await wait("document.querySelector('#producer-source').value.includes('tempo 110')");
-    await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#producer-source').disabled");
+    await wait("document.querySelector('.app-sidebar-song[aria-current]').dataset.songPath === 'verse.banger' && !document.querySelector('#producer-source').disabled");
     // Export twice through the header modal and verify both archived WAVs.
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     window.webContents.session.on('will-download', event => event.preventDefault());
@@ -229,8 +231,8 @@ async function run(window) {
     assert.equal(JSON.parse(await readFile(join(directory, "chorus.lyric.json"))).plan.chunks[0].text, "Revised lyric");
     assert.equal(JSON.parse(await readFile(join(directory, ".banger/history/chorus/lyrics/lyrics-v001.json"))).plan.chunks[0].text, "Original lyric");
     assert.equal(JSON.parse(await readFile(join(directory, ".banger/history/chorus/lyrics/lyrics-v002.json"))).plan.chunks[0].text, "Revised lyric");
-    assert.equal(await evaluate("[...document.querySelectorAll('#workspace-file option')].some(option => option.value.endsWith('.json'))"), false);
-    await evaluate("document.querySelector('.project-workspace').scrollIntoView({ block:'start' })");
+    assert.equal(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].some(button => button.dataset.songPath.endsWith('.json'))"), false);
+    await evaluate("document.querySelector('.app-sidebar-songs').scrollIntoView({ block:'start' })");
     await delay(100);
     await writeFile(join(tmpdir(), "banger-workspace-desktop.png"), (await window.webContents.capturePage()).toPNG());
     console.log("Workspace Electron smoke passed: dedicated chat view, automatic harness, save/discard/cancel decisions, mobile bounds, new conversation reset, native folder open, manual edits, dirty draft protection, external save conflict, cross-file harness edits, repeated same-file edit, continued history, real events, cancellation, and path confinement. Model network responses mocked; real harness and IPC used.");

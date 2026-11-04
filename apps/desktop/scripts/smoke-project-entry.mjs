@@ -76,9 +76,9 @@ async function run(window) {
     assert.ok(await evaluate("Boolean(document.querySelector('[aria-label=\"Projects\"] [aria-label=\"Add project\"]'))"));
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open'");
-    assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-project-required .producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Cancel']);
-    await click('Cancel', '.producer-project-required');
-    await wait("!document.querySelector('.producer-project-required')");
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-project-required .producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Close']);
+    await click('Close', '.producer-project-required');
+    await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'");
     await click('Open Library');
     await wait("document.querySelector('.song-library')");
     assert.equal(web ? await evaluate('window.entryPickerCalls') : pickerCalls, 0, 'Library opens without requesting a project folder');
@@ -93,14 +93,14 @@ async function run(window) {
       assert.equal(await evaluate("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')"), true, 'Canceled picker keeps the prompt');
       await click('Create New Project', '.producer-project-required'); await idle();
       assert.equal(await evaluate("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')]"), 'library');
-      await click('Cancel', '.producer-project-required');
-      await wait("!document.querySelector('.producer-project-required')");
+      await click('Close', '.producer-project-required');
+      await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'");
     }
     await chooseView('vocal');
     await wait("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')");
     window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-    await wait("!document.querySelector('.producer-project-required')");
+    await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'");
     await chooseView('vocal'); await wait("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')");
     assert.ok(await evaluate("document.querySelector('.producer-project-required').getBoundingClientRect().width <= 520"), 'Prompt stays compact');
     window.setMinimumSize(0, 0); window.setContentSize(390, 844);
@@ -111,14 +111,42 @@ async function run(window) {
     assert.match(await evaluate("document.querySelector('.producer-project-required [role=alert]').textContent"), /Folder access failed/);
     await writeFile(`/tmp/banger-project-entry-${web ? 'web' : 'desktop'}-prompt.png`, (await window.webContents.capturePage()).toPNG());
     await mode('open'); await click('Open Project', '.producer-project-required');
-    await wait("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === 'vocal' && !document.querySelector('.producer-project-required')");
+    await wait("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === 'vocal' && document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'");
     assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
-    await wait("document.querySelector('#workspace-file')?.value === 'entry.banger'");
+    await wait("document.querySelector('#project-controls')?.getAttribute('data-state') === 'open' && document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'entry.banger'");
     assert.ok(await evaluate("[...document.querySelectorAll('#project-controls button')].some(b => b.textContent === 'Load Sample Project')"));
     await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
     for (const destination of ['library', 'beat', 'vocal']) { await chooseView(destination); await wait(`({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === '${destination}'`); }
-    assert.equal(await evaluate("document.querySelector('.producer-project-required')"), null, 'An open project allows switching studios');
+    assert.equal(await evaluate("document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open'"), false, 'An open project allows switching studios');
+    // Songs are available without opening project controls, in both desktop and browser workspaces.
+    await evaluate("document.querySelector('[aria-label=\"Expand sidebar\"]').click()");
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].map(button => button.dataset.songPath)"), ['entry.banger']);
+    await evaluate("document.querySelector('[aria-label=\"Add song\"]').focus(); document.querySelector('[aria-label=\"Add song\"]').click()");
+    await wait("document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open'");
+    await evaluate(`(() => { const field = document.querySelector('[aria-label="New song name"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, 'Second song'); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await click('Create New Song', '.create-song-dialog');
+    await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'Second song.banger'");
+    await wait("document.activeElement?.getAttribute('aria-label') === 'Add song'");
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].map(button => button.dataset.songPath)"), ['Second song.banger', 'entry.banger']);
+    const secondSource = await evaluate("document.querySelector('#producer-source').value");
+    await evaluate("document.querySelector('[aria-label=\"Open song entry.banger\"]').click()");
+    await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'entry.banger'");
+    assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
+    await chooseView('beat'); await click('Raw .banger');
+    await evaluate(`(() => { const field = document.querySelector('#producer-source'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, field.value + '\\n// unsaved song'); field.dispatchEvent(new Event('input', { bubbles: true })); window.confirm = () => false; })()`);
+    await evaluate("document.querySelector('[aria-label=\"Open song Second song.banger\"]').click()");
+    assert.match(await evaluate("document.querySelector('#producer-source').value"), /unsaved song/);
+    assert.equal(await evaluate("document.querySelector('.app-sidebar-song[aria-current]').dataset.songPath"), 'entry.banger');
+    await evaluate("window.confirm = () => true; document.querySelector('[aria-label=\"Open song Second song.banger\"]').click()");
+    await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'Second song.banger'");
+    assert.equal(await evaluate("document.querySelector('#producer-source').value"), secondSource);
+    await evaluate("document.querySelector('[aria-label=\"Open song entry.banger\"]').click()");
+    await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'entry.banger'");
+    window.setContentSize(390, 844); await delay(100);
+    assert.ok(await evaluate("document.querySelector('.app-sidebar').scrollWidth <= document.querySelector('.app-sidebar').clientWidth"));
+    await writeFile(`/tmp/banger-sidebar-songs-${web ? 'web' : 'desktop'}.png`, (await window.webContents.capturePage()).toPNG());
+    window.setContentSize(1380, 980);
     await window.loadURL(window.webContents.getURL()); await wait("document.querySelector('.producer-start')"); await setupBrowser();
     if (!web) {
       await wait("[...document.querySelectorAll('.producer-start-recents button')].some(b => b.textContent === 'Existing project')");
@@ -134,7 +162,7 @@ async function run(window) {
         await writeFile('/tmp/banger-recent-project-prompt.png', (await window.webContents.capturePage()).toPNG());
         window.setContentSize(1380, 980);
         await click('Existing project', '.producer-project-required .producer-start-recents');
-        await wait(`document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label') === '${destination === 'beat' ? 'Beat Studio' : 'Vocal Studio'}' && !document.querySelector('.producer-project-required')`);
+        await wait(`document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label') === '${destination === 'beat' ? 'Beat Studio' : 'Vocal Studio'}' && document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'`);
         assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
         assert.equal(pickerCalls, beforeRestore, 'Recent projects reopen without a folder picker');
         await window.loadURL(window.webContents.getURL()); await wait("document.querySelector('.producer-start')");
@@ -155,9 +183,23 @@ async function run(window) {
     assert.equal(await evaluate("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')]"), 'library', 'Wait for the first song before entering the studio');
     await evaluate(`(() => { const field = document.querySelector('#first-song-name'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, 'First song'); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await click('Create Song', '.first-song-dialog');
-    await wait("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === 'beat' && !document.querySelector('.producer-project-required')");
+    await wait("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === 'beat' && document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'");
+    await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'First song.banger'");
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].map(button => button.dataset.songPath)"), ['First song.banger']);
+    {
+      if (web) {
+        await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
+        await mode('open'); await click('Open Project', '#project-controls');
+      } else await evaluate("document.querySelector('.app-sidebar-recents [aria-label=\"Open project Existing project\"]').click()");
+      await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'entry.banger'");
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].map(button => button.dataset.songPath)"), web ? ['entry.banger'] : ['Second song.banger', 'entry.banger']);
+      await evaluate("document.querySelector('.app-sidebar-recents [aria-label=\"Open project New project\"]').click()");
+      await wait("document.querySelector('.app-sidebar-song[aria-current]')?.dataset.songPath === 'First song.banger'");
+      assert.deepEqual(await evaluate("[...document.querySelectorAll('.app-sidebar-song')].map(button => button.dataset.songPath)"), ['First song.banger']);
+      await chooseView('beat');
+    }
     await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
-    await wait("document.querySelector('#workspace-file')?.value === 'First song.banger'");
+    await wait("document.querySelector('#project-controls')?.getAttribute('data-state') === 'open'");
     await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
     assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save').disabled"), true);
     await click('Raw .banger');
@@ -180,7 +222,7 @@ async function run(window) {
     window.setContentSize(1380, 980);
     const saved = web ? await evaluate("(async () => (await (await (await window.entryParent.getDirectoryHandle('New project')).getFileHandle('First song.banger')).getFile()).text())()") : await readFile(join(created, 'First song.banger'), 'utf8');
     assert.equal(await evaluate("document.querySelector('#producer-source').value"), saved);
-    console.log(`Project entry smoke passed (${web ? 'web' : 'desktop'}): startup Library, both studio gates, canceled pickers, cancel/Escape, errors, open/create continuation, saved first song, and switching with a project.`);
+    console.log(`Project entry smoke passed (${web ? 'web' : 'desktop'}): startup Library, both studio gates, canceled pickers, cancel/Escape, errors, open/create continuation, saved first song, sidebar song creation and switching, unsaved-change guards, and project-specific song lists.`);
   } catch (error) {
     await writeFile('/tmp/banger-project-entry-failure.png', (await window.webContents.capturePage()).toPNG());
     console.error(error); exitCode = 1;
