@@ -199,3 +199,14 @@ song { play verse 2; play chorus; }`;
   assert.equal(second.validation[0].durationBeats,96);
   assert.equal((await workspace.read('arranged.banger')).source,song.replace('play chorus;','play chorus 2;'));
 });
+
+test("reused project session uses the current reasoning options on each turn", async t => {
+  const { workspace } = await fixture(t);
+  const model = new MockLanguageModelV4({ doGenerate: async () => finish("Ready.") });
+  const session = new ProjectSession({ workspace, selected: { model, name: "fixture" } });
+  for (const level of [undefined, "low", "high", undefined]) {
+    session.selected.providerOptions = level ? { openai: { reasoningEffort: level } } : undefined;
+    await session.run("Reply only", { permissions: { beat: false, lyrics: false } });
+  }
+  assert.deepEqual(model.doGenerateCalls.map(call => call.providerOptions?.openai?.reasoningEffort), [undefined, "low", "high", undefined]);
+});

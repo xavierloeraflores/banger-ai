@@ -6,7 +6,7 @@ import { createXai } from "@ai-sdk/xai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { compileMusic, serializeMusic, BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
-import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, type BangerFile, type ChatReply, type ChatRequest, type Credentials } from "./protocol.js";
+import { MAX_CHAT_BODY_BYTES, PROVIDER_IDS, REASONING_LEVELS, reasoningOptions, type BangerFile, type ChatReply, type ChatRequest, type Credentials } from "./protocol.js";
 export * from "./protocol.js";
 
 const fileSchema = z.object({ name: z.string().min(1).max(100), source: z.string().max(65536), operation: z.enum(["create", "edit"]).optional() }).strict();
@@ -24,6 +24,7 @@ export const chatRequestSchema = z.object({
 }).strict().refine(value => value.messages.at(-1)?.role === "user", "The last message must be from the user.");
 export const credentialsSchema = z.object({
   provider: z.enum(PROVIDER_IDS),
+  reasoningLevel: z.enum(REASONING_LEVELS).optional(),
   model: z.string().trim().min(1).max(200).regex(/^\S+$/),
   key: z.string().trim().min(1).max(8192).regex(/^[\x21-\x7e]+$/),
 }).strict();
@@ -36,20 +37,23 @@ export function parseChatRequest(value: unknown): ChatRequest {
   return parsed.data;
 }
 
-export function selectModel(credentials: Credentials, fetcher?: typeof fetch): { model: LanguageModel; name: string } {
+export type SelectedModel = { model: LanguageModel; name: string; timeoutMs?: number; providerOptions?: ReturnType<typeof reasoningOptions> };
+
+export function selectModel(credentials: Credentials, fetcher?: typeof fetch): SelectedModel {
   if (credentials) {
     const parsed = credentialsSchema.safeParse(credentials);
     if (!parsed.success) throw new Error("Your AI settings are invalid. Update the model and key in BYOK.");
     const { provider, model, key: apiKey } = parsed.data;
     const options = { apiKey, fetch: fetcher };
+    const providerOptions = reasoningOptions(provider, model, parsed.data.reasoningLevel);
     switch (provider) {
-      case "vercel": return { model: createGateway(options)(model), name: model };
+      case "vercel": return { model: createGateway(options)(model), name: model, providerOptions };
       case "anthropic": return { model: createAnthropic({ ...options,
         headers: typeof window === "undefined" ? undefined : { "anthropic-dangerous-direct-browser-access": "true" },
-      })(model), name: model };
-      case "openai": return { model: createOpenAI(options).chat(model), name: model };
-      case "grok": return { model: createXai(options)(model), name: model };
-      case "meta": return { model: createOpenAICompatible({ ...options, name: "meta", baseURL: "https://api.meta.ai/v1" }).chatModel(model), name: model };
+      })(model), name: model, providerOptions };
+      case "openai": return { model: createOpenAI(options).chat(model), name: model, providerOptions };
+      case "grok": return { model: createXai(options)(model), name: model, providerOptions };
+      case "meta": return { model: createOpenAICompatible({ ...options, name: "meta", baseURL: "https://api.meta.ai/v1" }).chatModel(model), name: model, providerOptions };
     }
   }
   throw new Error("Add your own key and model in BYOK to start chatting.");
@@ -79,7 +83,7 @@ export function validateGeneratedFile(name: string, source: string): BangerFile 
   return { name, source: serializeMusic(program) };
 }
 
-export async function runBangerAgent(request: ChatRequest, selected: { model: LanguageModel; name: string; timeoutMs?: number }, signal?: AbortSignal): Promise<ChatReply> {
+export async function runBangerAgent(request: ChatRequest, selected: SelectedModel, signal?: AbortSignal): Promise<ChatReply> {
   const input = parseChatRequest(request);
   const permissions = input.permissions ?? { beat: true, lyrics: true };
   const files = new Map<string, BangerFile>();
@@ -96,7 +100,7 @@ export async function runBangerAgent(request: ChatRequest, selected: { model: La
   const abortSignal = AbortSignal.any([AbortSignal.timeout(selected.timeoutMs ?? 90_000), ...(signal ? [signal] : [])]);
   abortSignal.throwIfAborted();
   const result = await generateText({
-    model: selected.model,
+    model: selected.model, providerOptions: selected.providerOptions,
     system: `${SYSTEM}\n${editingInstructions(permissions)}`,
     activeTools: [...(permissions.beat ? ["edit_banger_file", "create_banger_file"] as const : []), ...(permissions.lyrics ? ["request_lyrics"] as const : [])],
     messages: [

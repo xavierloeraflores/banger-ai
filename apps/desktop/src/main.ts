@@ -253,6 +253,14 @@ void app.whenReady().then(() => {
     senderWindow(event);
     return changeAISettings(async () => { await aiSettings.removeElevenLabs(); return loadAISettings(); });
   });
+  ipcMain.handle("banger:ai-reasoning", (event, option: unknown, level: unknown) => {
+    senderWindow(event);
+    return changeAISettings(async () => {
+      if (option === "chatgpt") await chatgpt.setReasoning(level);
+      else await aiSettings.setReasoning(option, level);
+      return loadAISettings();
+    });
+  });
   ipcMain.handle("banger:ai-select", (event, option: unknown) => {
     senderWindow(event);
     return changeAISettings(async () => {

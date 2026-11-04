@@ -290,3 +290,25 @@ test("real agent failures retain safe ChatGPT usage and session recovery message
   }
   assert.equal(publicChatGPTError(new Error("secret-value")).includes("secret-value"), false);
 });
+
+test("ChatGPT reasoning persists per account and reaches subsequent Responses requests", async t => {
+  const f = await fixture(t);
+  await f.auth.signIn();
+  const saved = await f.saved();
+  saved.accounts[0].model = "gpt-6-astra";
+  saved.accounts[0].models.push({ id: "gpt-6-astra", label: "GPT-6 Astra" });
+  await f.save(saved);
+  for (const level of [undefined, "low", "high", undefined]) {
+    await f.auth.setReasoning(level);
+    assert.equal((await f.saved()).accounts[0].reasoningLevel, level);
+    assert.equal((await f.auth.status()).accounts[0].reasoningLevel, level);
+    const selected = await f.auth.model();
+    await selected.model.doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }], providerOptions: selected.providerOptions });
+    const body = JSON.parse(f.calls.filter(call => call.url.endsWith("/responses")).at(-1).init.body);
+    assert.equal(body.reasoning?.effort, level);
+  }
+  await f.auth.setReasoning("high");
+  await f.auth.selectModel("test-model");
+  assert.equal((await f.saved()).accounts[0].reasoningLevel, undefined);
+  await assert.rejects(f.auth.setReasoning("high"), /supported reasoning/);
+});

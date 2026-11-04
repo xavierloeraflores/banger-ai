@@ -2,7 +2,7 @@ export type ChatGPTStatus = {
   selected: boolean;
   activeAccountId: string | null;
   signingIn: boolean;
-  accounts: { id: string; label: string; email?: string; connected: boolean; sharing: boolean; model?: string }[];
+  accounts: { id: string; label: string; email?: string; connected: boolean; sharing: boolean; model?: string; reasoningLevel?: import("@banger/agent/protocol").ReasoningLevel }[];
   models: { id: string; label: string }[];
   error?: string;
 };

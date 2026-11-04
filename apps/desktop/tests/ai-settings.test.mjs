@@ -7,13 +7,14 @@ import { join } from "node:path";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import * as protocol from "@banger/agent/protocol";
 import { createAISettingsStore } from "../dist/ai-settings.js";
 
 const source = await readFile(new URL("../../www/src/lib/ai-providers.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 function browser(storage = new Map(), native) {
   const exports = {};
-  vm.runInNewContext(compiled, { exports, window: { bangerAI: native, sessionStorage: {
+  vm.runInNewContext(compiled, { exports, require: id => { assert.equal(id, "@banger/agent/protocol"); return protocol; }, window: { bangerAI: native, sessionStorage: {
     getItem: key => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value),
   } } });
@@ -173,4 +174,28 @@ test("generation availability accepts a configured LLM, connected ChatGPT accoun
   assert.equal(hasLanguageModel({...settings,localSelected:true,localModels:[{id:'local:small',label:'local'}]}),true);
   assert.equal(hasLanguageModel({...settings,chatgpt:{selected:true,activeAccountId:'one',accounts:[{id:'one',connected:false}]}}),false);
   assert.equal(hasLanguageModel({...settings,chatgpt:{selected:true,activeAccountId:'one',accounts:[{id:'one',connected:true}]}}),true);
+});
+
+test("reasoning preference persists with the model in browser and encrypted desktop settings", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "banger-reasoning-"));
+  const encryption = { isAvailable: () => true, encrypt: value => Buffer.from(value), decrypt: value => value.toString() };
+  const path = join(directory, "settings");
+  const storage = new Map();
+  try {
+    for (const [bridge, reload] of [[browser(storage).bridge, () => browser(storage).bridge], [createAISettingsStore(path, encryption), () => createAISettingsStore(path, encryption)]]) {
+      await bridge.save("openai", "gpt-6-astra", "fixture-key");
+      assert.equal((await bridge.load()).providers.openai.reasoningLevel, undefined);
+      await bridge.setReasoning("openai", "high");
+      assert.equal((await reload().load()).providers.openai.reasoningLevel, "high");
+      await assert.rejects(bridge.setReasoning("openai", "invalid"), /supported reasoning/);
+      await bridge.save("openai", "gpt-6-astra", "");
+      assert.equal((await bridge.load()).providers.openai.reasoningLevel, "high");
+      await bridge.setReasoning("openai", undefined);
+      assert.equal((await reload().load()).providers.openai.reasoningLevel, undefined);
+      await bridge.setReasoning("openai", "high");
+      await bridge.save("openai", "gpt-4o", "");
+      assert.equal((await bridge.load()).providers.openai.reasoningLevel, undefined);
+      await assert.rejects(bridge.setReasoning("openai", "high"), /supported reasoning/);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

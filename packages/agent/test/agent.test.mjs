@@ -282,3 +282,41 @@ test('shared chat and project permissions preserve the explicit scope with both 
   assert.equal(result.lyricPrompt,undefined);
   assert.match(model.doGenerateCalls[0].prompt.find(message=>message.role==='system').content,/change only that part and preserve everything else exactly/);
 });
+
+test("reasoning selection changes subsequent provider requests and default omits the field", async () => {
+  const bodies = [];
+  const fetcher = async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return Response.json({ id: "test", object: "chat.completion", created: 1, model: "gpt-6-astra", choices: [{ index: 0, message: { role: "assistant", content: "Ready." }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+  };
+  for (const reasoningLevel of [undefined, "low", "high", undefined]) {
+    await runBangerAgent(request, selectModel({ provider: "openai", model: "gpt-6-astra", key: "fixture", reasoningLevel }, fetcher));
+  }
+  assert.deepEqual(bodies.map(body => body.reasoning_effort), [undefined, "low", "high", undefined]);
+  assert.equal("reasoning_effort" in bodies[3], false);
+});
+
+test("reasoning capabilities reject unsupported values and map provider options", async () => {
+  const { reasoningLevels, reasoningOptions } = await import("../dist/protocol.js");
+  assert.deepEqual(reasoningLevels("meta", "unknown-model"), []);
+  assert.deepEqual(reasoningLevels("openai", "gpt-4o"), []);
+  assert.deepEqual(reasoningLevels("grok", "grok-3-mini"), ["low", "high"]);
+  assert.deepEqual(reasoningOptions("anthropic", "claude-opus-5-5", "high"), { anthropic: { effort: "high" } });
+  assert.deepEqual(reasoningOptions("vercel", "openai/gpt-6-astra", "low"), { openai: { reasoningEffort: "low" } });
+  assert.deepEqual(reasoningOptions("grok", "grok-4.7", "xhigh"), { xai: { reasoningEffort: "xhigh" } });
+  assert.throws(() => reasoningOptions("grok", "grok-3-mini", "medium"), /supported reasoning/);
+  assert.throws(() => selectModel({ provider: "meta", model: "unknown-model", key: "test", reasoningLevel: "high" }), /supported reasoning/);
+});
+
+test("Muse reasoning uses the direct Meta request field and Gateway provider namespace", async () => {
+  const { reasoningOptions, reasoningLevels } = await import("../dist/protocol.js");
+  assert.deepEqual(reasoningLevels("vercel", "meta/muse-wonder-1.0"), ["minimal", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(reasoningOptions("vercel", "meta/muse-wonder-1.0", "max"), { meta: { reasoningEffort: "max" } });
+  const bodies = [];
+  const fetcher = async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return Response.json({ id: "test", object: "chat.completion", created: 1, model: "muse-wonder-1.0", choices: [{ index: 0, message: { role: "assistant", content: "Ready." }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+  };
+  for (const reasoningLevel of ["minimal", "max", undefined]) await runBangerAgent(request, selectModel({ provider: "meta", model: "muse-wonder-1.0", key: "fixture", reasoningLevel }, fetcher));
+  assert.deepEqual(bodies.map(body => body.reasoning_effort), ["minimal", "max", undefined]);
+});

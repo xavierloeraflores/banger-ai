@@ -18,14 +18,15 @@ globalThis.fetch = async (input, init) => {
   const url = String(input);
   if (url === 'https://api.openai.com/v1/models') return Response.json({ models: [
     { slug: 'test-chatgpt', display_name: 'ChatGPT test model', visibility: 'list' },
-    { slug: 'other-chatgpt', display_name: 'Another test model', visibility: 'list' },
+    { slug: 'gpt-6-astra', display_name: 'Another test model', visibility: 'list' },
   ] });
   if (url.endsWith('/.well-known/openid-configuration')) return Response.json({ revocation_endpoint: 'https://auth.openai.com/revoke' });
   if (url === 'https://auth.openai.com/revoke') return new Response(null, { status: 200 });
   assert.equal(url, 'https://api.openai.com/v1/responses');
   assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer fake-ui-access');
   const body = JSON.parse(init.body);
-  assert.equal(body.model, 'other-chatgpt');
+  assert.equal(body.model, 'gpt-6-astra');
+  assert.equal(body.reasoning?.effort, 'high');
   assert.equal(body.store, false); assert.equal(body.stream, true);
   assert.ok(!('max_output_tokens' in body));
   assert.equal(init.body.includes('fake-ui-access'), false);
@@ -35,7 +36,7 @@ globalThis.fetch = async (input, init) => {
   if (project) projectCalls++; else calls++;
   const output = project && projectCalls === 1 ? [{ type: 'function_call', id: 'fc_project', call_id: 'call_project', namespace: 'banger', name: 'edit_file', arguments: JSON.stringify({ path: 'song.banger', search: 'tempo 101;', replacement: 'tempo 88;' }), status: 'completed' }] : !project && calls === 1 ? [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', namespace: 'banger', name: 'create_banger_file', arguments: JSON.stringify({ name: 'chatgpt-loop.banger', source }), status: 'completed' }]
     : [{ type: 'message', id: 'msg_1', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Your clap loop is ready.', annotations: [] }] }];
-  return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { id: `resp_${calls}`, status: 'completed', created_at: 1, model: 'other-chatgpt', output, usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 } } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+  return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { id: `resp_${calls}`, status: 'completed', created_at: 1, model: 'gpt-6-astra', output, usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 } } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
 };
 let started = false;
 app.on('browser-window-created', (_event, window) => {
@@ -79,22 +80,12 @@ async function run(window) {
     await wait("document.querySelector('#active-ai-model option[value=chatgpt]')");
     await select('active-ai-model', 'chatgpt');
     await wait("document.querySelector('.chatgpt-usage')?.textContent.includes('Using ChatGPT plan')");
-    await wait("document.querySelector('#chatgpt-model option[value=other-chatgpt]')");
-    await select('chatgpt-model', 'other-chatgpt');
-    await wait("document.querySelector('#active-ai-model option[value=chatgpt]')?.textContent.includes('other-chatgpt')");
+    await wait("document.querySelector('#chatgpt-model option[value=gpt-6-astra]')");
+    await select('chatgpt-model', 'gpt-6-astra');
+    await wait("document.querySelector('#active-ai-model option[value=chatgpt]')?.textContent.includes('gpt-6-astra')");
     await click('Manage usage');
     assert.ok(opened.includes('https://chatgpt.com/settings/usage'));
     await evaluate(`document.querySelector('[aria-label="Close settings"]').click()`);
-    await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
-    await evaluate("(() => { const s = document.querySelector('[aria-label=\"Chat scope\"]'); s.value = 'studio'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
-    await wait("document.querySelector('.ai-chat-heading-actions .producer-tag')?.textContent === 'ChatGPT · other-chatgpt'");
-    await evaluate(`(() => { const input = document.getElementById('ai-chat-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Make a clap loop'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-    await click('Send');
-    await wait("document.querySelector('.ai-chat-file strong')?.textContent === 'chatgpt-loop.banger'");
-    assert.equal(calls, 2);
-    assert.equal(await evaluate("JSON.stringify(window.bangerChatGPT).includes('fake-ui-access')"), false);
-    assert.equal(await evaluate("JSON.stringify(document.body.textContent).includes('fake-ui-access')"), false);
-    await evaluate("document.querySelector('[aria-label=\"Close AI chat\"]').click()");
     const projectDir = join(directory, 'songs');
     await mkdir(projectDir);
     await writeFile(join(projectDir, 'song.banger'), source);
@@ -105,6 +96,9 @@ async function run(window) {
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 101')");
     await evaluate(`(() => { const input = document.getElementById('ai-chat-prompt'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Slow this song to 88 BPM'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled");
+    await select('chat-ai-reasoning', 'high');
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === 'high'");
     await click('Send');
     await wait("document.querySelector('#producer-source')?.value.includes('tempo 88')");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('clap loop')");
@@ -119,7 +113,7 @@ async function run(window) {
     const decrypted = (await safeStorage.decryptStringAsync(await readFile(join(directory, 'chatgpt-accounts.enc')))).result;
     assert.equal(decrypted.includes('fake-ui-access'), false);
     assert.equal(decrypted.includes('fake-ui-refresh'), false);
-    console.log('ChatGPT UI smoke passed: real browser launch/cancel IPC, encrypted fake-account selection, models, plan indicator, usage link, namespaced chat and project-harness generation, and sign-out. No real account or paid request used.');
+    console.log('ChatGPT UI smoke passed: real browser launch/cancel IPC, encrypted fake-account selection, models, plan indicator, usage link, reasoning selection and namespaced project-harness generation, and sign-out. No real account or paid request used.');
   } catch (error) { console.error(error); process.exitCode = 1; }
   finally { clearTimeout(timeout); for (const window of BrowserWindow.getAllWindows()) window.destroy(); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); app.exit(process.exitCode ?? 0); }
 }

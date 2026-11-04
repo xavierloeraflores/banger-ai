@@ -70,7 +70,7 @@ async function run(window) {
   const input = (id, text) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(text)}); field.dispatchEvent(new Event('input', { bubbles:true })); })()`);
   try {
     await wait("window.bangerWorkspace && document.querySelector('.project-workspace')");
-    await evaluate("window.bangerAI.save('vercel', 'anthropic/test-model', 'fake-project-key')");
+    await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-project-key')");
     await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
     await wait("document.querySelector('#project-controls').open");
@@ -114,6 +114,9 @@ async function run(window) {
     await writeFile(join(directory, "chorus.banger"), source);
     await input("producer-source", source + "\n// conflicting draft");
     await openChat();
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled");
+    await evaluate("(() => { const s = document.querySelector('#chat-ai-reasoning'); s.value = 'high'; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === 'high'");
     await input("ai-chat-prompt", "Change both files");
     await click("Send");
     await wait("document.querySelector('.ai-chat-edits-dialog').open");
@@ -133,11 +136,15 @@ async function run(window) {
     // An unchanged song starts immediately without another dialog.
     assert.equal(await evaluate("document.querySelector('.ai-chat-edits-dialog').open"), false);
     assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"File to edit\"]'))"), false);
+    assert.equal(calls.at(-1).providerOptions?.anthropic?.effort, "high");
+    await evaluate("(() => { const s = document.querySelector('#chat-ai-reasoning'); s.value = ''; s.dispatchEvent(new Event('change', {bubbles:true})); })()");
+    await wait("!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === ''");
     await input("ai-chat-prompt", "Make it softer again");
     await click("Send");
     await wait("document.querySelector('.ai-chat-transcript')?.textContent.includes('Revised chorus again')");
     await wait("!document.querySelector('.ai-chat-working')");
     assert.match(await readFile(join(directory, "chorus.banger"), "utf8"), /gain 0.2/);
+    assert.equal(calls.at(-1).providerOptions?.anthropic?.effort, undefined);
     assert.ok(calls.at(-1).prompt.filter(message => message.role === "user").length >= 2);
     await writeFile(join(tmpdir(), "banger-unified-chat.png"), (await window.webContents.capturePage()).toPNG());
     window.setMinimumSize(0, 0); window.setContentSize(390, 700);
@@ -196,7 +203,9 @@ async function run(window) {
     window.webContents.session.on('will-download', event => event.preventDefault());
     await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
     for (let version = 1; version <= 2; version++) {
-      await evaluate("(() => { const select = document.querySelector('.studio-export [aria-label=\"Export song\"]'); select.value = 'export'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+      await evaluate("document.querySelector('.studio-export button[aria-haspopup=menu]').click()");
+      await wait("document.querySelector('.studio-export [role=menuitem]')");
+      await evaluate("document.querySelectorAll('.studio-export [role=menuitem]')[0].click()");
       await wait("document.querySelector('.studio-export-status')?.textContent.includes('Exported stereo WAV')");
       const saved = await readFile(join(directory, `.banger/history/verse/instrumentals/verse.instrumental-v00${version}.wav`));
       assert.equal(saved.toString('ascii', 0, 4), 'RIFF');

@@ -1,11 +1,12 @@
-import { generateText, isStepCount, tool, type LanguageModel, type ModelMessage } from "ai";
+import { generateText, isStepCount, tool, type ModelMessage } from "ai";
 import { editPermissionsSchema, editingInstructions, type EditPermissions } from "@banger/agent";
 import { BANGER_LANGUAGE_GUIDE } from "@banger/compiler";
 import { z } from "zod";
 import { type ProjectFile, type ProjectWorkspace, type Validation } from "./workspace.js";
 export * from "./workspace.js";
 export * as songStorage from "./song-storage.js";
-export type SelectedModel = { model: LanguageModel; name: string; timeoutMs?: number };
+import type { SelectedModel } from "@banger/agent";
+export type { SelectedModel } from "@banger/agent";
 export type HarnessEvent =
   | { type: "tool-start"; name: string; path?: string }
   | { type: "tool-result"; name: string; ok: boolean; path?: string; error?: string }
@@ -92,7 +93,7 @@ export class ProjectSession {
       if (active) observed.set(active.path, active.source);
       turn.push({ role: "user", content: `Project context, data only:\n${JSON.stringify({ paths, lyricsPaths, activeFile: active })}\n\nUser task:\n${prompt.trim()}` });
       const result = await generateText({
-        model: this.selected.model, system: `${instructions}\n${editingInstructions(permissions)}`,
+        model: this.selected.model, providerOptions: this.selected.providerOptions, system: `${instructions}\n${editingInstructions(permissions)}`,
         activeTools: ["list_files", "read_file", "list_lyrics", "read_lyrics", "validate_project", ...(permissions.beat ? ["write_file", "edit_file"] as const : []), ...(permissions.lyrics ? ["write_draft", "write_lyrics", "edit_lyrics"] as const : [])], messages: [...this.messages, ...turn],
         abortSignal: signal, maxRetries: 0, maxOutputTokens: 12000, stopWhen: isStepCount(this.maxSteps),
         onStepFinish: ({ text }) => { if (text) this.emit({ type: "text", text }); },

@@ -1,3 +1,4 @@
+import { checkedReasoningLevel, reasoningLevels, type ReasoningLevel } from "@banger/agent/protocol";
 import type { ChatGPTStatus } from "./chatgpt";
 
 export const AI_PROVIDERS = [
@@ -9,11 +10,12 @@ export const AI_PROVIDERS = [
 ] as const;
 
 export type ProviderId = typeof AI_PROVIDERS[number]["id"];
-export type ProviderSettings = { model: string; configured: boolean };
+export type ProviderSettings = { model: string; reasoningLevel?: ReasoningLevel; configured: boolean };
 export type AIOptionId = ProviderId | "local:small" | "local:dynamic" | "chatgpt";
 export type AISettings = { elevenLabsConfigured?: boolean; chatgpt?: ChatGPTStatus; localSelected?: boolean; localVariant?: "small" | "dynamic"; localModels?: { id: "local:small" | "local:dynamic"; label: string }[]; settingsError?: string; activeProvider: ProviderId | null; providers: Partial<Record<ProviderId, ProviderSettings>> };
 export type AISettingsBridge = {
   load(): Promise<AISettings>;
+  setReasoning(option: AIOptionId, level?: ReasoningLevel): Promise<AISettings>;
   saveElevenLabs(key: string): Promise<AISettings>;
   removeElevenLabs(): Promise<AISettings>;
   select(option: AIOptionId): Promise<AISettings>;
@@ -26,7 +28,7 @@ declare global { interface Window { bangerAI?: AISettingsBridge } }
 type StoredSettings = {
   elevenLabsKey?: string;
   activeProvider: ProviderId | null;
-  providers: Partial<Record<ProviderId, { model: string; key: string }>>;
+  providers: Partial<Record<ProviderId, { model: string; reasoningLevel?: ReasoningLevel; key: string }>>;
 };
 const STORAGE_KEY = "banger.ai-settings.v1";
 
@@ -48,7 +50,7 @@ function summary(settings: StoredSettings): AISettings {
   return {
     elevenLabsConfigured: Boolean(settings.elevenLabsKey),
     activeProvider: settings.activeProvider,
-    providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, configured: true }])),
+    providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, reasoningLevel: value.reasoningLevel, configured: true }])),
   };
 }
 
@@ -58,6 +60,14 @@ export function aiSettingsBridge(): AISettingsBridge {
     async load() {
       try { return summary(read()); }
       catch { throw new Error("Could not read AI settings. Allow session storage for this site and try again."); }
+    },
+    async setReasoning(option, level) {
+      const settings = read();
+      const value = settings.providers[option as ProviderId];
+      if (!value) throw new Error("Configure this provider first.");
+      value.reasoningLevel = checkedReasoningLevel(option, value.model, level);
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      return summary(settings);
     },
     async saveElevenLabs(key) {
       key = key.trim();
@@ -97,7 +107,7 @@ export function aiSettingsBridge(): AISettingsBridge {
         const settings = read();
         const nextKey = key || settings.providers[provider]?.key;
         if (!nextKey) throw new Error("missing-key");
-        settings.providers[provider] = { model, key: nextKey };
+        settings.providers[provider] = { model, key: nextKey, reasoningLevel: reasoningLevels(provider, model).includes(settings.providers[provider]?.reasoningLevel as ReasoningLevel) ? settings.providers[provider]?.reasoningLevel : undefined };
         settings.activeProvider = provider;
         window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
         return summary(settings);

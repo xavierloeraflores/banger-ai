@@ -1,5 +1,7 @@
 "use client";
 
+import { AIModelSelect } from "./ai-model-select";
+
 import { useEffect, useRef, useState } from "react";
 import { Button, IconButton, Panel } from "@banger/shadcn";
 import type { BangerFile, ChatMessage, ChatReply } from "@banger/agent/protocol";
@@ -253,6 +255,7 @@ export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, sou
         <IconButton className="ai-chat-close" variant="ghost" aria-label="Close AI chat" onClick={() => dialog.current?.close()}>×</IconButton>
       </div>
     </div>
+    <AIModelSelect id="chat-ai" reasoningOnly />
     <div ref={transcript} className="ai-chat-transcript" role="log" aria-label="AI conversation" aria-live="polite" aria-relevant="additions">
       {!turns.length && !busy && <div className="ai-chat-empty">
         <p>{projectMode ? `Edit songs across ${folderName}. Describe the changes you want, and the agent will compile and save them to your project folder.` : "Create a song or reshape the current one. Preview the files, then load one into the studio or save it."}</p>

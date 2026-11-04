@@ -79,7 +79,7 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('#ai-chat-dialog').open"),false);
   await evaluate("document.querySelector('[aria-label=Settings]').click()");
   await waitFor("!document.querySelector('.byok-form fieldset').disabled");
-  await input("byok-model", "anthropic/test-model");
+  await input("byok-model", "anthropic/claude-opus-5-5");
   await input("byok-key", "fake-chat-key");
   await click("Save and select");
   await waitFor("document.querySelector('.byok-feedback [role=status]')");
@@ -127,11 +127,21 @@ async function exercise(window, desktop) {
       };
     })()`);
   }
+  await waitFor("!document.querySelector('#chat-ai-reasoning').disabled");
+  assert.equal(await evaluate("document.querySelector('#chat-ai-reasoning').value"), "");
+  assert.deepEqual(await evaluate("[...document.querySelector('#chat-ai-reasoning').options].map(option => option.textContent)"), ["Provider default", "Low", "Medium", "High"]);
+  const reasoning = async value => {
+    await evaluate(`(() => { const select = document.querySelector('#chat-ai-reasoning'); select.value = ${JSON.stringify(value)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await waitFor(`!document.querySelector('#chat-ai-reasoning').disabled && document.querySelector('#chat-ai-reasoning').value === ${JSON.stringify(value)}`);
+  };
+  const latestEffort = () => desktop ? calls.at(-1)?.providerOptions?.anthropic?.effort : evaluate("window.__chatCalls.at(-1)?.providerOptions?.anthropic?.effort");
+  await reasoning("high");
   await input("ai-chat-prompt", "Create two loops");
-  await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/test-model'");
+  await waitFor("document.querySelector('.ai-chat-heading-actions .producer-tag').textContent === 'Vercel AI Gateway · anthropic/claude-opus-5-5'");
   const originalSource = await evaluate("document.querySelector('#producer-source').value");
   await click("Send");
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 2");
+  assert.equal(await latestEffort(), "high");
   assert.equal(await evaluate("document.querySelector('#producer-source').value"), originalSource);
   await evaluate("document.querySelector('.ai-chat-file details').open = true");
   assert.ok((await evaluate("document.querySelector('.ai-chat-file pre').textContent")).includes("agent_kick"));
@@ -159,9 +169,12 @@ async function exercise(window, desktop) {
   assert.equal(await evaluate("document.querySelector('.project-file-identity p').textContent"), "Unsaved changes");
   await evaluate("document.querySelectorAll('.ai-chat-file button')[3].click()");
   await waitFor("document.querySelector('#producer-tempo').value === '85'");
+  assert.equal(await evaluate("document.querySelector('#chat-ai-reasoning').value"), "high");
+  await reasoning("");
   await input("ai-chat-prompt", "Make the second loop softer");
   await click("Send");
   await waitFor("document.querySelectorAll('.ai-chat-file').length === 3");
+  assert.equal(await latestEffort(), undefined);
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file strong')[2].textContent"), "slow-loop.banger");
   assert.match(await evaluate("document.querySelectorAll('.ai-chat-file pre')[2].textContent"), /gain 0.25;/);
   assert.equal(await evaluate("document.querySelectorAll('.ai-chat-file-heading span')[2].textContent"), "Revision compiled");

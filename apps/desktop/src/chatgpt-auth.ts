@@ -1,3 +1,4 @@
+import { checkedReasoningLevel, reasoningLevels, reasoningOptions, type ReasoningLevel, type SelectedModel } from "@banger/agent";
 import { ChatGPTError } from "./chatgpt-errors.js";
 export { ChatGPTError, publicChatGPTError } from "./chatgpt-errors.js";
 import { randomUUID } from "node:crypto";
@@ -7,10 +8,10 @@ import { authorize, exchangeToken, parseTokens, verifyIdentity, ISSUER, RESOURCE
 
 type Encryption = { isAvailable(): boolean | Promise<boolean>; encrypt(value: string): Buffer | Promise<Buffer>; decrypt(value: Buffer): string | Promise<string> };
 type Model = { id: string; label: string };
-type Account = Identity & { id: string; clientId: string; tokens?: TokenSet; model?: string; models: Model[] };
+type Account = Identity & { id: string; clientId: string; tokens?: TokenSet; model?: string; reasoningLevel?: ReasoningLevel; models: Model[] };
 type Saved = { version: 1; hostId: string; accounts: Account[]; activeAccountId: string | null; selected: boolean };
 export type ChatGPTStatus = { selected: boolean; activeAccountId: string | null; signingIn: boolean;
-  accounts: { id: string; label: string; email?: string; connected: boolean; sharing: boolean; model?: string }[]; models: Model[]; error?: string };
+  accounts: { id: string; label: string; email?: string; connected: boolean; sharing: boolean; model?: string; reasoningLevel?: ReasoningLevel }[]; models: Model[]; error?: string };
 
 function sharing(account?: Account) {
   return Boolean(account?.tokens?.scopes.includes("chatgpt.tokens.use.direct") && account.tokens.scopes.includes("resource.invoke"));
@@ -19,7 +20,7 @@ function summary(saved: Saved, signingIn: boolean): ChatGPTStatus {
   return { selected: saved.selected, activeAccountId: saved.activeAccountId, signingIn,
     accounts: saved.accounts.map((account, index) => ({ id: account.id,
       label: `${account.name || account.email || "ChatGPT account"} · ${index + 1}`,
-      email: account.email, connected: Boolean(account.tokens), sharing: sharing(account), model: account.model })),
+      email: account.email, connected: Boolean(account.tokens), sharing: sharing(account), model: account.model, reasoningLevel: account.reasoningLevel })),
     models: saved.accounts.find(account => account.id === saved.activeAccountId)?.models ?? [] };
 }
 
@@ -146,7 +147,10 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
     if (!Array.isArray(body.models)) throw new Error("ChatGPT returned an invalid model list.");
     account.models = body.models.filter(model => model.visibility === "list" && typeof model.slug === "string" && model.slug)
       .map(model => ({ id: model.slug!, label: typeof model.display_name === "string" ? model.display_name : model.slug! }));
-    if (!account.models.some(model => model.id === account.model)) account.model = account.models[0]?.id;
+    if (!account.models.some(model => model.id === account.model)) {
+      account.model = account.models[0]?.id;
+      account.reasoningLevel = undefined;
+    }
   }
   async function status() { return serialize(async () => summary(await read(), Boolean(pendingLogin))); }
   return {
@@ -168,7 +172,7 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
           const saved = await read();
           const existing = saved.accounts.find(item => item.clientId === result.clientId && item.subject === result.identity.subject);
           const next: Account = { ...result.identity, id: existing?.id ?? randomUUID(), clientId: result.clientId,
-            tokens: result.tokens, model: existing?.model, models: existing?.models ?? [] };
+            tokens: result.tokens, model: existing?.model, reasoningLevel: existing?.reasoningLevel, models: existing?.models ?? [] };
           if (existing) saved.accounts[saved.accounts.indexOf(existing)] = next; else saved.accounts.push(next);
           saved.activeAccountId = next.id; saved.selected = sharing(next);
           // Save valid credentials even if model discovery is temporarily unavailable.
@@ -195,9 +199,15 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
       if (selected) await catalog(saved, accountById(saved, saved.activeAccountId));
       saved.selected = selected; stopRequests(); await persist(saved); return summary(saved, Boolean(pendingLogin));
     }),
+    setReasoning: (level: unknown) => serialize(async () => {
+      const saved = await read(); const account = accountById(saved, saved.activeAccountId);
+      account.reasoningLevel = checkedReasoningLevel("chatgpt", account.model ?? "", level);
+      await persist(saved); return summary(saved, Boolean(pendingLogin));
+    }),
     selectModel: (model: unknown) => serialize(async () => {
       const saved = await read(); const account = accountById(saved, saved.activeAccountId);
       if (typeof model !== "string" || !account.models.some(value => value.id === model)) throw new Error("Choose an available ChatGPT model.");
+      account.reasoningLevel = reasoningLevels("chatgpt", model).includes(account.reasoningLevel as ReasoningLevel) ? account.reasoningLevel : undefined;
       account.model = model; stopRequests(); await persist(saved); return summary(saved, Boolean(pendingLogin));
     }),
     signOut: (id?: unknown) => {
@@ -229,7 +239,7 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
         return { ...summary(saved, Boolean(pendingLogin)), ...(!revoked ? { error: "Signed out locally. Remote revocation was not confirmed; disconnect Banger in ChatGPT Settings." } : {}) };
       });
     },
-    async model(): Promise<{ model: ReturnType<ReturnType<typeof createOpenAI>["responses"]>; name: string }> {
+    async model(): Promise<SelectedModel> {
       const selection = await serialize(async () => {
         const saved = await read();
         if (!saved.selected) throw new Error("Select ChatGPT in AI settings first.");
@@ -237,7 +247,7 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
         await credentials(saved, account);
         if (!account.model) { await catalog(saved, account); await persist(saved); }
         if (!account.model) throw new Error("No ChatGPT models are available for this account.");
-        return { accountId: account.id, model: account.model };
+        return { accountId: account.id, model: account.model, reasoningLevel: account.reasoningLevel };
       });
       const authorizedFetch: typeof fetch = async (input, init) => {
         if (String(input) !== `${RESOURCE}/responses` || init?.method !== "POST") throw new Error("Unsupported ChatGPT inference endpoint.");
@@ -284,7 +294,7 @@ export function createChatGPTAuth(path: string, encryption: Encryption, options:
           providerOptions: { ...args.providerOptions, openai: { ...args.providerOptions?.openai, store: false, systemMessageMode: "developer" } } });
         return Reflect.get(target, property, receiver);
       } });
-      return { model, name: selection.model };
+      return { model, providerOptions: reasoningOptions("chatgpt", selection.model, selection.reasoningLevel), name: selection.model };
     },
   };
 }

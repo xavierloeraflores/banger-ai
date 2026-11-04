@@ -1,8 +1,9 @@
+import { checkedReasoningLevel, reasoningLevels, type ReasoningLevel } from "@banger/agent/protocol";
 import { readFile, rename, writeFile } from "node:fs/promises";
 
 const PROVIDERS = ["vercel", "anthropic", "openai", "meta", "grok"] as const;
 type Provider = typeof PROVIDERS[number];
-type Settings = { elevenLabsKey?: string; activeProvider: Provider | null; providers: Partial<Record<Provider, { model: string; key: string }>> };
+type Settings = { elevenLabsKey?: string; activeProvider: Provider | null; providers: Partial<Record<Provider, { model: string; reasoningLevel?: ReasoningLevel; key: string }>> };
 type Encryption = { isAvailable(): boolean | Promise<boolean>; encrypt(value: string): Buffer | Promise<Buffer>; decrypt(value: Buffer): string | Promise<string> };
 
 function providerId(value: unknown): Provider {
@@ -14,7 +15,7 @@ function summary(settings: Settings) {
   return {
     elevenLabsConfigured: Boolean(settings.elevenLabsKey),
     activeProvider: settings.activeProvider,
-    providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, configured: true }])),
+    providers: Object.fromEntries(Object.entries(settings.providers).map(([id, value]) => [id, { model: value.model, reasoningLevel: value.reasoningLevel, configured: true }])),
   };
 }
 
@@ -66,6 +67,14 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       settings.activeProvider = id;
       return persist(settings);
     }),
+    setReasoning: (provider: unknown, level: unknown) => serialize(async () => {
+      const id = providerId(provider);
+      const settings = await read();
+      const value = settings.providers[id];
+      if (!value) throw new Error("Configure this provider first.");
+      value.reasoningLevel = checkedReasoningLevel(id, value.model, level);
+      return persist(settings);
+    }),
     elevenLabsKey: () => serialize(async () => (await read()).elevenLabsKey ?? null),
     saveElevenLabs: (key: unknown) => serialize(async () => {
       if (typeof key !== "string" || !key.trim() || key.trim().length > 8192 || /[^\x21-\x7e]/.test(key.trim())) throw new Error("Enter a valid ElevenLabs API key without spaces.");
@@ -95,7 +104,7 @@ export function createAISettingsStore(path: string, encryption: Encryption) {
       const settings = await read();
       const nextKey = key.trim() || settings.providers[id]?.key;
       if (!nextKey) throw new Error("Enter an API key for this provider.");
-      settings.providers[id] = { model: model.trim(), key: nextKey };
+      settings.providers[id] = { model: model.trim(), key: nextKey, reasoningLevel: reasoningLevels(id, model.trim()).includes(settings.providers[id]?.reasoningLevel as ReasoningLevel) ? settings.providers[id]?.reasoningLevel : undefined };
       settings.activeProvider = id;
       return persist(settings);
     }),

@@ -2,7 +2,7 @@
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { selectModel, publicAIError, PROVIDER_IDS, type ProviderId } from "@banger/agent";
+import { checkedReasoningLevel, selectModel, publicAIError, PROVIDER_IDS, type ProviderId } from "@banger/agent";
 import { openProject, ProjectSession, type SelectedModel, type HarnessEvent } from "./index.js";
 
 const help = `Usage: banger-agent <project-directory> [task] [options]
@@ -11,6 +11,7 @@ Open a music project and edit its .banger files with a coding agent.
 
   --interactive, -i      Keep the session open for follow-up edits
   --provider <provider>  openai, anthropic, vercel, meta, grok (default: openai)
+  --reasoning <level>    Reasoning level, or set BANGER_REASONING_LEVEL
   --model <model>        Model ID, or set BANGER_MODEL
   --active <path>        Current .banger file, relative to the project
   --json                Emit newline-delimited JSON events and result
@@ -32,7 +33,7 @@ export async function runCli(argv: string[], dependencies: {
   const cancel = () => activeController?.abort();
   try {
     const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
-      interactive: { type: "boolean", short: "i" }, provider: { type: "string" }, model: { type: "string" },
+      interactive: { type: "boolean", short: "i" }, provider: { type: "string" }, model: { type: "string" }, reasoning: { type: "string" },
       active: { type: "string" }, json: { type: "boolean" }, help: { type: "boolean", short: "h" },
     } });
     if (values.help) { output(help); return 0; }
@@ -45,7 +46,7 @@ export async function runCli(argv: string[], dependencies: {
     const model = values.model ?? env.BANGER_MODEL;
     const key = env.BANGER_API_KEY ?? (provider === "openai" ? env.OPENAI_API_KEY : undefined);
     if (!dependencies.selected && (!model || !key)) { errorOutput("Set BANGER_MODEL and BANGER_API_KEY, or OPENAI_API_KEY for OpenAI.\n"); return 2; }
-    const selected = dependencies.selected ?? selectModel({ provider: provider as ProviderId, model: model!, key: key! });
+    const selected = dependencies.selected ?? selectModel({ provider: provider as ProviderId, model: model!, key: key!, reasoningLevel: checkedReasoningLevel(provider, model!, values.reasoning ?? env.BANGER_REASONING_LEVEL) });
     const workspace = await openProject(positionals[0]);
     const onEvent = (event: HarnessEvent) => {
       if (values.json) output(`${JSON.stringify(event)}\n`);

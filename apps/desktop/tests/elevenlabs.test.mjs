@@ -87,7 +87,7 @@ test('vocals and pending operations belong to one project song across restarts',
 
 test('project agent lyric edits refresh into a saved composition without changing audio or timings', async()=>{
  const root=await mkdtemp(join(tmpdir(),'banger-music-sync-'));const provider=fixtureProvider();let current;
- const hooks={imported:async()=>{},saved:async(_song,version)=>{current=structuredClone(version);},current:async()=>current};
+ const hooks={imported:async()=>{},saved:async(_song,version)=>{current=globalThis.structuredClone(version);},current:async()=>current};
  try{
   const store=createMusicStore(root,()=>provider,hooks);
   const job=await store.importWav(wav(),'song.wav',randomUUID(),{root,name:'song'});await done(store,job.id);

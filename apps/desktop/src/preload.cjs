@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("bangerAI", Object.freeze({
   load: () => ipcRenderer.invoke("banger:ai-load"),
   saveElevenLabs: key => ipcRenderer.invoke("banger:elevenlabs-save", key),
   removeElevenLabs: () => ipcRenderer.invoke("banger:elevenlabs-remove"),
+  setReasoning: (option, level) => ipcRenderer.invoke("banger:ai-reasoning", option, level),
   select: option => ipcRenderer.invoke("banger:ai-select", option),
   save: (provider, model, key) => ipcRenderer.invoke("banger:ai-save", provider, model, key),
   remove: provider => ipcRenderer.invoke("banger:ai-remove", provider),

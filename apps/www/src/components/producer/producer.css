@@ -667,3 +667,6 @@ body:has(.producer-project-dialog[open]) { overflow: hidden; }
   .producer .ai-chat-launcher-hint { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); }
   .producer[data-view="library"] .ai-chat-launcher-hint { bottom: 126px; }
 }
+
+.producer-ai .ai-model-select { grid-template-columns: auto minmax(0, 1fr); align-items: center; margin: 0 24px 12px; flex-shrink: 0; }
+.producer-ai .ai-model-select p { grid-column: 1 / -1; }

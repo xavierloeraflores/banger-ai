@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { AI_PROVIDERS, aiSettingsBridge, type AIOptionId, type AISettings } from "@/lib/ai-providers";
 import type {} from "./local-model";
 
-export function AIModelSelect() {
+import { reasoningLevels, type ReasoningLevel } from "@banger/agent/protocol";
+
+export function AIModelSelect({ id = "active-ai", reasoningOnly = false }: { id?: string; reasoningOnly?: boolean }) {
   const [settings, setSettings] = useState<AISettings>({ activeProvider: null, providers: {} });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,6 +38,18 @@ export function AIModelSelect() {
     ...(settings.chatgpt?.accounts.some(account => account.connected && account.sharing) ? [{ id: "chatgpt", label: `ChatGPT · ${settings.chatgpt.accounts.find(account => account.id === settings.chatgpt?.activeAccountId)?.model ?? "Choose a model"}` }] : []),
   ];
   const selected = settings.chatgpt?.selected ? "chatgpt" : settings.localSelected ? `local:${settings.localVariant ?? "small"}` : settings.activeProvider ?? "";
+  const account = settings.chatgpt?.accounts.find(account => account.id === settings.chatgpt?.activeAccountId);
+  const modelSettings = selected === "chatgpt" ? account : settings.providers[selected as keyof typeof settings.providers];
+  const levels = reasoningLevels(selected, modelSettings?.model ?? "");
+  async function selectReasoning(value: string) {
+    if (pending.current) return;
+    pending.current = true; setBusy(true); setError("");
+    try {
+      setSettings(await aiSettingsBridge().setReasoning(selected as AIOptionId, value ? value as ReasoningLevel : undefined));
+      window.dispatchEvent(new Event("banger:ai-settings-changed"));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not change reasoning level."); }
+    finally { pending.current = false; setBusy(false); }
+  }
   async function select(value: string) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError("");
@@ -46,13 +60,18 @@ export function AIModelSelect() {
     finally { pending.current = false; setBusy(false); }
   }
   return <div className="ai-model-select">
-    <label htmlFor="active-ai-model">AI model</label>
-    <select id="active-ai-model" value={selected} disabled={busy || !options.length} onChange={event => void select(event.target.value)}>
+    {!reasoningOnly && <><label htmlFor={`${id}-model`}>AI model</label>
+    <select id={`${id}-model`} value={selected} disabled={busy || !options.length} onChange={event => void select(event.target.value)}>
       <option value="" disabled>{options.length ? "Choose a configured model" : "Configure a model in Settings → BYOK"}</option>
       {selected && !options.some(option => option.id === selected) && <option value={selected} disabled>Local model needs a download</option>}
       {options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+    </select></>}
+    <label htmlFor={`${id}-reasoning`}>Reasoning level</label>
+    <select id={`${id}-reasoning`} value={levels.includes(modelSettings?.reasoningLevel as ReasoningLevel) ? modelSettings?.reasoningLevel ?? "" : ""} disabled={busy || !levels.length} onChange={event => void selectReasoning(event.target.value)}>
+      <option value="">Provider default</option>
+      {levels.map(level => <option key={level} value={level}>{level === "xhigh" ? "Extra high" : level[0]!.toUpperCase() + level.slice(1)}</option>)}
     </select>
-    {settings.chatgpt?.selected && <span className="chatgpt-usage">Using ChatGPT plan <button type="button" onClick={() => void window.bangerChatGPT?.usage().catch(() => setError("Could not open usage settings."))}>Manage usage</button></span>}
+    {!reasoningOnly && settings.chatgpt?.selected && <span className="chatgpt-usage">Using ChatGPT plan <button type="button" onClick={() => void window.bangerChatGPT?.usage().catch(() => setError("Could not open usage settings."))}>Manage usage</button></span>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

@@ -121,7 +121,7 @@ export function installWorkspaceHandlers(options: {
       controller.signal.throwIfAborted();
       // Keep task history, but refresh provider credentials and model selection each run.
       if (!current.session) current.session = new ProjectSession({ workspace: current.workspace, selected, onEvent: event => send(window, event) });
-      else Object.assign(current.session.selected, { timeoutMs: undefined, ...selected });
+      else Object.assign(current.session.selected, { timeoutMs: undefined, providerOptions: undefined, ...selected });
       return { ok: true, reply: await current.session.run(prompt, { signal: controller.signal, activeFile, permissions: permissions as EditPermissions | undefined }) };
     } catch (error) {
       return { ok: false, error: controller.signal.aborted ? "Project task stopped. Completed saves are kept." : (options.modelError?.(error) ?? "Project task failed. Check the selected model and connection.") };
