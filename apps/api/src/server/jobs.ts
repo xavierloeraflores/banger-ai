@@ -4,11 +4,24 @@ import { musicActionSchema, musicActionBase, associatedBeatSchema } from "@bange
 import { db, transaction } from "./db";
 import { authorize } from "./projects";
 import { ApiError, id, pathSchema } from "./domain";
+import { serverElevenLabsKey } from "./provider-keys";
 export const agentInput = z.object({ baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional() }).strict();
+const keyFields = { clientKeyRequired: z.boolean().optional(), keySource: z.enum(['server', 'client']).optional() };
 export const elevenInput = z.union([
-  z.object({ clientKeyRequired: z.boolean().optional(), artifactId: id, studioPath: z.string().min(1).max(1024).optional(), beat: associatedBeatSchema.optional(), operation: z.literal('analyze').default('analyze') }).strict(),
-  z.object({ clientKeyRequired: z.boolean().optional(), musicId: id, action: musicActionSchema }).strict(),
+  z.object({ ...keyFields, artifactId: id, studioPath: z.string().min(1).max(1024).optional(), beat: associatedBeatSchema.optional(), operation: z.literal('analyze').default('analyze') }).strict(),
+  z.object({ ...keyFields, musicId: id, action: musicActionSchema }).strict(),
 ]);
+// Bind the key source when the job is created. The key itself is never stored.
+// A later retry with the same idempotency key must resolve to the same source.
+export function bindElevenInput(input: unknown, clientKey: string | null) {
+  const parsed = elevenInput.parse(input);
+  const base = 'artifactId' in parsed
+    ? { artifactId: parsed.artifactId, operation: parsed.operation, ...(parsed.studioPath ? { studioPath: parsed.studioPath } : {}), ...(parsed.beat ? { beat: parsed.beat } : {}) }
+    : { musicId: parsed.musicId, action: parsed.action };
+  if (serverElevenLabsKey().state !== 'absent') return { ...base, keySource: 'server' as const };
+  if (clientKey) return { ...base, keySource: 'client' as const, clientKeyRequired: true };
+  return base;
+}
 export type Job = { id: string; project_id: string; user_id: string; kind: "agent" | "elevenlabs"; session_id: string | null; status: string; stage: string; progress: number; input: Record<string, unknown>; checkpoint: Record<string, unknown>; result: Record<string, unknown> | null; error: string | null; lease_token: string; attempts: number; created_at: Date };
 export async function enqueue(user: string, project: string, kind: Job["kind"], key: string, input: unknown) {
   const parsed = kind === "agent" ? agentInput.parse(input) : elevenInput.parse(input);

@@ -1,4 +1,4 @@
-import { browserArtworkCredentials } from '@/lib/ai-providers';
+import { browserArtworkCredentials, loadServerAIStatus } from '@/lib/ai-providers';
 import type { WebWorkspace } from './web-workspace';
 import { cloudMusic, cloudVocalRequest } from '@/lib/elevenlabs';
 import { cloudHeaders, uploadWav, type CloudBinding } from '@/lib/cloud-projects';
@@ -15,7 +15,8 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
   const connection = { url: '', accountId };
   function queueArtwork(recordId: string) {
     const credentials = browserArtworkCredentials();
-    if (credentials) void request(`/library/${recordId}/artwork`, 'POST', credentials).catch(() => {});
+    if (credentials) { void request(`/library/${recordId}/artwork`, 'POST', credentials).catch(() => {}); return; }
+    void loadServerAIStatus().then(status => { if (status?.artwork) void request(`/library/${recordId}/artwork`, 'POST', {}).catch(() => {}); });
   }
   async function saveToLibrary(input: unknown) {
     const entry = await request<{name:string;recordId:string;scope:string}>('/library', 'POST', input);
@@ -37,7 +38,7 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
     const bound = await binding(token);
     // Each backend keeps its own song IDs, so polling cannot follow another song.
     const key = `${token}:${bound.revision}`;
-    if (!backends.has(key)) backends.set(key, cloudMusic(bound, bound.path));
+    if (!backends.has(key)) backends.set(key, cloudMusic(bound, bound.path, { allowHosted: true }));
     return backends.get(key)!;
   }
   async function audio(artifactId: string) {
@@ -122,11 +123,11 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
     async rendered(bytes, _name, key, token, beat) {
       const song = resolve(token), bound = await binding(token!);
       const artifactId = await archive(token!, bytes);
-      return operation(await cloudVocalRequest<Job>(bound, `/projects/${song.projectId}/jobs`, { kind: 'elevenlabs', idempotencyKey: key, input: { artifactId, studioPath: song.path, ...(beat ? { beat } : {}) } }));
+      return operation(await cloudVocalRequest<Job>(bound, `/projects/${song.projectId}/jobs`, { kind: 'elevenlabs', idempotencyKey: key, input: { artifactId, studioPath: song.path, ...(beat ? { beat } : {}) } }, { allowHosted: true }));
     },
     async act(id, action, key) {
       const payload = { action, idempotencyKey: key };
-      return operation(await (action.operation === 'edit' ? request<Job>(`/music/${id}/actions`, 'POST', payload) : cloudVocalRequest<Job>(connection, `/music/${id}/actions`, payload)));
+      return operation(await (action.operation === 'edit' ? request<Job>(`/music/${id}/actions`, 'POST', payload) : cloudVocalRequest<Job>(connection, `/music/${id}/actions`, payload, { allowHosted: true })));
     },
     // Full Send submits actions through the native-compatible bridge. Refresh
     // the cloud adapter's song IDs so it can associate those jobs after a save
@@ -144,9 +145,7 @@ export function installWebMusic(accountId: string, workspace: WebWorkspace) {
   window.bangerLibrary = {
     async renameRecord(id, name) { await request(`/library/${id}/record`, 'PATCH', { name }); },
     async regenerateArtwork(id) {
-      const credentials = browserArtworkCredentials();
-      if (!credentials) throw new Error('Add a Meta or Vercel key in AI settings to regenerate artwork.');
-      await request(`/library/${id}/regenerate`, 'POST', credentials);
+      await request(`/library/${id}/regenerate`, 'POST', browserArtworkCredentials() ?? {});
     },
     list: async () => {
       const { songs } = await request<{songs:Awaited<ReturnType<NonNullable<Window['bangerLibrary']>['list']>>}>('/library');

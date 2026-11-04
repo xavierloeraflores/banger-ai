@@ -5,6 +5,7 @@ import { db, transaction } from './db';
 import { ApiError } from './domain';
 import { authorize } from './projects';
 import { checkpoint, elevenInput, type Job } from './jobs';
+import { decideElevenKey } from './provider-keys';
 import { getArtifact } from './artifacts';
 export async function getMusic(user:string,musicId:string) {
   const row=(await db().query('SELECT * FROM music_sessions WHERE id=$1',[musicId])).rows[0];
@@ -12,12 +13,26 @@ export async function getMusic(user:string,musicId:string) {
   await authorize(user,row.project_id);
   return row as {id:string;project_id:string;source_artifact_id:string;revision:number;current_version:MusicVersion|null};
 }
-export async function runElevenStep(job: Job, injected?: MusicProvider, objects:MusicObjects=mediaObjects) {
+export async function runElevenStep(job: Job, injected?: MusicProvider, objects:MusicObjects=mediaObjects, serverProvider?: MusicProvider) {
   const input=elevenInput.parse(job.input);
-  const key=input.clientKeyRequired ? undefined : process.env.ELEVENLABS_API_KEY;
   const analyze='artifactId' in input;
-  if(!injected && !key && (analyze || input.action.operation!=='edit')) {await checkpoint(job,'awaiting-provider',0,{},'awaiting_provider',null,input.clientKeyRequired ? 'Add your ElevenLabs API key in Settings to resume this song.' : 'Set ELEVENLABS_API_KEY on the backend to process this song.');return;}
-  const provider=()=>injected ?? new ElevenMusic(key!);
+  const needsProvider=analyze || input.action.operation!=='edit';
+  let keySource: 'server' | 'client' = 'client';
+  let serverKey: string | undefined;
+  // Missing-key jobs wait before artifact lookup, matching recovery of a job whose upload is not ready.
+  if(needsProvider && !job.checkpoint.providerStarted){
+    const decision=decideElevenKey(input,job.checkpoint,Boolean(injected));
+    if(decision.action==='wait'){await checkpoint(job,'awaiting-provider',0,{},'awaiting_provider',null,decision.message);return;}
+    if(decision.action==='fail'){await checkpoint(job,'failed',job.progress,{keySource:'server',serverKeyRejected:true},'failed',null,decision.message);return;}
+    keySource=decision.action==='use-server'?'server':'client';
+    if(decision.action==='use-server') serverKey=decision.key;
+  }
+  const provider=()=>{
+    if(!needsProvider) throw new Error('A lyric edit must not call a provider.');
+    if(keySource==='server') return serverProvider ?? new ElevenMusic(serverKey!);
+    if(!injected) throw new Error('Add your ElevenLabs API key in Settings to resume this song.');
+    return injected;
+  };
   const session=analyze ? undefined : await getMusic(job.user_id,input.musicId);
   const source=await getArtifact(job.user_id,analyze?input.artifactId:session!.source_artifact_id,true);
   if(source.project_id!==job.project_id || source.status!=='ready')throw new ApiError(400,'The source WAV is unavailable.');
@@ -31,7 +46,7 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
     const baseVersion=analyze?0:input.action.baseVersion;
     if(!analyze && (!session!.current_version || session!.revision!==baseVersion)) throw new ApiError(409,'The composition changed before this request ran. Reload it.');
     const paid=analyze || input.action.operation!=='edit';
-    if(paid) await checkpoint(job,analyze?'analyzing':'generating',25,{providerStarted:true},'running');
+    if(paid) await checkpoint(job,analyze?'analyzing':'generating',25,{providerStarted:true,keySource},'running');
     try {
       let output:Uint8Array|undefined;
       if(analyze) {
@@ -54,8 +69,11 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
       await checkpoint(job,'saving',90,{receiptPath},'running');
     } catch(error) {
       if(error instanceof ApiError)throw error;
-      const status=error instanceof MusicProviderError&&!error.uncertain?'failed':paid?'needs_review':'failed';
-      await checkpoint(job,status,job.progress,{},status,null,publicMusicError(error));return;
+      const uncertain=error instanceof MusicProviderError&&error.uncertain;
+      const rejected=keySource==='server'&&!uncertain;
+      const status=uncertain?paid?'needs_review':'failed':'failed';
+      const message=rejected?'The hosted ElevenLabs key was rejected. A personal key was not used.':publicMusicError(error);
+      await checkpoint(job,status,job.progress,{keySource,...(rejected?{serverKeyRejected:true}:{})},status,null,message);return;
     }
   }
   const audioPath=`projects/${job.project_id}/music/${musicId}/audio/${job.id}.mp3`;

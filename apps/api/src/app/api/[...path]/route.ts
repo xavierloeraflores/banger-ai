@@ -13,7 +13,8 @@ import {assertWebOrigin,hasWebSession,sessionAccount,signIn,signOut,webOrigin,we
 import { ApiError, changeSchema, id, saveSchema } from '../../../server/domain';
 import { db } from '../../../server/db';
 import { authorize, createProject, projectFiles, saveChanges, setMember } from '../../../server/projects';
-import { elevenInput, enqueue, getJob, publicJob } from '../../../server/jobs';
+import { bindElevenInput, enqueue, getJob, publicJob } from '../../../server/jobs';
+import { resolveArtworkCredentials, serverAIStatus } from '../../../server/provider-keys';
 import { workOne } from '../../../server/worker';
 import { finalizeWav, getArtifact, reserveWav, uploadCallback } from '../../../server/artifacts';
 import { blobs } from '../../../server/blob';
@@ -57,6 +58,7 @@ async function dispatch(request: Request, path: string[]) {
   const user = await authenticate(request);
   const expectedAccount=request.headers.get('x-banger-account');
   if(expectedAccount && expectedAccount!==user)throw new ApiError(409,'The signed-in account changed. Reload the app before continuing.');
+  if(path[0]==='ai' && path[1]==='status' && path.length===2 && method==='GET') return json(serverAIStatus());
   if (method === 'POST' && path.length === 1 && (path[0] === 'chat' || path[0] === 'lyrics')) {
     const input = await body(request);
     if (path[0] !== 'chat' || request.headers.get('accept') !== 'application/x-ndjson') return json(await browserGeneration(user, path[0], input, request.signal));
@@ -90,7 +92,7 @@ async function dispatch(request: Request, path: string[]) {
     }
     if(path.length===3 && ['artwork','regenerate'].includes(path[2]!) && method==='POST') {
       const recordId=id.parse(path[1]);
-      const credentials=z.object({provider:z.enum(['meta','vercel']),key:z.string().min(1).max(8192).regex(/^[\x21-\x7e]+$/)}).strict().parse(await body(request));
+      const credentials=resolveArtworkCredentials(await body(request));
       if(!(await db().query('SELECT 1 FROM library_records WHERE id=$1 AND user_id=$2',[recordId,user])).rowCount)throw new ApiError(404,'Record not found.');
       if(path[2]==='regenerate')await requestArtworkRegeneration(user,recordId);
       after(()=>generateLibraryArtwork(user,recordId,credentials));
@@ -146,7 +148,7 @@ async function dispatch(request: Request, path: string[]) {
     if (path[2] === 'jobs' && path.length === 3) {
       if (method === 'POST') {
         const input=z.object({kind:z.enum(['agent','elevenlabs']),idempotencyKey:id,input:z.unknown()}).strict().parse(await body(request));
-        const job=await enqueue(user,project,input.kind,input.idempotencyKey,input.kind==='elevenlabs' && elevenLabsKey ? {...elevenInput.parse(input.input),clientKeyRequired:true} : input.input);
+        const job=await enqueue(user,project,input.kind,input.idempotencyKey,input.kind==='elevenlabs' ? bindElevenInput(input.input, elevenLabsKey) : input.input);
         after(() => workOne(job.id, request.headers.get('x-banger-elevenlabs-key') ?? undefined).then(() => undefined)); return json(publicJob(job),202);
       }
       if (method === 'GET') { await authorize(user,project); return json({jobs:(await db().query('SELECT * FROM jobs WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50',[project])).rows.map(publicJob)}); }
@@ -170,7 +172,7 @@ async function dispatch(request: Request, path: string[]) {
     }
     if (path[2]==='actions' && method==='POST') {
       const input=z.object({action:musicActionSchema,idempotencyKey:id}).strict().parse(await body(request));
-      const job=await enqueue(user,music.project_id,'elevenlabs',input.idempotencyKey,{musicId:music.id,action:input.action,...(elevenLabsKey?{clientKeyRequired:true}:{})});
+      const job=await enqueue(user,music.project_id,'elevenlabs',input.idempotencyKey,bindElevenInput({musicId:music.id,action:input.action}, elevenLabsKey));
       after(()=>workOne(job.id, request.headers.get('x-banger-elevenlabs-key') ?? undefined).then(()=>undefined));return json(publicJob(job),202);
     }
   }

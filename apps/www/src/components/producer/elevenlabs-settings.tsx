@@ -7,6 +7,7 @@ import { aiSettingsBridge } from "@/lib/ai-providers";
 export function ElevenLabsSettings() {
   const [key, setKey] = useState("");
   const [saved, setSaved] = useState(false);
+  const [hosted, setHosted] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [desktop, setDesktop] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -19,6 +20,7 @@ export function ElevenLabsSettings() {
       if (!active) return;
       setDesktop(Boolean(window.bangerAI));
       setSaved(Boolean(settings.elevenLabsConfigured));
+      setHosted(Boolean(settings.server?.elevenlabs));
       setLoaded(!settings.settingsError);
       setError(settings.settingsError ?? "");
     }).catch(() => { if (active) setError("Could not load ElevenLabs settings."); });
@@ -39,6 +41,7 @@ export function ElevenLabsSettings() {
   return <section className="byok-settings elevenlabs-settings" aria-labelledby="elevenlabs-title">
     <h2 id="elevenlabs-title">Vocals · ElevenLabs</h2>
     <p className="byok-description">Add an ElevenLabs API key to generate vocals from your music. Beat and lyric generation use your selected AI model.</p>
+    {hosted && <p className="byok-hint">A hosted ElevenLabs key is available. It is used first and is never shown. A personal key is used only when the server has no key.</p>}
     <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
       <fieldset disabled={busy || !loaded}>
         <label htmlFor="elevenlabs-key">{saved ? "Replace ElevenLabs API key" : "ElevenLabs API key"}</label>

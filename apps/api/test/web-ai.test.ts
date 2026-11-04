@@ -4,8 +4,16 @@ import { randomUUID } from 'node:crypto';
 import { browserGeneration } from '../src/server/web-ai';
 import { db } from '../src/server/db';
 
+const KEY_ENV = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'AI_GATEWAY_API_KEY', 'META_API_KEY', 'MUSE_API_KEY', 'BANGER_API_KEY', 'BANGER_PROVIDER', 'BANGER_MODEL', 'ELEVENLABS_API_KEY'];
+function withoutServerKeys() {
+  const saved = Object.fromEntries(KEY_ENV.map(name => [name, process.env[name]]));
+  for (const name of KEY_ENV) delete process.env[name];
+  return () => { for (const name of KEY_ENV) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; } };
+}
+
 test('web generation uses the selected provider server-side and redacts upstream failures', { skip: !process.env.DATABASE_URL }, async t => {
-  t.after(() => db().end());
+  const restore = withoutServerKeys();
+  t.after(() => { restore(); return db().end(); });
   const user = `ai-${randomUUID()}`;
   const credentials = { provider: 'openai', model: 'fixture', key: 'private-fixture-key' };
   let text = 'A fixture reply';

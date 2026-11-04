@@ -9,7 +9,9 @@ import {claim,enqueue,getJob} from '../src/server/jobs';
 import {getMusic,runElevenStep,type MusicObjects} from '../src/server/elevenlabs';
 const originalMetadata={wordsTimestamps:[],waveformVisual:[0,20,-50]},generatedMetadata={wordsTimestamps:[{word:'Words',startMs:100,endMs:900}],waveformVisual:[0,50,-20]};
 const plan={chunks:[{text:'[Verse]\nWords',durationMs:4000,positiveStyles:['piano']},{text:'[Chorus]\nWords',durationMs:4000,positiveStyles:['piano']}]};
-test('cloud music revisions, permissions, private artifacts, receipt recovery and ambiguous requests',{skip:!process.env.DATABASE_URL},async()=>{
+test('cloud music revisions, permissions, private artifacts, receipt recovery and ambiguous requests',{skip:!process.env.DATABASE_URL},async t=>{
+ const previousEleven=process.env.ELEVENLABS_API_KEY; delete process.env.ELEVENLABS_API_KEY;
+ t.after(()=>{ if(previousEleven===undefined) delete process.env.ELEVENLABS_API_KEY; else process.env.ELEVENLABS_API_KEY=previousEleven; });
  const objects=new Map<string,Buffer>();const storage:MusicObjects={async exists(path){return objects.has(path);},async read(path){assert.ok(objects.has(path));return objects.get(path)!;},async write(path,body){assert.ok(!objects.has(path),'immutable writes');objects.set(path,Buffer.from(body));},async size(path){return objects.get(path)!.length;}};
  const source=await readFile(new URL('../../../examples/night-drive.banger',import.meta.url),'utf8'),user=randomUUID(),viewer=randomUUID();
  const project=await createProject(user,'Music',[{path:'song.banger',source}],{write:storage.write,text:async path=>(await storage.read(path)).toString()});

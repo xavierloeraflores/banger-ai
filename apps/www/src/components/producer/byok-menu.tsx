@@ -107,12 +107,13 @@ export function ByokSettings() {
           </Button>}
           {AI_PROVIDERS.map(item => <Button key={item.id} type="button" aria-pressed={provider === item.id}
             disabled={busy || !loaded} onClick={() => select(item.id)}>
-            <span>{item.name}</span><small>{!settings.localSelected && !settings.chatgpt?.selected && settings.activeProvider === item.id ? "Selected" : settings.settingsError ? "Locked" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
+            <span>{item.name}</span><small>{!settings.localSelected && !settings.chatgpt?.selected && settings.activeProvider === item.id ? "Selected" : settings.settingsError ? "Locked" : settings.server?.providers[item.id]?.available ? "Hosted key" : settings.providers[item.id]?.configured ? "Key saved" : "No key"}</small>
           </Button>)}
         </nav>
         {provider === "chatgpt" ? <ChatGPTSettings /> : provider === "local" ? <LocalModelSettings /> : <form className="byok-form" onSubmit={event => { event.preventDefault(); void update(); }}>
           <h3>{selected.name}</h3>
           <p className="byok-hint">{selected.hint}</p>
+          {settings.server?.providers[selected.id]?.available && <p className="byok-hint">A hosted key is available for {selected.name}. It is used before a personal key and is never shown here. A personal key is used only when the server has no key for this provider.</p>}
           <fieldset disabled={busy || !loaded}>
             {saved ? <div className="byok-models" aria-label="Saved models">
               <p>Models using this key</p>

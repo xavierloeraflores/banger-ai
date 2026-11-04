@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { credentialsSchema, editPermissionsSchema, publicAIError, selectModel, type SelectedModel } from '@banger/agent';
+import { editPermissionsSchema, selectModel, type SelectedModel } from '@banger/agent';
 import { openProject, ProjectSession, songStorage, type HarnessEvent } from '@banger/harness';
 import { lyricsOf, performMusicAction, type MusicVersion } from '@banger/elevenlabs';
 import { ApiError, id, pathSchema } from './domain';
@@ -13,8 +13,9 @@ import { authorize, projectFiles, saveChanges } from './projects';
 import { projectObjects } from './project-objects';
 import { saveSongDraft } from './song-drafts';
 import { claimAgentFile, releaseAgentFiles } from './agent-file-claims';
+import { hostedProviderError, optionalCredentialSchema, resolveWebCredentials } from './provider-keys';
 
-const inputSchema = z.object({ requestId: z.string().uuid().optional(), thread: id, baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional(), permissions: editPermissionsSchema.optional(), credentials: credentialsSchema }).strict();
+const inputSchema = z.object({ requestId: z.string().uuid().optional(), thread: id, baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional(), permissions: editPermissionsSchema.optional(), credentials: optionalCredentialSchema.optional() }).strict();
 type Sidecar = { path: string; source: string; songPath: string; music?: MusicVersion };
 async function saveLyrics(user: string, project: string, before: MusicVersion, source: string) {
   const document = JSON.parse(source) as MusicVersion;
@@ -37,12 +38,17 @@ export async function runWebTask(user: string, project: string, body: unknown, s
   const parsed = inputSchema.safeParse(body);
   if (!parsed.success) throw new ApiError(400, 'Check your project task and AI settings.');
   const input = parsed.data;
+  // Tests inject a model and keep their own fixture credentials. Production always resolves here.
+  const resolved = model ? undefined : resolveWebCredentials(input.credentials);
+  const named = resolved ?? input.credentials;
+  if (!named?.provider || !named.model) throw new ApiError(400, 'Check your project task and AI settings.');
   const snapshot = await projectFiles(user, project);
   await authorize(user, project, true);
   if (snapshot.revision !== input.baseRevision) throw new ApiError(409, 'The project changed. Reload it before running the agent.');
   if (input.activeFile && !snapshot.files.some(file => file.path === input.activeFile)) throw new ApiError(404, 'Active song not found.');
   await db().query('UPDATE projects SET original_prompt=COALESCE(original_prompt,$2) WHERE id=$1', [project,input.prompt]);
-  const modelName = `${input.credentials.provider}:${input.credentials.model}:${input.credentials.reasoningLevel ?? ''}`;
+  const modelName = `${named.provider}:${named.model}:${named.reasoningLevel ?? ''}`;
+
   const lease = randomUUID();
   const history = await transaction(async client => {
     await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user]);
@@ -83,7 +89,7 @@ export async function runWebTask(user: string, project: string, body: unknown, s
       await writeFile(join(root, file.path), file.source, { flag: 'wx', mode: 0o600 });
     }
     const workspace = await openProject(root);
-    session = new ProjectSession({ workspace, history, selected: model ?? { ...selectModel(input.credentials), timeoutMs: 180000 },
+    session = new ProjectSession({ workspace, history, selected: model ?? { ...selectModel({ provider: resolved!.provider, model: resolved!.model, key: resolved!.key, reasoningLevel: resolved!.reasoningLevel }), timeoutMs: 180000 },
       claimFile: path => claimAgentFile(project, path, input.thread, lease),
       onEvent(event) {
       if (event.type === 'file-changed') changes.set(event.file.path, event.file.source);
@@ -92,7 +98,7 @@ export async function runWebTask(user: string, project: string, body: unknown, s
     try {
       const result = await session.run(input.prompt, { requestId: input.requestId, activeFile: input.activeFile, permissions: input.permissions, signal });
       reply = { text: result.text, status: result.status, changedPaths: saved };
-    } catch (error) { reply.text = publicAIError(error); }
+    } catch (error) { reply.text = hostedProviderError(error, resolved?.source ?? 'user'); }
     // Keep validated writes after cancellation, like desktop. Publication still
     // checks the saved revision, so concurrent users cannot overwrite each other.
     const musicChanges = [...changes].filter(([path]) => path.endsWith('.banger')).map(([path, source]) => ({ path, source }));
@@ -116,7 +122,7 @@ export async function runWebTask(user: string, project: string, body: unknown, s
       }
     }
   } catch (error) {
-    reply = { text: error instanceof ApiError ? error.message : publicAIError(error), status: 'incomplete', changedPaths: saved };
+    reply = { text: error instanceof ApiError ? error.message : hostedProviderError(error, resolved?.source ?? 'user'), status: 'incomplete', changedPaths: saved };
   } finally {
     try {
       await releaseAgentFiles(project, input.thread, lease);

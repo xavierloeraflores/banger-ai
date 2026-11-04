@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@banger/shadcn/components/tooltip";
-import { aiSettingsBridge, hasLanguageModel } from "@/lib/ai-providers";
+import { aiSettingsBridge, hasLanguageModel, vocalsConfigured } from "@/lib/ai-providers";
 
 export const LLM_KEY_HINT = "Add an AI model API key in Settings to generate beats and lyrics.";
 export const VOCAL_KEY_HINT = "Add an ElevenLabs API key in Settings to generate vocals.";
@@ -16,12 +16,14 @@ export function useGenerationAccess() {
       const ticket = ++revision;
       try {
         const settings = await aiSettingsBridge().load();
-        if (active && ticket === revision) setAccess({ languageModel: hasLanguageModel(settings), vocals: Boolean(settings.elevenLabsConfigured) });
+        if (active && ticket === revision) setAccess({ languageModel: hasLanguageModel(settings), vocals: vocalsConfigured(settings) });
       } catch { if (active && ticket === revision) setAccess({ languageModel: false, vocals: false }); }
     };
     void refresh();
+    const timer = window.setInterval(() => { void refresh(); }, 20000);
     window.addEventListener("banger:ai-settings-changed", refresh);
-    return () => { active = false; window.removeEventListener("banger:ai-settings-changed", refresh); };
+    window.addEventListener("focus", refresh);
+    return () => { active = false; clearInterval(timer); window.removeEventListener("banger:ai-settings-changed", refresh); window.removeEventListener("focus", refresh); };
   }, []);
   return access;
 }

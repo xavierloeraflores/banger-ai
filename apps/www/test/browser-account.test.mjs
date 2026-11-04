@@ -24,6 +24,19 @@ function browser() {
   return { settings: load(resolve(lib, 'ai-providers.ts')), account: load(resolve(lib, 'browser-account.ts')), drafts: load(resolve(lib, 'song-storage.ts')) };
 }
 
+test('hosted server status enables generation without storing or requiring a key', () => {
+  const { settings } = browser();
+  const status = {
+    providers: { vercel: { available: true, model: 'meta/muse-wonder-1.0' }, anthropic: { available: false }, openai: { available: false }, meta: { available: true, model: 'muse-wonder-1.0' }, grok: { available: false } },
+    elevenlabs: true, artwork: true, defaultProvider: 'vercel', defaultModel: 'meta/muse-wonder-1.0',
+  };
+  assert.equal(settings.hasLanguageModel({ activeProvider: null, providers: {}, server: status }), true);
+  assert.equal(settings.vocalsConfigured({ activeProvider: null, providers: {}, elevenLabsConfigured: false, server: status }), true);
+  assert.equal(settings.hasLanguageModel({ activeProvider: null, providers: {} }), false);
+  assert.equal(settings.vocalsConfigured({ activeProvider: null, providers: {}, elevenLabsConfigured: false }), false);
+  assert.equal(JSON.stringify(status).includes('sk-'), false);
+});
+
 test('hosted accounts cannot inherit another account’s keys or same-named lyric drafts', async () => {
   const { settings, account, drafts } = browser();
   const bridge = settings.aiSettingsBridge();

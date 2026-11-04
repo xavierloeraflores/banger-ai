@@ -21,7 +21,11 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   const mediaDirectory=await mkdtemp(join(tmpdir(),'banger-http-media-'));
   const webPassword=randomUUID()+randomUUID();
   const webOrigin=`http://127.0.0.1:${port}`;
-  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,NODE_ENV:'production',BANGER_LOCAL_DATA_DIR:mediaDirectory,APP_ORIGIN:webOrigin,ELEVENLABS_API_KEY:'',AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'},stdio:['ignore','pipe','pipe']});
+  const childEnv:NodeJS.ProcessEnv={...process.env,NODE_ENV:'production',BANGER_LOCAL_DATA_DIR:mediaDirectory,APP_ORIGIN:webOrigin,AUTH_JWKS_URL:`http://127.0.0.1:${(jwks.address() as {port:number}).port}`,AUTH_ISSUER:'http-test',AUTH_AUDIENCE:'banger',CLIENT_ORIGINS:'https://studio.example.test',CRON_SECRET:'fixture-worker'};
+  for(const name of ['OPENAI_API_KEY','ANTHROPIC_API_KEY','XAI_API_KEY','AI_GATEWAY_API_KEY','META_API_KEY','MUSE_API_KEY','BANGER_API_KEY','BANGER_PROVIDER','BANGER_MODEL','ELEVENLABS_API_KEY']) delete childEnv[name];
+  childEnv.OPENAI_API_KEY='http-status-openai-fixture';
+  childEnv.ELEVENLABS_API_KEY='';
+  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:childEnv,stdio:['ignore','pipe','pipe']});
   let output='';child.stdout.on('data',data=>{output+=data;});child.stderr.on('data',data=>{output+=data;});
   t.after(async()=>{child.kill('SIGTERM');await new Promise<void>(resolve=>jwks.close(()=>resolve()));await db().end();await rm(mediaDirectory,{recursive:true,force:true});});
   for(let tries=0;tries<100;tries++){if(output.includes('Ready'))break;if(child.exitCode!==null)throw new Error(output);await new Promise(resolve=>setTimeout(resolve,100));}
@@ -34,6 +38,11 @@ test('production HTTP routes enforce JWT, permissions, revisions, CORS and durab
   assert.equal(login.status,200);const cookie=login.headers.get('set-cookie')!;assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);
   const sessionHeaders={Cookie:cookie.split(';')[0]!};
   assert.equal((await(await fetch(`${webOrigin}/api/session`,{headers:sessionHeaders})).json()).authenticated,true);
+  const hiddenStatus=await fetch(`${webOrigin}/api/ai/status`); assert.equal(hiddenStatus.status,401); assert.equal((await hiddenStatus.text()).includes('http-status-openai-fixture'),false);
+  const statusResponse=await fetch(`${webOrigin}/api/ai/status`,{headers:sessionHeaders}); assert.equal(statusResponse.status,200);
+  const statusBody=await statusResponse.json(); assert.equal(statusBody.providers.openai.available,true); assert.equal(statusBody.providers.openai.model,'gpt-6-astra'); assert.equal(statusBody.elevenlabs,false); assert.equal(statusBody.artwork,false); assert.equal(statusBody.defaultProvider,'openai');
+  assert.equal(JSON.stringify(statusBody).includes('http-status-openai-fixture'),false); assert.equal(Object.hasOwn(statusBody,'key'),false);
+  const mismatched=await fetch(`${webOrigin}/api/ai/status`,{headers:{...sessionHeaders,'X-Banger-Account':'other-account'}}); assert.equal(mismatched.status,409); assert.equal((await mismatched.text()).includes('http-status-openai-fixture'),false);
   assert.equal((await fetch(`${webOrigin}/api/chat`,{method:'POST',headers:{...sessionHeaders,Origin:webOrigin,'Content-Type':'application/json'},body:JSON.stringify({credentials:{key:'do-not-echo-this-secret'},request:{}})})).status,400);
   assert.equal((await fetch(`${webOrigin}/api/chat`,{method:'POST',headers:{Origin:webOrigin,'Content-Type':'application/json'},body:'{}'})).status,401);
   const ownProjects=await fetch(`${webOrigin}/api/projects`,{headers:sessionHeaders});assert.equal(ownProjects.status,200);assert.deepEqual((await ownProjects.json()).projects,[]);

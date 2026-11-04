@@ -18,7 +18,43 @@ pnpm --filter @banger/api dev
 pnpm dev:www
 ```
 
-The publish command uploads the trusted bundled harness runtime, prints `SANDBOX_RUNNER_BLOB_PATH`, and does not expose a public download URL. Set that variable on the API deployment. Republish the runner after changes to the harness, agent, compiler, or runner. Runtime credentials sent to Sandbox contain only the selected model key. Database and Blob credentials stay in the backend.
+The publish command uploads the trusted bundled harness runtime, prints `SANDBOX_RUNNER_BLOB_PATH`, and does not expose a public download URL. Set that variable on the API deployment. Republish the runner after changes to the harness, agent, compiler, or runner. Runtime credentials sent to Sandbox contain only `BANGER_PROVIDER`, `BANGER_MODEL`, and `BANGER_API_KEY`. Database, Blob, and hosted web keys stay in the backend. Sandbox jobs do not read conventional provider keys or user keys.
+
+## Hosted provider keys
+
+The hosted web app resolves keys on the server. Desktop keeps its own settings and does not use this resolver. A blank or whitespace-only value is unset. A non-empty value that is longer than 8,192 characters or contains a space or control character is configured but invalid: requests fail, and no later key is tried.
+
+| Variable | Provider |
+| --- | --- |
+| `OPENAI_API_KEY` | OpenAI |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `XAI_API_KEY` | Grok |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway, including Muse models such as `meta/muse-wonder-1.0` |
+| `META_API_KEY` | Meta Muse models and Muse Image |
+| `MUSE_API_KEY` | Meta Muse alias, used only when `META_API_KEY` is unset |
+| `ELEVENLABS_API_KEY` | ElevenLabs vocals |
+| `BANGER_PROVIDER` | Provider targeted by `BANGER_API_KEY`. Defaults to `openai` when unset and that key is set. An unknown value does not apply the key to any web provider. |
+| `BANGER_MODEL` | Default model when the selected provider is the BANGER provider and the client does not name a model. An invalid value is ignored and the provider's built-in default is used. |
+| `BANGER_API_KEY` | Server key for `BANGER_PROVIDER` when that provider has no conventional key. Also required, with `BANGER_MODEL`, for separate Sandbox jobs. |
+
+For a web chat, lyric, project-task, or artwork request, the server chooses one key and does not try another after a provider error:
+
+1. The conventional variable for the selected provider. `META_API_KEY` wins over `MUSE_API_KEY`. An invalid conventional value blocks `BANGER_API_KEY` and the personal key.
+2. `BANGER_API_KEY`, when it targets that provider.
+3. The personal BYOK key included with the request, only when no server key is configured for that provider.
+4. Reject the request before calling a provider.
+
+When the client omits the provider and model, the default is the BANGER provider if `BANGER_API_KEY` is set. Otherwise it is the first configured conventional provider in this order: Vercel, Meta, OpenAI, Anthropic, Grok. The default model is a valid `BANGER_MODEL` when it applies, otherwise the provider's first built-in model. A client-supplied model is kept; only the key is replaced.
+
+Artwork uses the Meta server key when one is configured, otherwise the Vercel gateway server key. A personal Meta or Vercel key is used only when neither server key is configured. An invalid Meta key does not fall through to Vercel or to a personal key.
+
+ElevenLabs jobs record the source in job input, never the key:
+
+- A configured server key binds `keySource: server`, even if the browser also sent a personal key. Retries, resume, and the cron worker use only `ELEVENLABS_API_KEY`. Removing or rejecting that key does not switch the job to a personal key.
+- No server key and a personal key bind `clientKeyRequired`. A server key added later is not substituted. The browser must send the personal key again to resume.
+- Neither key leaves the job unbound. Before a paid call starts, a later server key wins over a personal key supplied on resume. After a paid call starts, the recorded source stays fixed. An interrupted paid call remains `needs_review` and is not repeated.
+
+`GET /api/ai/status` requires the hosted session or a bearer token. It returns provider ids, model ids, and booleans for ElevenLabs and artwork. It never returns key values. The browser uses it to enable chat, project tasks, vocals, and artwork without a personal key, and refreshes it so a removed key does not stay enabled. A stale "available" status cannot cause a personal key to be charged after the server key is rejected: the server decides again on each request and job run.
 
 For local Sandbox authentication, link the Vercel project and pull its environment with the Vercel CLI. The SDK reads `VERCEL_OIDC_TOKEN`; production uses the deployment identity. The migration command uses the configured PostgreSQL connection, including any TLS parameters required by the database host.
 
@@ -42,7 +78,7 @@ Load a saved cloud file into the studio to enable Upload WAV to cloud. The exist
 
 The client reserves an artifact, requests a signed token for that exact path, and uploads directly to private Blob. Tokens expire after ten minutes, prohibit overwrites, limit uploads to 100 MiB, and accept only `audio/wav`. A signed completion callback or an authenticated client finalization verifies the Blob metadata and RIFF/WAVE structure before marking the artifact ready. Audio reads go through an authenticated API route. Private Blob URLs and credentials are never returned as playback links.
 
-Set `ELEVENLABS_API_KEY` on the API server to enable the song workshop. Uploaded WAVs are analyzed with `music.upload` and `extract_composition_plan: music_v2_5`. The SDK adapter lives in `@banger/elevenlabs`; it also serves the local desktop app. Without a key, cloud submissions remain `awaiting_provider` and can be resumed after configuration.
+Set `ELEVENLABS_API_KEY` on the API server to enable hosted vocals without a personal key. Uploaded WAVs are analyzed with `music.upload` and `extract_composition_plan: music_v2_5`. The SDK adapter lives in `@banger/elevenlabs`; it also serves the local desktop app. Without a server key or a personal key, cloud submissions remain `awaiting_provider` and can be resumed after configuration. A rejected server key is not retried with a personal key.
 
 The workshop displays the extracted chunks, preserves their musical properties when editing lyrics, and can propose AI lyrics for selected chunks. Full generation and selective inpainting use `composeDetailed` with `storeForInpainting`. Unselected chunks reference their exact ranges in the current stored song. New audio is private Blob content; every composition revision has an immutable Blob receipt and PostgreSQL version record. A transaction checks the current revision and job lease before publishing its plan and artifact reference.
 
@@ -56,7 +92,8 @@ Authenticated endpoints accept either the hosted browser session or `Authorizati
 | --- | --- |
 | `POST /api/accounts` | Sign up with `{username, password}` and begin a session |
 | `GET/POST/DELETE /api/session` | Check the account, sign in with `{username, password}`, or revoke the session |
-| `POST /api/chat`, `POST /api/lyrics` | Authenticated BYOK generation; credentials are used for this request only |
+| `GET /api/ai/status` | Authenticated hosted-key availability. Returns provider, model, ElevenLabs, and artwork metadata only |
+| `POST /api/chat`, `POST /api/lyrics` | Authenticated generation. Server keys are used first; personal credentials are the fallback and are not stored |
 | `GET/POST /api/projects` | List accessible projects or create one with `name` and `files` |
 | `GET /api/projects/:id?since=N` | Read a full project or revision delta |
 | `PATCH /api/projects/:id` | Save `{baseRevision, changes: [{path, source}]}`; `source: null` deletes |
@@ -139,10 +176,14 @@ owner ID in a transaction. Never assign the old workspace to the first signup.
 There is no email verification or self-service password recovery in this
 username-only flow.
 
-BYOK chat and lyric requests go through the same-origin authenticated API.
-Provider endpoints are fixed by the provider adapter; clients cannot supply a
-proxy destination. Keys are not saved in the server database or logged. Browser
-keys remain in account-scoped tab storage and are cleared on sign-out.
+Hosted chat, lyric, project-task, vocal, and artwork requests go through the
+same-origin authenticated API. The server selects a configured provider key
+before a personal key. Provider endpoints are fixed by the provider adapter;
+clients cannot supply a proxy destination. Keys are not saved in the server
+database, logs, job rows, or model history. Browser keys remain in
+account-scoped tab storage and are cleared on sign-out. A saved personal key
+may still be sent, but the server does not use it while an applicable server
+key is configured. Desktop BYOK is unchanged.
 
 ## Hosted studio projects and storage
 

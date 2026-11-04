@@ -47,7 +47,11 @@ export function AIModelSelect({ id = "active-ai", mode = "settings", disabled = 
   const account = settings.chatgpt?.accounts.find(account => account.id === settings.chatgpt?.activeAccountId);
   const options = [
     ...AI_PROVIDERS.filter(provider => settings.providers[provider.id]?.configured).flatMap(provider =>
-      settings.providers[provider.id]!.models.map(({ model }) => ({ id: `${provider.id}:${model}`, label: `${provider.name} · ${model}`, name: modelName(model), detail: provider.name }))),
+      settings.providers[provider.id]!.models.map(({ model }) => ({ id: `${provider.id}:${model}`, label: `${provider.name} · ${model}`, name: modelName(model), detail: settings.server?.providers[provider.id]?.available ? "Hosted key" : provider.name }))),
+    ...AI_PROVIDERS.filter(provider => settings.server?.providers[provider.id]?.available && !settings.providers[provider.id]?.configured).map(provider => {
+      const model = settings.server?.providers[provider.id]?.model ?? provider.defaultModel;
+      return { id: `${provider.id}:${model}`, label: `${provider.name} · ${model}`, name: modelName(model), detail: "Hosted" };
+    }),
     ...(settings.localModels ?? []).map(model => ({ ...model, name: model.label.replace(/ · local$/, ""), detail: "On this device" })),
     ...(settings.chatgpt?.accounts.some(account => account.connected && account.sharing) ? [{ id: "chatgpt", label: `ChatGPT · ${account?.model ?? "Choose a model"}`, name: modelName(account?.model ?? "Choose a model"), detail: "ChatGPT plan" }] : []),
   ];
@@ -56,8 +60,10 @@ export function AIModelSelect({ id = "active-ai", mode = "settings", disabled = 
     : [option]);
   const selectedProvider = settings.activeProvider;
   const providerSettings = selectedProvider ? settings.providers[selectedProvider] : undefined;
-  const selected = settings.chatgpt?.selected ? "chatgpt" : settings.localSelected ? `local:${settings.localVariant ?? "small"}` : selectedProvider && providerSettings ? `${selectedProvider}:${providerSettings.model}` : "";
-  const modelSettings = selected === "chatgpt" ? account : settings.localSelected ? undefined : providerSettings;
+  const hostedSelection = settings.hostedSelection?.provider === selectedProvider ? settings.hostedSelection : undefined;
+  const serverDefault = !selectedProvider && settings.server?.defaultProvider && settings.server.defaultModel ? `${settings.server.defaultProvider}:${settings.server.defaultModel}` : "";
+  const selected = settings.chatgpt?.selected ? "chatgpt" : settings.localSelected ? `local:${settings.localVariant ?? "small"}` : selectedProvider && providerSettings ? `${selectedProvider}:${providerSettings.model}` : hostedSelection ? `${hostedSelection.provider}:${hostedSelection.model}` : serverDefault;
+  const modelSettings = selected === "chatgpt" ? account : settings.localSelected ? undefined : providerSettings ?? hostedSelection;
   const levels = reasoningLevels(settings.chatgpt?.selected ? "chatgpt" : selectedProvider ?? "", modelSettings?.model ?? "");
   async function selectReasoning(value: string) {
     if (pending.current || disabled) return;

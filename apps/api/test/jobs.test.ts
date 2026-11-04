@@ -11,7 +11,9 @@ test('bounded audio reader rejects oversized provider results',async()=>{
   const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(new Uint8Array(12));controller.close();}});
   await assert.rejects(boundedAudio(stream,10),/exceeds/);
 });
-test('durable job idempotency, exclusive claims and fenced checkpoints', {skip:!process.env.DATABASE_URL},async()=>{
+test('durable job idempotency, exclusive claims and fenced checkpoints', {skip:!process.env.DATABASE_URL},async t=>{
+  const previousEleven=process.env.ELEVENLABS_API_KEY; delete process.env.ELEVENLABS_API_KEY;
+  t.after(()=>{ if(previousEleven===undefined) delete process.env.ELEVENLABS_API_KEY; else process.env.ELEVENLABS_API_KEY=previousEleven; });
   const store={async write(){},async text(){return source;}};
   const user=`test-${randomUUID()}`;
   const project=await createProject(user,'Jobs',[{path:'song.banger',source}],store);

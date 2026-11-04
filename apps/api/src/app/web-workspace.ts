@@ -1,6 +1,6 @@
 import type { ProjectFolder, WorkspaceBridge, RecentProject } from '@/lib/project-workspace';
 import type { CloudSnapshot } from '@/lib/cloud-projects';
-import { browserCredentials } from '@/lib/ai-providers';
+import { browserCredentials, loadServerAIStatus, requestCredentials } from '@/lib/ai-providers';
 
 export type ProjectChoice = { mode: 'open' | 'create'; name?: string; projects?: { id: string; name: string }[] };
 export type ChooseProject = (choice: ProjectChoice) => Promise<string | null>;
@@ -72,8 +72,10 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
       const id = projectId ?? current().projectId;
       const taskKey = `${id}:${threadId ?? thread}`;
       if (tasks.has(taskKey)) return { ok: false, error: 'A project task is already running.' };
-      const credentials = browserCredentials();
-      if (!credentials) return { ok: false, error: 'Choose an AI provider in Settings → BYOK.' };
+      const saved = browserCredentials();
+      const selected = saved ?? (typeof requestCredentials === 'function' ? requestCredentials() : null);
+      if (!saved && !selected && !(await loadServerAIStatus())?.defaultProvider) return { ok: false, error: 'Choose an AI provider in Settings → BYOK.' };
+      const credentials = saved ?? (selected ? { provider: selected.provider, model: selected.model, reasoningLevel: selected.reasoningLevel } : undefined);
       if (resetHistory) thread = crypto.randomUUID();
       const taskThread = threadId ?? thread;
       const controller = new AbortController();
@@ -83,7 +85,7 @@ export function installWebWorkspace(request: WebRequest, choose: ChooseProject, 
         const next = await refresh(id);
         const response = await fetch(`/api/projects/${next.projectId}/task`, { method: 'POST', redirect: 'error', signal: controller.signal,
           headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson', 'X-Banger-Account': accountId },
-          body: JSON.stringify({ requestId, thread: taskThread, prompt, activeFile, permissions, credentials, baseRevision: next.revision }) });
+          body: JSON.stringify({ requestId, thread: taskThread, prompt, activeFile, permissions, ...(credentials ? { credentials } : {}), baseRevision: next.revision }) });
         if (!response.ok) throw new Error((await response.json()).error ?? 'Could not start the project task.');
         const reader = response.body?.getReader();
         if (!reader) throw new Error('The project task did not return a response.');

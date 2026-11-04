@@ -20,16 +20,16 @@ export function desktopMusic(token:string):MusicBackend|undefined {
 export type CloudMusicContext=CloudConnection&{projectId:string;revision:number};
 type Job={id:string;kind:string;status:string;stage:string;progress:number;error?:string;studioPath?:string;musicId?:string;result?:{musicId?:string;version?:number}};
 function operation(job:Job):MusicOperation{return {id:job.id,musicId:job.result?.musicId??job.musicId??'',status:job.status as MusicOperation['status'],stage:job.stage,progress:job.progress,error:job.error,resultVersion:job.result?.version};}
-export async function cloudVocalRequest<T>(connection:CloudConnection,path:string,data:unknown):Promise<T>{
+export async function cloudVocalRequest<T>(connection:CloudConnection,path:string,data:unknown,options?:{allowHosted?:boolean}):Promise<T>{
   const key=browserElevenLabsKey();
-  if(!key)throw new Error('Add an ElevenLabs API key in Settings to generate vocals.');
+  if(!key && !options?.allowHosted)throw new Error('Add an ElevenLabs API key in Settings to generate vocals.');
   const url=new URL(connection.url||window.location.origin);
   if(url.username||url.password||url.search||url.hash||(url.protocol!=='https:'&&!(['localhost','127.0.0.1','[::1]'].includes(url.hostname)&&url.protocol==='http:')))throw new Error('Connect to your cloud server over HTTPS.');
-  return cloudRequest<T>(connection,path,'POST',data,{'X-Banger-ElevenLabs-Key':key});
+  return cloudRequest<T>(connection,path,'POST',data,key?{'X-Banger-ElevenLabs-Key':key}:undefined);
 }
-export function cloudMusic(connection:CloudMusicContext,studioPath:string):MusicBackend {
+export function cloudMusic(connection:CloudMusicContext,studioPath:string,options?:{allowHosted?:boolean}):MusicBackend {
   let songIds=new Set<string>();
-  const submit=async(artifactId:string,beat?:MusicVersion["beat"])=>operation(await cloudVocalRequest<Job>(connection,`/projects/${connection.projectId}/jobs`,{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId,studioPath,...(beat ? {beat} : {})}}));
+  const submit=async(artifactId:string,beat?:MusicVersion["beat"])=>operation(await cloudVocalRequest<Job>(connection,`/projects/${connection.projectId}/jobs`,{kind:'elevenlabs',idempotencyKey:crypto.randomUUID(),input:{artifactId,studioPath,...(beat ? {beat} : {})}},options));
   const upload=async(wav:ArrayBuffer,beat?:MusicVersion["beat"])=>submit(await uploadWav({...connection,path:beat?.name ?? 'upload.wav',source:beat?.source ?? ''},wav,()=>undefined),beat);
   return {mode:'cloud',list:async()=>{
     const list=(await cloudRequest<{music:MusicSummary[]}>(connection,`/projects/${connection.projectId}/music`)).music;
@@ -38,11 +38,12 @@ export function cloudMusic(connection:CloudMusicContext,studioPath:string):Music
   },get:id=>cloudRequest(connection,`/music/${id}`),
     versions:async(id,before)=>{const result=await cloudRequest<{versions:{document:MusicVersion}[];original:MusicVersion;nextBefore?:number}>(connection,`/music/${id}/versions${before?`?before=${before}`:''}`);return {...result,versions:result.versions.map(row=>row.document)};},
     upload:async file=>{if(!file)return null;return upload(await file.arrayBuffer());},rendered:async (wav,_name,_token,beat)=>upload(wav,beat),
-    act:async(id,action,key)=>{songIds.add(id);return operation(await (action.operation==='edit'?cloudRequest<Job>(connection,`/music/${id}/actions`,'POST',{action,idempotencyKey:key}):cloudVocalRequest<Job>(connection,`/music/${id}/actions`,{action,idempotencyKey:key})));},
+    act:async(id,action,key)=>{songIds.add(id);return operation(await (action.operation==='edit'?cloudRequest<Job>(connection,`/music/${id}/actions`,'POST',{action,idempotencyKey:key}):cloudVocalRequest<Job>(connection,`/music/${id}/actions`,{action,idempotencyKey:key},options)));},
     operations:async()=>{
       const jobs=(await cloudRequest<{jobs:Job[]}>(connection,`/projects/${connection.projectId}/jobs`)).jobs.filter(job=>job.kind==='elevenlabs'&&(job.studioPath===studioPath||songIds.has(job.musicId??job.result?.musicId??'')));
-      const configured=(await aiSettingsBridge().load()).elevenLabsConfigured;
-      for(const job of jobs.filter(job=>['queued','running'].includes(job.status)||(configured&&job.status==='awaiting_provider')))void (configured?cloudVocalRequest(connection,`/jobs/${job.id}/resume`,{}):cloudRequest(connection,`/jobs/${job.id}/resume`,'POST',{})).catch(()=>undefined);
+      const settings=await aiSettingsBridge().load();
+      const configured=Boolean(settings.elevenLabsConfigured||(options?.allowHosted&&settings.server?.elevenlabs));
+      for(const job of jobs.filter(job=>['queued','running'].includes(job.status)||(configured&&job.status==='awaiting_provider')))void (configured?cloudVocalRequest(connection,`/jobs/${job.id}/resume`,{},options):cloudRequest(connection,`/jobs/${job.id}/resume`,'POST',{})).catch(()=>undefined);
       return jobs.map(operation);
     },audio:version=>audioUrl(connection,version.audioId),save:async version=>{
       const url=await audioUrl(connection,version.audioId);const link=document.createElement('a');link.href=url;link.download=`${version.name.replace(/[^a-zA-Z0-9_.-]/g,'_').replace(/\.(wav|mp3)$/,'')}-v${version.version}.${version.audioType==='audio/wav'?'wav':'mp3'}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
