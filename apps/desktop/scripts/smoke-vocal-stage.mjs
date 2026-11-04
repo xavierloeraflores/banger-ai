@@ -46,7 +46,10 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     for (let attempt = 0; attempt < 300; attempt++) { if (await evaluate(`Boolean(${code})`)) return; await delay(30); }
     throw new Error(`Timed out: ${label}`);
   };
-  const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const click = async selector => {
+    await wait(`(() => { const button = document.querySelector(${JSON.stringify(selector)}); return button && !button.disabled; })()`, `control ready: ${selector}`);
+    await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  };
   const chooseView = value => evaluate(`(() => { const field = document.querySelector('[aria-label="View"]'); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   const seek = seconds => evaluate(`(() => { const audio = document.querySelector('.library-player audio'); audio.currentTime = ${seconds}; audio.dispatchEvent(new Event('timeupdate')); })()`);
   try {
@@ -88,6 +91,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     await click('[aria-label="Close band stage"]');
     await wait("!document.querySelector('.performance-viewport canvas')", 'singer disposal');
     await click('[aria-label="Play Audio only"]');
+    await wait("document.querySelector('.library-player audio').duration > 0", 'instrumental recording ready');
     await click('.performance-stage-trigger');
     await wait(`${canvas}?.dataset.singer === 'false'`, 'no stale singer on instrumental');
     assert.equal(await evaluate(`${canvas}.dataset.characterCount`), '1');
