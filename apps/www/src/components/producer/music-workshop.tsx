@@ -20,7 +20,7 @@ const audioName=(version:MusicVersion)=>version.audioVersion===1?'Original WAV':
 type Pending={id:string;lyrics:string[];upload?:boolean};
 
 export type LyricAgent = { run(prompt:string,signal:AbortSignal):Promise<string> };
-export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
+export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProject=false,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;hasProject?:boolean;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
   const {languageModel,vocals}=useGenerationAccess();
   const lyricRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>lyricRequest.current?.abort(),[cloud]);
@@ -203,11 +203,11 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,active=t
   const recent=jobs[0];
   const editing=history.filter(item=>item.operation==='edit'||item.operation==='lyrics');
   const wavActions=<div className="music-wav-actions" aria-label="Add a WAV">
-    <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button></KeyHint>
+    {!hasProject&&<KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(!discard())return;if(backend.mode==='desktop')void action(async()=>track(await backend.upload(),true));else fileInput.current?.click();}}>↑ Upload WAV</button></KeyHint>}
     <KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button disabled={blocked||!vocals} onClick={()=>{if(!vocals)return;if(!backend){onConnect?.();return;}if(discard())void action(async()=>{setNotice('Rendering the studio song…');const token=await prepareSong(studioPath,studioFile.source);const rendered=await renderWav(compileMusic(studioFile.source));track(await backend.rendered(rendered.wav,studioFile.name.replace(/\.banger$/,'.wav'),token,studioFile),true);});}}>Use studio WAV</button></KeyHint>
   </div>;
   return <section className="music-workshop" aria-label="Vocal Studio">
-    {backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&vocals&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
+    {!hasProject&&backend&&<input ref={fileInput} hidden type="file" accept=".wav,audio/wav" aria-label="Upload WAV" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file&&vocals&&discard())void action(async()=>{if(file.size>100*1024*1024)throw new Error('Choose a WAV up to 100 MiB.');track(await backend.upload(file),true);});}}/>}
     <header className="music-heading">
       <div><h1>{studioFile.name.replace(/\.banger$/i,'')}</h1></div>
       <div className="music-file-tools">
@@ -229,8 +229,8 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,active=t
               <p id={`music-lyric-help-${index}`} className="music-lyric-help" role={lyricErrors[index]?'alert':undefined}>{lyricErrors[index]??`Up to ${MAX_CHUNK_TEXT_LINES} lines, ${MAX_CHUNK_LINE_CHARACTERS} characters per line and ${MAX_CHUNK_TEXT_CHARACTERS.toLocaleString('en-US')} total, including the section label and retained directions.`}</p>
             </article>)}</div>
             <div className="music-refine-actions"><span>{indices.length} of {chunks.length} chunks selected</span><button disabled={blocked||!dirty||invalidLyrics} onClick={()=>void action(()=>submit({operation:'edit',...actionBase,edits:chunks.flatMap((chunk,index)=>lyrics[index]===lyricsOf(chunk.text)?[]:[{index,lyrics:lyrics[index]??''}])}))}>Save lyrics</button><KeyHint reason={!vocals?VOCAL_KEY_HINT:undefined}><button className="music-primary" aria-label={indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} disabled={!vocals||blocked||dirty||!indices.length} onClick={()=>void action(()=>submit({operation:'generate',...actionBase,indices}))}>{indices.length===chunks.length?'Generate new variation':'Regenerate selected chunks'} <span aria-hidden="true">↗</span></button></KeyHint></div>
-            <div className="music-replace-wav"><p>Start from another WAV</p>{wavActions}</div>
-          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>No vocals yet.</h2><p>Add a WAV or use this song’s beat to start its vocals. Your lyrics and variations stay with this song.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
+            <div className="music-replace-wav"><p>{hasProject?"Start from the studio WAV":"Start from another WAV"}</p>{wavActions}</div>
+          </>:<div className="music-empty"><span className="music-empty-mark" aria-hidden="true">〰</span><h2>No vocals yet.</h2><p>{hasProject?"Use this song’s studio WAV to start its vocals.":"Add a WAV or use this song’s beat to start its vocals."} Your lyrics and variations stay with this song.</p>{wavActions}{!backend&&<p>Connect a cloud project to upload audio.</p>}</div>}
         </div>
         <p className="music-agent-note">Ask for lyrics or changes in the floating AI chat.</p>
         {draft&&<details className="music-draft"><summary>{studioFile.name.replace(/\.banger$/i,'')}.draft.json</summary><pre>{draft.lyrics}</pre></details>}

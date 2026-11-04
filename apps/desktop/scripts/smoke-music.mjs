@@ -19,7 +19,7 @@ const cloud=process.argv.includes('--web');
 app.on('window-all-closed',()=>{});
 const root=await mkdtemp(join(tmpdir(),'banger-music-ui-'));app.setPath('userData',root);
 const timer=setTimeout(()=>{console.error('Music smoke timed out');app.exit(1);},150000);
-const projectId=randomUUID(),artifactId=randomUUID();const source='tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain .6; }';
+const projectId=randomUUID(),artifactId=randomUUID();const source='tempo 120; meter 4/4; track kick { sound "drums/kick"; bars 4; rhythm "x . x ."; gain .6; }';
 // fixture.mp3 is the synthesized WAV from fixtures.mjs encoded with libmp3lame at 32 kbps.
 const finalAudio=await readFile(new URL('../../../packages/elevenlabs/test/fixture.mp3',import.meta.url));
 const generatedInputs=[];const provider=fixtureProvider(),generate=provider.generate;provider.generate=async(version,indices)=>{generatedInputs.push({version,indices});return {...await generate(version),audio:finalAudio};};
@@ -129,7 +129,7 @@ async function run(){
   assert.equal(await evaluate("document.querySelector('#studio-panel-mixer').checkVisibility()"),true);
   await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   assert.equal(await evaluate("!!document.querySelector('.music-workshop .music-lyric-composer')"),false);
-  await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===2");
+  await wait("document.querySelectorAll('.music-empty .music-wav-actions button').length===1");
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
@@ -140,8 +140,9 @@ async function run(){
     await click('Close AI chat');
     await wait("document.querySelector('.music-draft')?.textContent.includes('Tomorrow brings the light')");
   }
-  if(cloud){await wait("document.querySelector('.music-workshop input[type=file]')");await evaluate(`(()=>{const file=new File([Uint8Array.from(atob(${JSON.stringify(wav().toString('base64'))}),c=>c.charCodeAt(0))],'input.wav',{type:'audio/wav'});const data=new DataTransfer();data.items.add(file);const input=document.querySelector('.music-workshop input[type=file]');input.files=data.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);}
-  else await click('↑ Upload WAV');
+  assert.equal(await evaluate("[...document.querySelectorAll('.music-workshop button')].some(button=>button.textContent.includes('Upload WAV'))"),false,'Projects use the studio WAV instead of external uploads');
+  assert.equal(await evaluate("document.querySelector('.music-workshop input[type=file]')"),null);
+  await click('Use studio WAV');
   await wait("document.querySelectorAll('.music-chunk').length===2");
   if(process.argv.includes('--draft')){
     if(process.argv.includes('--draft-failure')){await wait("document.querySelector('.music-workshop').textContent.includes('Fixture fitting failure')");assert.ok(await evaluate("!!document.querySelector('.music-draft')"));await click('Retry fitting draft');}
@@ -156,10 +157,10 @@ async function run(){
     return;
   }
   assert.equal(await evaluate("document.querySelector('.music-empty')"),null);
-  assert.equal(await evaluate("!!document.querySelector('[aria-controls=performance-stage]')"),false,'Uploaded vocals without a beat hide Band stage');
-  assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),2);
+  assert.equal(await evaluate("!!document.querySelector('[aria-controls=performance-stage]')"),true,'Studio vocals retain the associated beat for Band stage');
+  assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),1);
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
-  const id=(await store.list())[0].id;assert.deepEqual((await store.get(id)).plan,fixturePlan);
+  const id=(await store.list())[0].id;const originalWav=Buffer.from((await store.audio(id,1)).bytes);assert.equal(originalWav.subarray(0,4).toString(),'RIFF');assert.ok((await store.get(id)).beat);assert.deepEqual((await store.get(id)).plan,fixturePlan);
   if(!cloud){
    const originalPath=await evaluate("document.querySelector('#workspace-file').value");
    await click('Project');await click('Create Song');
@@ -228,7 +229,7 @@ async function run(){
   await click('Pause song');await click('Play Original WAV');
   await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 1')");
   await wait("document.querySelector('.music-workshop audio').currentTime>0&&!document.querySelector('.music-workshop audio').paused");
-  const original=await evaluate("fetch(document.querySelector('.music-workshop audio').src).then(r=>r.arrayBuffer()).then(b=>crypto.subtle.digest('SHA-256',b)).then(hash=>Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join(''))");assert.equal(original,createHash('sha256').update(wav()).digest('hex'));
+  const original=await evaluate("fetch(document.querySelector('.music-workshop audio').src).then(r=>r.arrayBuffer()).then(b=>crypto.subtle.digest('SHA-256',b)).then(hash=>Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join(''))");assert.equal(original,createHash('sha256').update(originalWav).digest('hex'));
   await click('Retry chunk 2');await wait("document.querySelector('.music-editor-heading').textContent.includes('Composition version 6')");
   assert.equal(generatedInputs.at(-1).version.songId,'original-song');assert.deepEqual(generatedInputs.at(-1).indices,[1]);assert.deepEqual(generatedInputs.at(-1).version.plan,fixturePlan);
   await click('Play song');await wait("document.querySelector('.music-workshop audio').currentTime>0");await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await wait("document.querySelector('.music-workshop audio').paused");await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
@@ -312,10 +313,10 @@ async function run(){
   await wait("document.querySelector('.music-status').textContent.includes('Exported and saved to library.')");
   await selectView('library');
   await wait("document.querySelectorAll('.library-card').length>=2");
-  // Native exports can share a display name. Select the take by its saved beat,
+  // Studio exports can share a display name. Select the take by its saved beat,
   // not the random UUID ordering of two identically named library folders.
   if (!cloud) await evaluate(`(async()=>{ const songs=await window.bangerLibrary.list(); for(let index=0;index<songs.length;index++){const saved=await window.bangerLibrary.read(songs[index].id);if(saved.lyrics?.beat?.source===${JSON.stringify(source.replace('tempo 120','tempo 60'))}){document.querySelectorAll('.library-card')[index].click();return;}}throw new Error('Exported vocal take missing from library');})()`);
-  else await evaluate("[...document.querySelectorAll('.library-card')].find(card=>!card.textContent.includes('Cover song')&&!card.textContent.includes('input')&&!card.textContent.includes('Uploaded song')).click()");
+  else await evaluate(`(async()=>{const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('banger-library',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});try{const songs=await new Promise((resolve,reject)=>{const request=db.transaction('songs').objectStore('songs').getAll();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});const index=songs.findIndex(song=>song.beat?.source===${JSON.stringify(source.replace('tempo 120','tempo 60'))});if(index<0)throw new Error('Exported vocal take missing from library');document.querySelectorAll('.library-card')[index].click();}finally{db.close();}})()`);
   await wait("document.querySelector('.library-player audio').currentTime>0 && !document.querySelector('.library-player button').disabled");
   assert.equal(await evaluate("document.querySelector('[aria-controls=performance-stage]').disabled"),false,'Selecting a library song enables Band stage');
   await click('Band stage');
