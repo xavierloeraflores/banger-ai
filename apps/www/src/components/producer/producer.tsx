@@ -30,6 +30,7 @@ import { ProjectIcon } from "./project-icon";
 import { AudioExport } from "./audio-export";
 import { useRecordedStage, type StageRecording } from "./recorded-stage";
 import { SongLibrary } from "./song-library";
+import { AppShell, type AppDestination } from "./app-sidebar";
 import { MusicWorkshop, type LyricAgent } from "./music-workshop";
 import { CloudProjectWorkspace } from "./cloud-project-workspace";
 import type { CloudMusicContext } from "@/lib/elevenlabs";
@@ -93,8 +94,14 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
   const [session, setSession] = useState<{ file: BangerFile; saved: boolean; folder?: ProjectFolder; studio: "beat" | "vocal" } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [requiredStudio, setRequiredStudio] = useState<"beat" | "vocal" | null>(null);
-  if (!session && !libraryOpen) return <ProjectStart sample={initialFile} onOpenLibrary={() => setLibraryOpen(true)} onStart={(file, saved, folder) => setSession({ file, saved, folder, studio: "beat" })} />;
-  return <Studio key={session ? "project" : "library"} initialFile={session?.file ?? initialFile} sample={initialFile} initiallySaved={session?.saved ?? false} initialFolder={session?.folder} initialStudio={session?.studio ?? "library"} onRequireProject={setRequiredStudio}>
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [startStudio, setStartStudio] = useState<"beat" | "vocal">("beat");
+  const toggleSidebar = () => setSidebarExpanded(expanded => !expanded);
+  if (!session && !libraryOpen) return <AppShell active={startStudio} expanded={sidebarExpanded} onToggle={toggleSidebar} onNavigate={next => {
+    if (next === "library") setLibraryOpen(true);
+    else setStartStudio(next);
+  }}><ProjectStart sample={initialFile} onOpenLibrary={() => setLibraryOpen(true)} onStart={(file, saved, folder) => setSession({ file, saved, folder, studio: startStudio })} /></AppShell>;
+  return <Studio key={session ? "project" : "library"} sidebarExpanded={sidebarExpanded} onToggleSidebar={toggleSidebar} initialFile={session?.file ?? initialFile} sample={initialFile} initiallySaved={session?.saved ?? false} initialFolder={session?.folder} initialStudio={session?.studio ?? "library"} onRequireProject={setRequiredStudio}>
     {requiredStudio && <ProjectStart sample={initialFile} requiredStudio={requiredStudio} onCancel={() => setRequiredStudio(null)} onStart={(file, saved, folder) => {
       setSession({ file, saved, folder, studio: requiredStudio });
       setRequiredStudio(null);
@@ -102,7 +109,7 @@ export function Producer({ initialFile }: { initialFile: BangerFile }) {
   </Studio>;
 }
 
-function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStudio, onRequireProject, children }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; initialStudio: "beat" | "vocal" | "library"; onRequireProject(studio: "beat" | "vocal"): void; children: ReactNode }) {
+function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStudio, onRequireProject, sidebarExpanded, onToggleSidebar, children }: { initialFile: BangerFile; sample: BangerFile; initiallySaved: boolean; initialFolder?: ProjectFolder; initialStudio: AppDestination; onRequireProject(studio: "beat" | "vocal"): void; sidebarExpanded: boolean; onToggleSidebar(): void; children: ReactNode }) {
   const projectDialog = useRef<ModalHandle>(null);
   const projectTrigger = useRef<HTMLButtonElement>(null);
   const [vocalExportTarget, setVocalExportTarget] = useState<HTMLDivElement | null>(null);
@@ -536,7 +543,16 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
     return { row, editor };
   });
 
+  function navigateStudio(next: AppDestination) {
+    if (next === studio) return;
+    if (next !== "library" && !hasProject) { onRequireProject(next); return; }
+    stopPlayback();
+    setSingAlongOpen(false);
+    setStudio(next);
+  }
+
   return (
+    <AppShell active={studio} expanded={sidebarExpanded} onToggle={onToggleSidebar} onNavigate={navigateStudio}>
     <main className="producer" data-view={beatStudio ? view : studio}>
       <header className="producer-header">
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
@@ -551,13 +567,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           {beatStudio && <AudioExport compact program={program} fileName={fileName} source={source} disabled={draft || fileBusy || workspaceBusy} />}
           <div ref={setVocalExportTarget} hidden={!vocalStudio} />
-          <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
-            const next = event.target.value as "beat" | "vocal" | "library";
-            if (next !== "library" && !hasProject) { onRequireProject(next); return; }
-            stopPlayback();
-            setSingAlongOpen(false);
-            setStudio(next);
-          }}>
+          <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => navigateStudio(event.target.value as AppDestination)}>
             <option value="vocal">Vocal Studio</option>
             <option value="beat">Beat Studio</option>
             <option value="library">Library</option>
@@ -720,5 +730,6 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
       {children}
       <footer className="producer-footer"><span role="status">{notice}</span></footer>
     </main>
+    </AppShell>
   );
 }
