@@ -95,9 +95,9 @@ export function ProjectStart({ sample, onStart, onOpenLibrary, requiredStudio, o
     {emptyFolder && <FirstSongDialog folder={emptyFolder} onCreated={start} />}
   </>;
   return modal
-    ? <Modal ref={dialog} id="project-controls" className="producer-project-dialog producer-project-required" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`} onCancel={event => {
+    ? <div className="producer producer-project-host"><Modal ref={dialog} id="project-controls" className="producer-project-dialog producer-project-required" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`} onCancel={event => {
       event.preventDefault();
       if (!busy && !emptyFolder) { dialog.current?.close(); onCancel?.(); }
-    }}>{content}</Modal>
+    }}>{content}</Modal></div>
     : <main className="producer producer-start">{content}</main>;
 }

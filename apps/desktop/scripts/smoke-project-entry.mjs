@@ -95,11 +95,35 @@ async function run(window) {
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Open Library']);
     await writeFile(`/tmp/banger-project-entry-${web ? 'web' : 'desktop'}-start.png`, (await window.webContents.capturePage()).toPNG());
     assert.ok(await evaluate("Boolean(document.querySelector('[aria-label=\"Projects\"] [aria-label=\"Add project\"]'))"));
-    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
+    await evaluate("document.querySelector('.app-sidebar-rail [aria-label=\"Add project\"]').focus(); document.activeElement.click()");
     await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open'");
+    for (const [width, height] of [[1380, 980], [390, 844]]) {
+      window.setMinimumSize(0, 0); window.setContentSize(width, height); await delay(250);
+      const layout = await evaluate(`(() => {
+        const modal = document.querySelector('.producer-project-required');
+        const card = modal.querySelector('.producer-start-card');
+        const rect = modal.getBoundingClientRect();
+        const style = getComputedStyle(modal);
+        return {
+          color: style.color, font: style.fontFamily, boxSizing: getComputedStyle(card).boxSizing,
+          background: getComputedStyle(card).backgroundColor,
+          fits: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+          noOverflow: modal.scrollWidth <= modal.clientWidth,
+          centered: Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2,
+        };
+      })()`);
+      assert.equal(layout.color, 'rgb(229, 233, 238)');
+      assert.match(layout.font, /Arial/);
+      assert.equal(layout.boxSizing, 'border-box');
+      assert.equal(layout.background, 'rgb(27, 28, 29)');
+      assert.ok(layout.fits && layout.noOverflow && layout.centered, JSON.stringify(layout));
+      await writeFile(`/tmp/banger-add-project-${web ? 'web' : 'desktop'}-${width}.png`, (await window.webContents.capturePage()).toPNG());
+    }
+    window.setContentSize(1380, 980);
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-project-required .producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Close']);
     await click('Close', '.producer-project-required');
     await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') !== 'open'");
+    await wait("document.activeElement?.getAttribute('aria-label') === 'Add project'");
     await click('Open Library');
     await wait("document.querySelector('.song-library')");
     assert.equal(await evaluate("document.querySelector('.app-sidebar-toggle').disabled"), true);
