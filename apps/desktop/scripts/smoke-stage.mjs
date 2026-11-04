@@ -18,7 +18,10 @@ app.on('web-contents-created', (_event, contents) => contents.on('console-messag
 const keepOpen = process.argv.includes('--keep-open');
 const timeout = setTimeout(() => { console.error('Band stage smoke timed out'); app.exit(1); }, 120000);
 app.on('browser-window-created', (_event, window) => window.webContents.once('did-finish-load', async () => {
-  const evaluate = code => window.webContents.executeJavaScript(code, true);
+  const evaluate = async code => {
+    try { return await window.webContents.executeJavaScript(code, true); }
+    catch (cause) { throw new Error(`Renderer evaluation failed: ${code}`, { cause }); }
+  };
   const wait = async (code, name) => {
     for (let i = 0; i < 600; i++) { if (await evaluate(`Boolean(${code})`)) return; await delay(30); }
     throw new Error(`Timed out: ${name}; ${await evaluate("document.querySelector('.performance-overlay')?.textContent")}`);
@@ -30,6 +33,7 @@ app.on('browser-window-created', (_event, window) => window.webContents.once('di
     window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
   };
   const click = async label => {
+    await wait(`[...document.querySelectorAll('button')].some(button => button.textContent.trim() === ${JSON.stringify(label)})`, `button ${label}`);
     await evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)}).setAttribute('data-smoke-click', '')`);
     await clickSelector('[data-smoke-click]');
     await evaluate("document.querySelector('[data-smoke-click]')?.removeAttribute('data-smoke-click')");
