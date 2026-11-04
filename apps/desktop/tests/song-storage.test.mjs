@@ -140,3 +140,14 @@ test('desktop lyrics and harness edits share history numbering and current conte
   assert.equal((await workspace.readLyrics('.banger/history/midnight/lyrics/lyrics-v002.json')).source, edited.source);
   assert.deepEqual(JSON.parse((await workspace.readLyrics(current)).source), document('Next desktop lyric'));
 });
+
+
+test('library copies retain the selected vocal beat snapshot after studio changes', async t => {
+  const { root, storage, song } = await fixture(t);
+  const beat = { name: 'midnight.banger', source: 'tempo 93;' };
+  await storage.saveLyrics(song, { ...document('Vocal words'), beat });
+  await storage.saveAudio(song, 'instrumentals', wav());
+  await storage.saveAudio(song, 'vocals', wav());
+  await storage.copyToLibrary(song, 'global', { audio: 'vocals/midnight.vocals-v001.wav', instrumental: 'midnight.instrumental-v001.wav' });
+  assert.equal(await readFile(join(root, 'library/midnight/midnight.banger'), 'utf8'), beat.source);
+});

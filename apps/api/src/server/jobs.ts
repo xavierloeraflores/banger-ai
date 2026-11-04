@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { musicActionSchema, musicActionBase } from "@banger/elevenlabs/protocol";
+import { musicActionSchema, musicActionBase, associatedBeatSchema } from "@banger/elevenlabs/protocol";
 import { db, transaction } from "./db";
 import { authorize } from "./projects";
 import { ApiError, id, pathSchema } from "./domain";
 export const agentInput = z.object({ baseRevision: z.number().int().nonnegative(), prompt: z.string().trim().min(1).max(16000), activeFile: pathSchema.optional() }).strict();
 export const elevenInput = z.union([
-  z.object({ clientKeyRequired: z.boolean().optional(), artifactId: id, operation: z.literal('analyze').default('analyze') }).strict(),
+  z.object({ clientKeyRequired: z.boolean().optional(), artifactId: id, beat: associatedBeatSchema.optional(), operation: z.literal('analyze').default('analyze') }).strict(),
   z.object({ clientKeyRequired: z.boolean().optional(), musicId: id, action: musicActionSchema }).strict(),
 ]);
 export type Job = { id: string; project_id: string; user_id: string; kind: "agent" | "elevenlabs"; session_id: string | null; status: string; stage: string; progress: number; input: Record<string, unknown>; checkpoint: Record<string, unknown>; result: Record<string, unknown> | null; error: string | null; lease_token: string; attempts: number; created_at: Date };

@@ -104,6 +104,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
     catch { return { program: compileMusic(sample.source), source: sample.source }; }
   });
   const [studio, setStudio] = useState<"beat" | "vocal" | "library">("beat");
+  const [vocalBeat, setVocalBeat] = useState<BangerFile | null>(null);
+  const [libraryBeat, setLibraryBeat] = useState<BangerFile | null>(null);
+  const [stageOpen, setStageOpen] = useState(false);
   const vocalStudio = studio === "vocal";
   const beatStudio = studio === "beat";
   const [view, setView] = useState<StudioView>(initialProgram.source === initialFile.source ? "sequencer" : "source");
@@ -138,6 +141,14 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
   const audibleProgram = useMemo(() => previewSection && program.sections?.some(section => section.name === previewSection)
     ? { ...program, chainEnabled: true, timeline: [{ section: previewSection }] } : program, [program, previewSection]);
   const playback = usePlayer(audibleProgram);
+  const associatedBeat = vocalStudio ? vocalBeat : libraryBeat;
+  const associatedProgram = useMemo(() => {
+    if (!associatedBeat) return null;
+    try { return compileMusic(associatedBeat.source); } catch { return null; }
+  }, [associatedBeat]);
+  const associatedPlayback = usePlayer(associatedProgram ?? program);
+  const stageProgram = beatStudio ? program : associatedProgram;
+  const stagePlayback = beatStudio ? playback : associatedPlayback;
   const arrangement = useMemo(() => resolveArrangement(audibleProgram), [audibleProgram]);
   const stopPlayback = () => { playback.stop(); setPreviewSection(undefined); };
   const preview = (name?: string) => { if (name || previewSection) playback.stop(); setPreviewSection(name); };
@@ -493,7 +504,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
         <a className="producer-wordmark" href="#studio" aria-label="Banger studio">banger<span>_</span></a>
         <div className="producer-project"><span className="producer-file-dot" aria-hidden="true" /><span>{projectName || <span className="producer-project-empty">no project</span>} / {fileName}</span></div>
         <div className="producer-file-actions">
-          <PerformanceStage program={program} fileName={fileName} heroDisabled={draft || fileBusy || workspaceBusy} stopGame={playback.stop} readPerformance={playback.readPerformance} playing={playback.state.playing} starting={playback.starting} tempo={playback.state.tempo ?? program.tempo} tracks={program.tracks.length} error={playback.error} onPlay={playback.play} onStop={stopPlayback} />
+          {stageProgram && <PerformanceStage program={stageProgram} fileName={beatStudio ? fileName : associatedBeat!.name} heroDisabled={(beatStudio && draft) || fileBusy || workspaceBusy} stopGame={stagePlayback.stop} readPerformance={stagePlayback.readPerformance} playing={stagePlayback.state.playing} starting={stagePlayback.starting} tempo={stagePlayback.state.playing ? stagePlayback.state.tempo ?? stageProgram.tempo : stageProgram.tempo} tracks={stageProgram.tracks.length} error={stagePlayback.error} onPlay={stagePlayback.play} onStop={beatStudio ? stopPlayback : associatedPlayback.stop} onOpen={() => setStageOpen(true)} onClose={() => { setStageOpen(false); if (!beatStudio) associatedPlayback.stop(); }} />}
           <Button ref={projectTrigger} variant="secondary" onClick={showProjects} aria-haspopup="dialog" aria-controls="project-controls">Project</Button>
           <Select className="producer-view-select" aria-label="View" value={studio} onChange={event => {
             stopPlayback();
@@ -646,9 +657,9 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder }: { initia
           </Panel>
         </div>
         <div id="vocal-studio" hidden={!vocalStudio}>
-          <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={vocalStudio} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
+          <MusicWorkshop cloud={cloudMusicContext} studioFile={{ name:fileName,source }} active={vocalStudio && !stageOpen} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>
         </div>
-        {studio === "library" && <SongLibrary key={`${projectEpoch}-${cloudMusicContext?.projectId ?? "local"}`} cloud={cloudMusicContext} studioFile={{ name: fileName, source }} folderName={folderName} onOpenProject={showProjects} />}
+        {studio === "library" && <SongLibrary key={`${projectEpoch}-${cloudMusicContext?.projectId ?? "local"}`} cloud={cloudMusicContext} studioFile={{ name: fileName, source }} folderName={folderName} onOpenProject={showProjects} active={!stageOpen} onBeatChange={setLibraryBeat} />}
         <AIChat source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}

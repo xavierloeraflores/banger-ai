@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ElevenMusic, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
+import { ElevenMusic, associatedBeatSchema, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
 import type { SongLocation } from './song-storage.js';
 type StorageHooks = { imported(song: SongLocation, bytes: Uint8Array): Promise<unknown>; saved(song: SongLocation, version: MusicVersion, audio?: Uint8Array): Promise<unknown> };
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
@@ -87,10 +87,11 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       return {versions,original:await getVersion(id,1),...(start>1?{nextBefore:start}:{})};
     },
     async operations(){const ids=await read<string[]>(join(root,'operation-catalog.json')).catch(()=>[]);return Promise.all(ids.map(id=>operation(id)));},
-    async importWav(bytes:Uint8Array,name:string,key:string,location?:SongLocation) {
+    async importWav(bytes:Uint8Array,name:string,key:string,location?:SongLocation,beat?:MusicVersion["beat"]) {
+      if (beat) beat = associatedBeatSchema.parse(beat);
       const imported = imports.then(async () => {
       uuid(key);validateWav(bytes,false);await mkdir(root,{recursive:true});
-      const hash=fingerprint({name,sha:createHash('sha256').update(bytes).digest('hex')});
+      const hash=fingerprint({name,...(beat ? {beat} : {}),sha:createHash('sha256').update(bytes).digest('hex')});
       const existing=await prior(key,hash);
       if(existing)return existing;
       const id=key,audioId=randomUUID();
@@ -102,7 +103,7 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       await writeFile(audioPath(audioId),bytes,{flag:'wx',mode:0o600});
       return launch(id,key,async()=>{
         const result=await (await provider()).analyze(bytes,name);
-        return {version:{id,version:1,name,songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
+        return {version:{id,version:1,name,...(beat ? {beat} : {}),songId:result.songId,originalSongId:result.songId,plan:result.plan,audioId,audioType:'audio/wav',audioVersion:1,createdAt:new Date().toISOString(),operation:'analyze'}};
       },0,hash);
       });
       imports = imported.catch(() => undefined);

@@ -13,7 +13,8 @@ test('desktop upload, lyric edit, AI lyrics, generation, selected regeneration a
  const root=await mkdtemp(join(tmpdir(),'banger-music-'));const provider=fixtureProvider();let store=createMusicStore(root,()=>provider);
  const generateAudio=provider.generate;provider.generate=async version=>{assert.equal(version.originalSongId,'original-song');return generateAudio(version);};
  try{
-  const upload=await store.importWav(wav(),'song.wav',randomUUID());assert.equal((await done(store,upload.id)).status,'completed');
+  const beat={name:'original.banger',source:'tempo 93;'};
+  const upload=await store.importWav(wav(),'song.wav',randomUUID(),undefined,beat);assert.equal((await done(store,upload.id)).status,'completed');
   let song=await store.get(upload.musicId);assert.deepEqual(song.plan,fixturePlan);assert.deepEqual(Buffer.from((await store.audio(song.id)).bytes),wav());
   const input={operation:'edit',baseVersion:1,edits:[{index:0,lyrics:'Our own lyrics'}]},key=randomUUID();
   const edit=await store.act(song.id,input,key);assert.equal((await done(store,edit.id)).status,'completed');song=await store.get(song.id);
@@ -27,6 +28,8 @@ test('desktop upload, lyric edit, AI lyrics, generation, selected regeneration a
   const regen=await store.act(song.id,{operation:'generate',baseVersion:4,indices:[1]},randomUUID());assert.equal((await done(store,regen.id)).status,'completed');
   store=createMusicStore(root,()=>provider);song=await store.get(song.id);assert.equal(song.version,5);assert.equal(song.audioVersion,5);assert.equal(song.songId,'generated-2');assert.equal((await store.list())[0].version,5);
   assert.equal(song.originalSongId,'original-song');
+  assert.deepEqual(song.beat,beat);
+  assert.deepEqual((await store.versions(song.id)).original.beat,beat);
   assert.deepEqual(Buffer.from((await store.audio(song.id)).bytes),Buffer.from('ID3fixture-audio'));assert.deepEqual(Buffer.from((await store.audio(song.id,1)).bytes),wav());
   assert.deepEqual(provider.calls,{analyze:1,lyrics:1,generate:2});
   // Simulate interruption after the durable result and pointer, before job completion/catalog.

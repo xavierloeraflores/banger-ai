@@ -17,7 +17,7 @@ import {fixtureProvider,wav,fixturePlan} from '../../../packages/elevenlabs/test
 const cloud=process.argv.includes('--web');
 app.on('window-all-closed',()=>{});
 const root=await mkdtemp(join(tmpdir(),'banger-music-ui-'));app.setPath('userData',root);
-const timer=setTimeout(()=>{console.error('Music smoke timed out');app.exit(1);},90000);
+const timer=setTimeout(()=>{console.error('Music smoke timed out');app.exit(1);},150000);
 const projectId=randomUUID(),artifactId=randomUUID();const source='tempo 120; meter 4/4; track kick { sound "drums/kick"; rhythm "x . x ."; gain .6; }';
 // fixture.mp3 is the synthesized WAV from fixtures.mjs encoded with libmp3lame at 32 kbps.
 const finalAudio=await readFile(new URL('../../../packages/elevenlabs/test/fixture.mp3',import.meta.url));
@@ -49,8 +49,8 @@ async function run(){
     const payload=Buffer.from(JSON.stringify({pathname,validUntil:Date.now()+600000,maximumSizeInBytes:104857600,allowedContentTypes:['audio/wav']})).toString('base64');
     return json({clientToken:'vercel_blob_client_fixture_'+Buffer.from('signature.'+payload).toString('base64')});
    }
-   if(url.pathname.endsWith('/complete')){assert.deepEqual(uploaded,wav());return json({id:artifactId,status:'ready'});}
-   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');return json(job(await store.importWav(uploaded,'Uploaded song',body().idempotencyKey)),202);}
+   if(url.pathname.endsWith('/complete')){assert.ok(uploaded?.length);return json({id:artifactId,status:'ready'});}
+   if(url.pathname.endsWith('/jobs')){if(request.method==='GET')return json({jobs:(await store.operations()).map(job)});assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');return json(job(await store.importWav(uploaded,'Uploaded song',body().idempotencyKey,undefined,body().input?.beat)),202);}
    if(url.pathname.endsWith('/resume'))return json({});
    if(url.pathname.endsWith('/actions')){const input=body();if(input.action.operation==='generate')assert.equal(request.headers['x-banger-elevenlabs-key'],'fake-vocal-key');else assert.equal(request.headers['x-banger-elevenlabs-key'],undefined);return json(job(await store.act(url.pathname.split('/')[3],input.action,input.idempotencyKey)),202);}
    if(url.pathname.endsWith('/versions')){const history=await store.versions(url.pathname.split('/')[3],url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined);return json({...history,versions:history.versions.map(document=>({revision:document.version,document}))});}
@@ -77,6 +77,7 @@ async function run(){
  if(!cloud){
   await mkdir(join(root,'library','Cover song'),{recursive:true});
   await writeFile(join(root,'library','Cover song','Cover song.wav'),wav());
+  await writeFile(join(root,'library','Cover song','Cover song.banger'),source.replace('tempo 120','tempo 87'));
   await writeFile(join(root,'library','Cover song','cover.png'),Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1kAAAAASUVORK5CYII=','base64'));
   const senderWindow=event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;};
   const storage=installSongStorage(senderWindow);
@@ -132,6 +133,7 @@ async function run(){
   else await click('↑ Upload WAV');
   await wait("document.querySelectorAll('.music-chunk').length===2");
   assert.equal(await evaluate("document.querySelector('.music-empty')"),null);
+  assert.equal(await evaluate("!!document.querySelector('[aria-controls=performance-stage]')"),false,'Uploaded vocals without a beat hide Band stage');
   assert.equal(await evaluate("document.querySelectorAll('.music-replace-wav button').length"),2);
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   const id=(await store.list())[0].id;assert.deepEqual((await store.get(id)).plan,fixturePlan);
@@ -183,7 +185,7 @@ async function run(){
   window.setContentSize(390,844);await delay(200);
   assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Vocal Studio fits a narrow viewport.');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-mobile.png'),(await window.webContents.capturePage()).toPNG());
-  if(!cloud){
+  {
    await evaluate('void(window.confirm=()=>true)');
    await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);await click('Raw .banger');await fill('#producer-source',source.replace('tempo 120','tempo 60'));await click('Apply source');await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'vocal'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
    await evaluate(`(() => { const select = document.querySelector('[aria-label="View"]'); select.value = 'beat'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);assert.equal(await evaluate("document.querySelector('#studio-tab-source').getAttribute('aria-selected')"),'true');
@@ -194,11 +196,28 @@ async function run(){
    const imported=(await store.list()).find(song=>song.id!==id);assert.ok(imported,'Rendering the studio creates another song.');
    const rendered=await store.audio(imported.id,1);assert.equal(Buffer.from(rendered.bytes).subarray(0,4).toString(),'RIFF');
    assert.equal(provider.calls.analyze,2);
+   assert.equal((await store.get(imported.id)).beat.source,source.replace('tempo 120','tempo 60'));
+   await fill('[aria-label="View"]','beat');
+   await fill('#producer-source',source.replace('tempo 120','tempo 140'));
+   await click('Apply source');
+   await fill('[aria-label="View"]','vocal');
+   window.setContentSize(1440,1080);
+   await click('Play song');
+   await click('Band stage');
+   await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='1'");
+   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('60 BPM')"),'Vocal stage uses its original beat, not later studio edits');
+   await wait("document.querySelector('.music-workshop audio').paused");
+   await click('Play band');
+   await wait("document.querySelector('.performance-live').textContent==='LIVE'");
+   await click('Close band stage');
+   assert.ok((await evaluate("document.querySelector('#producer-source').value")).includes('tempo 140'),'Stage preserves the studio draft');
+
   }
   // Library playback must leave both editors intact and release audio on exit.
   const selectView = value => fill('[aria-label="View"]',value);
   await selectView('library');
   await wait("document.querySelectorAll('.library-card').length>=2");
+  assert.equal(await evaluate("!!document.querySelector('[aria-controls=performance-stage]')"),false,'No stale stage target before library selection');
   assert.equal(await evaluate("document.querySelector('.producer-transport').checkVisibility()"),false);
   await evaluate("[...document.querySelectorAll('.library-card')].find(card=>/Vocal Studio|Cloud vocals/.test(card.textContent)).click()");
   await wait("document.querySelector('.library-player audio').currentTime>0");
@@ -208,10 +227,19 @@ async function run(){
   if(!cloud){
    await click('Play Cover song');await wait("document.querySelector('.library-now-playing').textContent.includes('Cover song')&&!document.querySelector('.library-player audio').paused");
    await wait("document.querySelector('.library-card img').naturalWidth===1");
+   await click('Band stage');
+   await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='1'");
+   assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('87 BPM')"),'Saved audio opens its companion beat');
+   assert.equal(await evaluate("document.querySelector('.library-player audio').paused"),true);
+   await click('Close band stage');
   }
   // Render and play the open beat without loading it into either editor.
   await evaluate("document.querySelector('.library-card').click()");
   await wait("document.querySelector('.library-player audio').currentTime>0 && !document.querySelector('.library-player button').disabled");
+  await click('Band stage');
+  await wait("document.querySelector('.performance-viewport canvas')?.dataset.characterCount==='1'");
+  assert.ok(await evaluate("document.querySelector('.performance-transport').textContent.includes('140 BPM')"),'Library beat selection replaces the previous stage target');
+  await click('Close band stage');
   assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'Library fits a narrow viewport.');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-library-mobile.png'),(await window.webContents.capturePage()).toPNG());
   window.setContentSize(1440,1080);await delay(100);

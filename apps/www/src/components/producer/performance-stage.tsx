@@ -8,6 +8,8 @@ import type { PerformanceSnapshot, StageView } from "@banger/stage";
 import "./performance-stage.css";
 
 interface Props {
+  onOpen?: () => void;
+  onClose?: () => void;
   program: MusicProgram;
   fileName: string;
   heroDisabled: boolean;
@@ -21,7 +23,7 @@ interface Props {
   onPlay: () => Promise<void>;
   onStop: () => void;
 }
-export function PerformanceStage({ program, fileName, heroDisabled, stopGame, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
+export function PerformanceStage({ onOpen, onClose, program, fileName, heroDisabled, stopGame, readPerformance, playing, starting, tempo, tracks, error, onPlay, onStop }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -65,6 +67,7 @@ export function PerformanceStage({ program, fileName, heroDisabled, stopGame, re
     stage.current?.setManualCamera(manual);
   }
   function show() {
+    onOpen?.();
     manualCameraRef.current = false; setManualCamera(false);
     setFailure(null); setStatus("loading"); setOpen(true); dialog.current?.showModal();
   }
@@ -73,7 +76,7 @@ export function PerformanceStage({ program, fileName, heroDisabled, stopGame, re
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8" /></svg>
       Band stage
     </Button>
-    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } }} onClose={() => { setHero(false); setOpen(false); trigger.current?.focus(); }}>
+    <dialog ref={dialog} id="performance-stage" className={`performance-dialog${hero ? " performance-with-hero" : ""}`} aria-labelledby="performance-title" aria-describedby="performance-description" onCancel={event => { if (hero) { event.preventDefault(); hideHero(); } }} onClose={() => { setHero(false); setOpen(false); onClose?.(); trigger.current?.focus(); }}>
       <header className="performance-heading" hidden={hero}>
         <div><span className="performance-eyebrow">BANGER / LIVE ROOM</span><h2 id="performance-title">Meet your band<span className={playing ? "performance-live playing" : "performance-live"}>{playing ? "LIVE" : "READY"}</span></h2><p id="performance-description">One little performer for every track. Your music brings them to life.</p></div>
         <Button variant="secondary" onClick={() => dialog.current?.close()} aria-label="Close band stage">Close <span aria-hidden="true">×</span></Button>

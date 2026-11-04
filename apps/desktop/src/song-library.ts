@@ -69,7 +69,10 @@ export function createSongLibrary(userData: string) {
       const file = files.get(id);
       if (!file) throw new Error('Refresh the library and select the song again.');
       const bytes = await safeRead(file.root, file.path);
-      return file.kind === 'beat' ? { source: bytes.toString('utf8') } : { bytes, contentType: file.path.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav' };
+      if (file.kind === 'beat') return { source: bytes.toString('utf8') };
+      const beatPath = file.path.replace(/\.(wav|mp3)$/i, '.banger');
+      const source = await safeRead(file.root, beatPath).catch(error => { if (absent(error)) return undefined; throw error; });
+      return { bytes, contentType: file.path.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav', beat: source ? { name: beatPath.split(sep).pop()!, source: source.toString('utf8') } : undefined };
     },
   };
 }

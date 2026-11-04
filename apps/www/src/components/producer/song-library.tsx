@@ -11,12 +11,14 @@ import { getProjectWorkspace } from '@/lib/browser-workspace';
 import { clockTime } from './music-audio';
 
 type SavedSong = { id: string; name: string; kind: 'audio' | 'beat'; scope: string; artwork?: string };
-type Song = SavedSong & { load(): Promise<string> };
+type Beat = { name: string; source: string };
+type LoadedSong = { url: string; beat?: Beat };
+type Song = SavedSong & { load(): Promise<LoadedSong> };
 declare global {
   interface Window {
     bangerLibrary?: {
       list(): Promise<SavedSong[]>;
-      read(id: string): Promise<{ source?: string; bytes?: Uint8Array; contentType?: string }>;
+      read(id: string): Promise<{ source?: string; bytes?: Uint8Array; contentType?: string; beat?: Beat }>;
     };
   }
 }
@@ -24,7 +26,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'Th
 const audioUrl = (bytes: ArrayBuffer | Uint8Array, type = 'audio/wav') => URL.createObjectURL(new Blob([new Uint8Array(bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).buffer)], { type }));
 async function beatUrl(source: string) { return audioUrl((await renderWav(compileMusic(source))).wav); }
 
-export function SongLibrary({ cloud, studioFile, folderName, onOpenProject }: { cloud?: CloudMusicContext; studioFile: { name: string; source: string }; folderName: string; onOpenProject(): void }) {
+export function SongLibrary({ cloud, studioFile, folderName, onOpenProject, onBeatChange, active = true }: { cloud?: CloudMusicContext; studioFile: { name: string; source: string }; folderName: string; onOpenProject(): void; onBeatChange(beat: Beat | null): void; active?: boolean }) {
   const backend = useMemo(() => desktopMusic(), []);
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [refresh, setRefresh] = useState(0);
@@ -41,23 +43,23 @@ export function SongLibrary({ cloud, studioFile, folderName, onOpenProject }: { 
         const library = window.bangerLibrary;
         sources.push(library.list().then(items => items.map(item => ({ ...item, id: `saved:${item.id}`, load: async () => {
           const file = await library.read(item.id);
-          if (file.source !== undefined) return beatUrl(file.source);
+          if (file.source !== undefined) return { url: await beatUrl(file.source), beat: { name: item.name, source: file.source } };
           if (!file.bytes) throw new Error('This song has no audio.');
-          return audioUrl(file.bytes, file.contentType);
+          return { url: audioUrl(file.bytes, file.contentType), beat: file.beat };
         } }))));
       } else if (folderName && !cloud) {
         const workspace = getProjectWorkspace();
-        sources.push(workspace.list().then(paths => paths.map(path => ({ id: `project:${path}`, name: path.replace(/\.banger$/i, ''), kind: 'beat' as const, scope: 'Project', load: async () => beatUrl((await workspace.read(path)).source) }))));
+        sources.push(workspace.list().then(paths => paths.map(path => ({ id: `project:${path}`, name: path.replace(/\.banger$/i, ''), kind: 'beat' as const, scope: 'Project', load: async () => { const file = await workspace.read(path); return { url: await beatUrl(file.source), beat: { name: path, source: file.source } }; } }))));
       }
-      if (backend) sources.push(backend.list().then(items => items.map(item => ({ id: `music:${item.id}`, name: item.name.replace(/\.(wav|mp3)$/i, ''), kind: 'audio' as const, scope: 'Vocal Studio', load: async () => backend.audio(await backend.get(item.id)) }))));
+      if (backend) sources.push(backend.list().then(items => items.map(item => ({ id: `music:${item.id}`, name: item.name.replace(/\.(wav|mp3)$/i, ''), kind: 'audio' as const, scope: 'Vocal Studio', load: async () => { const song = await backend.get(item.id); return { url: await backend.audio(song), beat: song.beat }; } }))));
       if (cloud) sources.push((async () => {
         const { projects } = await cloudRequest<{ projects: { id: string; name: string; revision: number }[] }>(cloud, '/projects');
         const collections = await Promise.all(projects.map(async project => {
           const music = cloudMusic({ ...cloud, projectId: project.id, revision: project.revision });
           const [vocals, snapshot] = await Promise.all([music.list(), cloudRequest<CloudSnapshot>(cloud, `/projects/${project.id}`)]);
           return [
-            ...vocals.map(item => ({ id: `cloud:${item.id}`, name: item.name.replace(/\.(wav|mp3)$/i, ''), kind: 'audio' as const, scope: `Cloud vocals · ${project.name}`, load: async () => music.audio(await music.get(item.id)) })),
-            ...snapshot.files.filter(file => file.path.endsWith('.banger')).map(file => ({ id: `cloud:${project.id}:${file.path}`, name: file.path.replace(/\.banger$/i, ''), kind: 'beat' as const, scope: project.name, load: () => beatUrl(file.source) })),
+            ...vocals.map(item => ({ id: `cloud:${item.id}`, name: item.name.replace(/\.(wav|mp3)$/i, ''), kind: 'audio' as const, scope: `Cloud vocals · ${project.name}`, load: async () => { const song = await music.get(item.id); return { url: await music.audio(song), beat: song.beat }; } })),
+            ...snapshot.files.filter(file => file.path.endsWith('.banger')).map(file => ({ id: `cloud:${project.id}:${file.path}`, name: file.path.replace(/\.banger$/i, ''), kind: 'beat' as const, scope: project.name, load: async () => ({ url: await beatUrl(file.source), beat: { name: file.path, source: file.source } }) })),
           ];
         }));
         return collections.flat();
@@ -66,7 +68,7 @@ export function SongLibrary({ cloud, studioFile, folderName, onOpenProject }: { 
       if (cancelled) return;
       const items = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
       // Keep the open song available, including unsaved Beat Studio edits.
-      items.unshift({ id: 'studio', name: name.replace(/\.banger$/i, ''), kind: 'beat', scope: 'Beat Studio', load: () => beatUrl(source) });
+      items.unshift({ id: 'studio', name: name.replace(/\.banger$/i, ''), kind: 'beat', scope: 'Beat Studio', load: async () => ({ url: await beatUrl(source), beat: { name, source } }) });
       setSongs(items); setLoading(false);
       const failures = results.filter(result => result.status === 'rejected');
       if (failures.length) setError(`Some songs could not be loaded. ${message(failures[0]!.reason)}`);
@@ -78,6 +80,8 @@ export function SongLibrary({ cloud, studioFile, folderName, onOpenProject }: { 
     const element = player.current, requests = generation;
     return () => { requests.current++; element?.pause(); if (url.current) URL.revokeObjectURL(url.current); };
   }, []);
+  useEffect(() => { if (!active) player.current?.pause(); }, [active]);
+  useEffect(() => () => onBeatChange(null), [onBeatChange]);
   async function choose(song: Song) {
     const element = player.current;
     if (!element) return;
@@ -88,11 +92,13 @@ export function SongLibrary({ cloud, studioFile, folderName, onOpenProject }: { 
     const ticket = ++generation.current;
     element.pause(); element.removeAttribute('src'); element.load();
     if (url.current) URL.revokeObjectURL(url.current); url.current = '';
+    onBeatChange(null);
     setSelected(song); setPending(true); setPlaying(false); setPosition(0); setDuration(0); setError('');
     try {
       const next = await song.load();
-      if (generation.current !== ticket) { URL.revokeObjectURL(next); return; }
-      url.current = next; element.src = next;
+      if (generation.current !== ticket) { URL.revokeObjectURL(next.url); return; }
+      url.current = next.url; element.src = next.url;
+      onBeatChange(next.beat ?? null);
       await element.play();
     } catch (cause) { if (generation.current === ticket) setError(message(cause)); }
     finally { if (generation.current === ticket) setPending(false); }

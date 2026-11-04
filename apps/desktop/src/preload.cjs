@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld("bangerMusic", Object.freeze({
   operation: id => ipcRenderer.invoke("banger:music-operation", id),
   act: (id, action, key) => ipcRenderer.invoke("banger:music-act", id, action, key),
   importWav: key => ipcRenderer.invoke("banger:music-import", key),
-  rendered: (bytes, name, key, token) => ipcRenderer.invoke("banger:music-rendered", bytes, name, key, token),
+  rendered: (bytes, name, key, token, beat) => ipcRenderer.invoke("banger:music-rendered", bytes, name, key, token, beat),
   audio: (id, version) => ipcRenderer.invoke("banger:music-audio", id, version),
   save: (id, version) => ipcRenderer.invoke("banger:music-save", id, version),
 }));

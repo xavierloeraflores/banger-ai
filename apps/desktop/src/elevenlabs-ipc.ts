@@ -12,7 +12,7 @@ export function musicStorageHooks(storage: SongStorageBridge['storage']) {
     imported: (song: SongLocation, bytes: Uint8Array) => storage.saveAudio(song, 'instrumentals', bytes),
     saved: async (song: SongLocation, version: MusicVersion, audio?: Uint8Array) => {
       if (audio) await storage.saveAudio(song, version.plan.chunks.some(chunk => lyricsOf(chunk.text)) ? 'vocals' : 'instrumentals', await toWav(audio));
-      await storage.saveLyrics(song, { schemaVersion: 1, musicId: version.id, version: version.version, createdAt: version.createdAt, plan: version.plan });
+      await storage.saveLyrics(song, { schemaVersion: 1, musicId: version.id, version: version.version, createdAt: version.createdAt, plan: version.plan, ...(version.beat ? { beat: version.beat } : {}) });
     },
   };
 }
@@ -44,11 +44,11 @@ export function installMusicHandlers(senderWindow:(event:IpcMainInvokeEvent)=>Br
       try{const stat=await file.stat();if(!stat.isFile()||stat.size>MAX_WAV_BYTES)throw new Error('Choose a WAV up to 100 MiB.');const bytes=await file.readFile();return store.importWav(bytes,basename(selected.filePaths[0]),key,await storage?.prepare(window,basename(selected.filePaths[0])));}finally{await file.close();}
     }finally{dialogs.delete(window.id);}
   });
-  ipcMain.handle('banger:music-rendered',async(event,bytes:unknown,name:unknown,key:string,token?:string)=>{
+  ipcMain.handle('banger:music-rendered',async(event,bytes:unknown,name:unknown,key:string,token?:string,beat?:MusicVersion["beat"])=>{
     const window=senderWindow(event);
     if(!(bytes instanceof Uint8Array)||bytes.byteLength>MAX_WAV_BYTES||typeof name!=='string')throw new Error('Invalid rendered WAV.');
     const location = storage ? token ? storage.resolve(window,token) : await storage.prepare(window,name) : undefined;
-    return store.importWav(bytes,name.slice(0,120),key,location);
+    return store.importWav(bytes,name.slice(0,120),key,location,beat);
   });
   ipcMain.handle('banger:music-save',async(event,id:string,version?:number)=>{
     const window=senderWindow(event);if(dialogs.has(window.id))throw new Error('A music file dialog is already open.');dialogs.add(window.id);

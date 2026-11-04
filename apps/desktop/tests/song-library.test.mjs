@@ -30,6 +30,8 @@ test('library includes project beats, global and project audio, artwork and fall
   assert.equal(entries.find(item => item.name === 'Beat').artwork, undefined);
   assert.equal((await library.read(entries[0].id)).source, 'tempo 120;');
   assert.deepEqual((await library.read(entries[1].id)).bytes, wav());
+  assert.deepEqual((await library.read(entries[1].id)).beat, { name: 'Dawn.banger', source: 'tempo 90;' });
+  assert.equal((await library.read(entries[2].id)).beat, undefined);
   await assert.rejects(library.read('../outside'), /Refresh/);
   await library.list();
   await assert.rejects(library.read(entries[0].id), /Refresh/);

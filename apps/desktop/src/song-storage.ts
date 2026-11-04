@@ -51,9 +51,10 @@ export function createSongStorage(userData: string) {
         return readRegular(join(await history(song, folder as AudioKind | 'lyrics'), parts[0]!));
       }
       const audio = await selected(selection.audio); validateWav(audio, false);
-      const source = await readRegular(join(await directory(song.root), `${song.name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
+      let source: Uint8Array | undefined = await readRegular(join(await directory(song.root), `${song.name}.banger`)).catch(error => { if (missing(error)) return undefined; throw error; });
       const lyrics = selection.lyrics ? await selected(selection.lyrics, 'lyrics') : await readRegular(join(song.root, `${song.name}.lyrics.json`)).catch(error => { if (missing(error)) return undefined; throw error; });
       const parsed = lyrics ? JSON.parse(lyrics.toString()) : undefined;
+      if (parsed?.beat?.source !== undefined) source = Buffer.from(validateSource(parsed.beat.source));
       const hasLyrics = Boolean(parsed?.plan?.chunks?.some((chunk: { text: string }) => chunk.text.replace(/\[[^\]]*\]|\{[^}]*\}/g, '').trim()));
       if (hasLyrics && !selection.instrumental) throw new Error('Choose an instrumental revision for this song with lyrics.');
       const instrumental = selection.instrumental ? await selected(selection.instrumental, 'instrumentals') : undefined;
