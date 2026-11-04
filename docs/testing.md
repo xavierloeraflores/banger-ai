@@ -92,3 +92,11 @@ session and built app assets. Run the relevant checks after `pnpm fullbuild`.
 Each abbreviated `smoke:*` command in the table uses the same
 `pnpm --filter @banger/desktop` prefix. Run the full browser/audio matrix for a
 release or a change spanning these areas, not for every merge.
+
+Full Send uses the music fixture smoke with `--full-send-beat`, `--full-send`,
+and `--full-send-both` for beat-only, lyrics-only, and combined edits. Run each
+with `pnpm --filter @banger/desktop exec electron scripts/smoke-music.mjs`, then
+repeat with `--web`. These checks follow the automatic render, analysis, lyric
+save, vocal generation, and library flow without paid provider calls. The
+lyrics-only check also revises one chunk of an existing song and verifies that
+the other chunk and beat remain unchanged.

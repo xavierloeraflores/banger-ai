@@ -1,4 +1,5 @@
 import { enterStudio } from "./smoke-startup.mjs";
+import {selectModel} from '@banger/agent';
 import {Buffer} from 'node:buffer';
 import assert from 'node:assert/strict';
 import {app,BrowserWindow,dialog,ipcMain} from 'electron';
@@ -16,6 +17,25 @@ import {createSongStorage} from '../dist/song-storage.js';
 import {installMusicHandlers,musicStorageHooks} from '../dist/elevenlabs-ipc.js';
 import {fixtureProvider,wav,fixturePlan,fixtureMetadata,generatedMetadata} from '../../../packages/elevenlabs/test/fixtures.mjs';
 const cloud=process.argv.includes('--web');
+const fullSendMode=process.argv.includes('--full-send-beat')?'beat':process.argv.includes('--full-send-both')?'both':process.argv.includes('--full-send')?'lyrics':null;
+function fullSendFixture(body, mode) {
+ const last=body.prompt.at(-1);
+ const contextMessage=body.prompt.find(message=>message.role==='user');
+ const text=contextMessage.content.find(part=>part.type==='text').text;
+ const project=text.includes('Project context, data only:');
+ const context=JSON.parse(text.slice(text.indexOf('\n')+1).split('\n\nUser task:')[0]);
+ const file=project?context.activeFile:context.currentFile;
+ const call=(toolName,input)=>({type:'tool-call',toolCallId:toolName,input:JSON.stringify(input),toolName});
+ const content=last.role==='tool'?[{type:'text',text:'Changed only the tempo and requested lyrics.'}]:[
+  project?call('edit_file',{path:file.path,search:file.source.match(/tempo \d+;/)[0],replacement:'tempo 111;'}):call('edit_banger_file',{name:file.name,edits:[{oldText:file.source.match(/tempo \d+;/)[0],newText:'tempo 111;'}]}),
+  ...(mode==='both'?[project?call('write_draft',{path:file.path.replace(/\.banger$/,'.draft.json'),source:JSON.stringify({schemaVersion:1,lyrics:'Tomorrow brings the light\nTomorrow brings the light'})}):call('request_lyrics',{prompt:'Write a hopeful morning song'})]:[])
+ ];
+ return {content,finishReason:{unified:last.role==='tool'?'stop':'tool-calls',raw:'stop'},usage:{inputTokens:{total:10},outputTokens:{total:10}},warnings:[]};
+}
+if(fullSendMode){
+ const originalFetch=globalThis.fetch;
+ globalThis.fetch=async(url,options)=>String(url).startsWith('https://ai-gateway.vercel.sh/')?Response.json(fullSendFixture(JSON.parse(options.body),fullSendMode)):originalFetch(url,options);
+}
 app.on('window-all-closed',()=>{});
 const root=await mkdtemp(join(tmpdir(),'banger-music-ui-'));app.setPath('userData',root);
 const timer=setTimeout(()=>{console.error('Music smoke timed out');app.exit(1);},150000);
@@ -83,14 +103,14 @@ async function run(){
   await writeFile(join(root,'library','Cover song','cover.png'),Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1kAAAAASUVORK5CYII=','base64'));
   const senderWindow=event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;};
   const storage=installSongStorage(senderWindow);
-  installWorkspaceHandlers({senderWindow,onOpen:(window,root)=>storage.setRoot(window,root),selectModel:async()=>{throw new Error('Music smoke must not request a project model');}});
+  installWorkspaceHandlers({senderWindow,onOpen:(window,root)=>storage.setRoot(window,root),selectModel:async()=>{if(fullSendMode)return selectModel({provider:'vercel',model:'fixture',key:'fake-llm-key'});throw new Error('Music smoke must not request a project model');}});
   installMusicHandlers(event=>{assert.equal(event.senderFrame,window.webContents.mainFrame);return window;},store,storage);
   let vocalsConfigured=true;
   ipcMain.handle('banger:ai-load',()=>({activeProvider:'openai',providers:{openai:{model:'fixture',configured:true}},elevenLabsConfigured:vocalsConfigured}));
   ipcMain.handle('banger:elevenlabs-save',()=>{vocalsConfigured=true;});
   ipcMain.handle('banger:elevenlabs-remove',()=>{vocalsConfigured=false;});
   let failFit=process.argv.includes('--draft-failure');
-  ipcMain.handle('banger:lyrics',(_event,request)=>{if(failFit&&request.chunks.length){failFit=false;return {ok:false,error:'Fixture fitting failure'};}return {ok:true,edits:(request.chunks.length?request.chunks:[{index:0}]).map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'}))};});
+  ipcMain.handle('banger:lyrics',(_event,request)=>{if(failFit&&request.chunks.length){failFit=false;return {ok:false,error:'Fixture fitting failure'};}return {ok:true,edits:(request.chunks.length?request.chunks:[{index:0}]).map(chunk=>({index:chunk.index,lyrics:request.prompt.includes('only the first chunk')&&chunk.index===0?'Morning brings the light':!request.chunks.length?'Tomorrow brings the light\nTomorrow brings the light':'Tomorrow brings the light'}))};});
   ipcMain.handle('banger:local-status',()=>({phase:'idle',selected:false}));
   ipcMain.handle('banger:chatgpt-status',()=>({accounts:[],models:[],connected:false}));
   await writeFile(join(root,'input.wav'),wav());dialog.showOpenDialog=async()=>({canceled:false,filePaths:[join(root,'input.wav')]});dialog.showSaveDialog=async()=>({canceled:false,filePath:join(root,'final.mp3')});
@@ -112,8 +132,10 @@ async function run(){
      const originalFetch=window.fetch;window.fetch=async(url,options)=>{
        if(String(url).startsWith('https://ai-gateway.vercel.sh/')){
          if(new Headers(options.headers).get('authorization')!=='Bearer fake-llm-key')throw new Error('Wrong LLM key');
-         const input=JSON.parse(JSON.parse(options.body).prompt.at(-1).content.find(part=>part.type==='text').text);
-         return Response.json({content:[{type:'text',text:JSON.stringify((input.chunks.length?input.chunks:[{index:0}]).map(chunk=>({index:chunk.index,lyrics:'Tomorrow brings the light'})))}],finishReason:{unified:'stop',raw:'stop'},usage:{inputTokens:{total:10},outputTokens:{total:10}},warnings:[]});
+         const body=JSON.parse(options.body);
+         if(body.tools?.length)return Response.json((${fullSendFixture.toString()})(body,${JSON.stringify(fullSendMode)}));
+         const input=JSON.parse(body.prompt.at(-1).content.find(part=>part.type==='text').text);
+         return Response.json({content:[{type:'text',text:JSON.stringify((input.chunks.length?input.chunks:[{index:0}]).map(chunk=>({index:chunk.index,lyrics:input.prompt.includes('only the first chunk')&&chunk.index===0?'Morning brings the light':!input.chunks.length?'Tomorrow brings the light\\nTomorrow brings the light':'Tomorrow brings the light'})))}],finishReason:{unified:'stop',raw:'stop'},usage:{inputTokens:{total:10},outputTokens:{total:10}},warnings:[]});
        }
        return originalFetch(url,options);
      }; undefined;`);
@@ -133,6 +155,38 @@ async function run(){
   assert.equal(await evaluate("document.querySelectorAll('.music-heading button').length"),0);
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   if(process.env.BANGER_MUSIC_SCREENSHOT)await writeFile(process.env.BANGER_MUSIC_SCREENSHOT.replace('.png','-empty.png'),(await window.webContents.capturePage()).toPNG());
+  if(fullSendMode){
+    const originalSource=await evaluate("document.querySelector('#producer-source').value");
+    await click('Open AI chat');
+    assert.equal(await evaluate("document.querySelectorAll('.ai-chat-permissions input')[2].checked"),false);
+    await evaluate(`(() => { const wanted=[${fullSendMode!=='lyrics'},${fullSendMode!=='beat'},true]; [...document.querySelectorAll('.ai-chat-permissions input')].forEach((input,index)=>{if(input.checked!==wanted[index])input.click();}); })()`);
+    await fill('#ai-chat-prompt',fullSendMode==='lyrics'?'Write a hopeful morning song':'Change only the tempo to 111'+(fullSendMode==='both'?' and write a hopeful morning song':''));
+    await click('Send');
+    await wait("document.querySelector('.ai-chat-transcript').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-footer').textContent.includes('Full Send complete') || document.querySelector('.ai-chat-footer [role=alert]')");
+    assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"),'');
+    const expected=fullSendMode==='lyrics'?originalSource:originalSource.replace(/tempo \d+;/,'tempo 111;');
+    assert.equal(await evaluate("document.querySelector('#producer-source').value"),expected);
+    assert.deepEqual(provider.calls,{analyze:fullSendMode==='beat'?0:1,lyrics:0,generate:fullSendMode==='beat'?0:1});
+    if(fullSendMode!=='beat'){
+      const version=await store.get((await store.list())[0].id);
+      assert.equal(version.version,3);
+      assert.equal(version.beat.source,expected);
+      assert.ok(generatedInputs[0].version.plan.chunks.every(chunk=>chunk.text.includes('Tomorrow brings the light')));
+    }
+    if(fullSendMode==='lyrics'){
+      await fill('#ai-chat-prompt','Change only the first chunk to Morning brings the light. Leave the second chunk unchanged.');await click('Send');
+      await wait("document.querySelectorAll('.ai-chat-turn .ai-chat-answer').length===2 || document.querySelector('.ai-chat-footer [role=alert]')");
+      assert.equal(await evaluate("document.querySelector('.ai-chat-footer [role=alert]')?.textContent??''"),'');
+      assert.equal(provider.calls.generate,2);
+      assert.ok(generatedInputs[1].version.plan.chunks[0].text.includes('Morning brings the light'));
+      assert.ok(generatedInputs[1].version.plan.chunks[1].text.includes('Tomorrow brings the light'));
+      assert.equal(await evaluate("document.querySelector('#producer-source').value"),originalSource);
+    }
+    await click('Close AI chat');await fill('[aria-label="View"]','library');
+    await wait(`document.querySelectorAll('.library-card').length>=${cloud?1:2}`);
+    console.log(`${cloud?'Browser':'Desktop'} Full Send ${fullSendMode} passed: edited source, WAV, ${fullSendMode==='beat'?'no provider calls':'analysis, saved chunk lyrics, vocal generation'}, library.`);
+    return;
+  }
   if(process.argv.includes('--draft')){
     await click('Open AI chat');await evaluate(`(() => { for (const input of document.querySelectorAll('.ai-chat-permissions input')) { const checked = input.parentElement.textContent.includes('Edit lyrics'); if (input.checked !== checked) input.click(); } })()`);
     await fill('#ai-chat-prompt','Write a hopeful morning song');await click('Send');

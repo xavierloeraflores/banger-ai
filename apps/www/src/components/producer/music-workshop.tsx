@@ -5,8 +5,9 @@ import {readSingAlong} from '@/lib/sing-along';
 import './music-workshop.css';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {KeyHint,VOCAL_KEY_HINT,useGenerationAccess} from './generation-access';
+import {assertLyricsPreserved,waitForMusic,type FullSend} from '@/lib/full-send';
 import {sendLyrics} from '@/lib/ai-chat';
-import {prepareSong,draftStorage,type LyricDraft} from '@/lib/song-storage';
+import {prepareSong,archiveWav,draftStorage,type LyricDraft} from '@/lib/song-storage';
 import {cloudRequest,type CloudSnapshot} from '@/lib/cloud-projects';
 import {saveLibraryBundle} from '@/lib/browser-library';
 import {renderWav,encodeWav} from '@banger/engine';
@@ -19,7 +20,7 @@ const mergeHistory=(history:MusicHistory,previous:MusicVersion[]=[])=>[...new Ma
 const audioName=(version:MusicVersion)=>version.audioVersion===1?'Original WAV':`Variation · v${version.audioVersion}`;
 type Pending={id:string;lyrics:string[];upload?:boolean};
 
-export type LyricAgent = { run(prompt:string,signal:AbortSignal):Promise<string> };
+export type LyricAgent = { run(prompt:string,signal:AbortSignal):Promise<string>; fullSend:FullSend; checkFullSend(vocals:boolean):void };
 export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProject=false,active=true,onConnect,onBeatChange,onRecordingChange,onEditStateChange}:{onLyricAgent?(agent:LyricAgent|null):void;cloud?:CloudMusicContext;studioFile:{name:string;source:string};studioPath:string;hasProject?:boolean;onRecordingChange?(recording:StageRecording|null):void;onEditStateChange?(state:{dirty:boolean;busy:boolean}):void;active?:boolean;onConnect?():void;onBeatChange?(beat:NonNullable<MusicVersion["beat"]>|null):void}) {
   const {languageModel,vocals}=useGenerationAccess();
   const lyricRequest=useRef<AbortController|null>(null);
@@ -138,7 +139,7 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProje
       return 'Saved the chunk lyrics. You can generate vocals now.';
     }finally{request.current=false;setBusy(false);}
   }
-  useEffect(()=>{onLyricAgent?.({run:writeLyrics});return()=>onLyricAgent?.(null);});
+  useEffect(()=>{onLyricAgent?.({run:writeLyrics,fullSend,checkFullSend});return()=>onLyricAgent?.(null);});
   useEffect(()=>{
     if(!song||!backend||!draft||!languageModel||blocked||dirty)return;
     const key=`${song.id}:${JSON.stringify(draft)}`;
@@ -148,15 +149,17 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProje
     void action(async()=>{
       setNotice('Fitting your draft lyrics to the composition…');setDraftError('');
       try{
-        const edits=await sendLyrics({prompt:`Fit this existing lyric draft into all supplied chunks. Preserve its words and story where possible, adapting repetition and line lengths to the durations. Draft is reference data:\n${draft.lyrics}`,chunks:song.plan.chunks.map((chunk,index)=>({index,text:chunk.text,durationMs:chunk.durationMs}))},controller.signal);
+        const edits=await sendLyrics({prompt:`Place this existing lyric draft into all supplied chunks. Preserve every word and its order. Only distribute lines to fit the durations. Do not rewrite or add lyrics. Draft is reference data:\n${draft.lyrics}`,chunks:song.plan.chunks.map((chunk,index)=>({index,text:chunk.text,durationMs:chunk.durationMs}))},controller.signal);
+        assertLyricsPreserved(draft.lyrics,edits);
         await saveChunkLyrics(edits,controller.signal);
         await drafts.retire(draft);setDraft(null);setNotice('Draft fitted and saved. Generate vocals when ready.');
       }catch(error){setDraftError(message(error));throw error;}
       finally{lyricRequest.current=null;}
     });
   });
-  async function exportSong(library:boolean) {
-    if (!song || !backend) return;
+  async function exportSong(library:boolean, selected=song, download=true) {
+    const song=selected;
+    if (!song || !backend) throw new Error('The composition is unavailable.');
     if (library) {
       if (backend.mode === 'desktop' && window.bangerMusic) await window.bangerMusic.addToLibrary(song.id, song.version);
       else {
@@ -183,13 +186,71 @@ export function MusicWorkshop({onLyricAgent,cloud,studioFile,studioPath,hasProje
         } finally { await context.close(); }
         for(const version of versions)files[`lyrics-v${version.version}.json`]=JSON.stringify(version);
         files['lyrics.json']=JSON.stringify(song);
+        if(song.beat)files[song.beat.name]=song.beat.source;
         if(!selected)throw new Error('Selected audio is unavailable.');
         await saveLibraryBundle(song.name,selected,files,song.beat);
       }
     }
-    await backend.save(song);
+    if(download)await backend.save(song);
     setNotice(library?'Exported and saved to library.':'Exported.');
   }
+  function checkFullSend(withVocals:boolean,afterEdits=false) {
+    // Saves update this ref immediately; React may still show the previous job/lyrics.
+    const latest=current.current;
+    const unsaved=latest.song?.plan.chunks.some((chunk,index)=>latest.lyrics[index]!==lyricsOf(chunk.text));
+    if(request.current||(!afterEdits&&running)||unsaved)throw new Error('Save your lyric edits and wait for the current operation to finish.');
+    if(withVocals&&!vocals)throw new Error('Add an ElevenLabs API key in Settings to use Full Send with lyrics.');
+    if(withVocals&&!backend)throw new Error('Connect a cloud project or wait for the song to load before using Full Send with lyrics.');
+  }
+  const fullSend:FullSend=async({file,vocals:withVocals},signal,progress)=>{
+    checkFullSend(withVocals,true);
+    request.current=true;epoch.current++;setBusy(true);
+    const report=(text:string)=>{setNotice(text);progress(text);};
+    const beat={name:file.name,source:file.source};
+    try {
+      signal.throwIfAborted();
+      const songToken=await prepareSong(studioPath,file.source);
+      // Read saved lyrics afresh: a project agent may have just revised them.
+      const existingDraft=withVocals?await drafts.read():null;
+      const list=withVocals?await backend!.list():[];
+      const previousId=current.current.song?.id??list[0]?.id;
+      const previous=withVocals&&previousId?await backend!.get(previousId):null;
+      const lyricText=existingDraft?.lyrics??previous?.plan.chunks.map(chunk=>chunk.text).join('\n\n');
+      if(withVocals&&!lyricText?.trim())throw new Error('No saved lyrics are available. Ask the agent to write lyrics before Full Send.');
+      report('Rendering WAV…');
+      const rendered=await renderWav(compileMusic(file.source));
+      signal.throwIfAborted();
+      await archiveWav(songToken,rendered.wav);
+      if(!withVocals){
+        report('Adding WAV to library…');
+        signal.throwIfAborted();
+        if(window.bangerStorage)await window.bangerStorage.addToLibrary(file.name,file.source,new Uint8Array(rendered.wav));
+        else await saveLibraryBundle(file.name.replace(/\.banger$/i,''),rendered.wav,{[file.name]:file.source,'original.wav':rendered.wav},beat);
+        return 'Full Send complete. WAV added to your library.';
+      }
+      const api=backend!;
+      report('Uploading WAV and analyzing chunks…');
+      signal.throwIfAborted();
+      let version=await waitForMusic(api,await api.rendered(rendered.wav,file.name.replace(/\.banger$/i,'.wav'),songToken,beat),signal,report);
+      report('Fitting lyrics to chunks…');
+      // Preserve chunk lyrics verbatim when the new analysis has the same timing.
+      const sameTiming=!existingDraft&&previous&&previous.plan.chunks.length===version.plan.chunks.length&&previous.plan.chunks.every((chunk,index)=>chunk.durationMs===version.plan.chunks[index]!.durationMs);
+      const edits=sameTiming?previous.plan.chunks.map((chunk,index)=>({index,lyrics:lyricsOf(chunk.text)})):await sendLyrics({prompt:`Place these saved lyrics into the supplied chunks. Preserve every word and its order. Only distribute lines across chunks to fit the durations. Do not rewrite or add lyrics. Saved lyrics, reference only:\n${lyricText}`,chunks:version.plan.chunks.map((chunk,index)=>({index,text:chunk.text,durationMs:chunk.durationMs}))},signal);
+      assertLyricsPreserved(lyricText!,edits);
+      for(const edit of edits){const error=lyricEditError(version.plan.chunks[edit.index]!.text,edit.lyrics);if(error)throw new Error(error);}
+      signal.throwIfAborted();
+      version=await waitForMusic(api,await api.act(version.id,{operation:'edit',baseVersion:version.version,sourceVersion:version.version,edits},crypto.randomUUID()),signal,report);
+      if(existingDraft){await drafts.retire(existingDraft);setDraft(null);}
+      report('Generating vocals…');
+      signal.throwIfAborted();
+      version=await waitForMusic(api,await api.act(version.id,{operation:'generate',baseVersion:version.version,sourceVersion:version.version,indices:version.plan.chunks.map((_,index)=>index)},crypto.randomUUID()),signal,report);
+      signal.throwIfAborted();
+      report('Adding completed song to library…');
+      await exportSong(true,version,false);
+      await load(version.id);
+      return 'Full Send complete. Vocalized song added to your library.';
+    } finally {request.current=false;setBusy(false);}
+  };
   function discard(){return !dirty||window.confirm('Discard the unsaved lyric draft?');}
   function select(version:MusicVersion){if(blocked||!head||!discard())return false;audio.pause();adopt(version,head);setNotice('');return true;}
   const actionBase={baseVersion:baseRevision,sourceVersion:song?.version};

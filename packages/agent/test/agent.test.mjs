@@ -267,3 +267,18 @@ for (const beat of [false, true]) for (const lyrics of [false, true]) {
     assert.equal(names.includes("request_lyrics"), lyrics);
   });
 }
+
+test('shared chat and project permissions preserve the explicit scope with both edits enabled', async () => {
+  const { editingInstructions } = await import('../dist/index.js');
+  assert.match(editingInstructions({beat:true,lyrics:true}), /explicit scope takes precedence/);
+  const untouched='\n// Preserve the arrangement\ntrack hat { sound "drums/hat"; rhythm ". x . x"; gain 0.3; }';
+  const original=source+untouched;
+  const model=new MockLanguageModelV4({doGenerate:[
+    response([{type:'tool-call',toolCallId:'edit',toolName:'edit_banger_file',input:JSON.stringify({name:'loop.banger',edits:[{oldText:'gain 0.6;',newText:'gain 0.4;'}]})}],'tool-calls'),
+    response([{type:'text',text:'Softened only the kick.'}]),
+  ]});
+  const result=await runBangerAgent({...request,permissions:{beat:true,lyrics:true},currentFile:{name:'loop.banger',source:original},messages:[{role:'user',content:'Only soften the kick. Leave all other parts and lyrics as they are.'}]},{model,name:'fixture'});
+  assert.equal(result.files[0].source,original.replace('gain 0.6;','gain 0.4;'));
+  assert.equal(result.lyricPrompt,undefined);
+  assert.match(model.doGenerateCalls[0].prompt.find(message=>message.role==='system').content,/change only that part and preserve everything else exactly/);
+});

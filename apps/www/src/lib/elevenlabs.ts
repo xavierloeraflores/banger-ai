@@ -38,7 +38,7 @@ export function cloudMusic(connection:CloudMusicContext,studioPath:string):Music
   },get:id=>cloudRequest(connection,`/music/${id}`),
     versions:async(id,before)=>{const result=await cloudRequest<{versions:{document:MusicVersion}[];original:MusicVersion;nextBefore?:number}>(connection,`/music/${id}/versions${before?`?before=${before}`:''}`);return {...result,versions:result.versions.map(row=>row.document)};},
     upload:async file=>{if(!file)return null;return upload(await file.arrayBuffer());},rendered:async (wav,_name,_token,beat)=>upload(wav,beat),
-    act:async(id,action,key)=>operation(await (action.operation==='edit'?cloudRequest<Job>(connection,`/music/${id}/actions`,'POST',{action,idempotencyKey:key}):cloudVocalRequest<Job>(connection,`/music/${id}/actions`,{action,idempotencyKey:key}))),
+    act:async(id,action,key)=>{songIds.add(id);return operation(await (action.operation==='edit'?cloudRequest<Job>(connection,`/music/${id}/actions`,'POST',{action,idempotencyKey:key}):cloudVocalRequest<Job>(connection,`/music/${id}/actions`,{action,idempotencyKey:key})));},
     operations:async()=>{
       const jobs=(await cloudRequest<{jobs:Job[]}>(connection,`/projects/${connection.projectId}/jobs`)).jobs.filter(job=>job.kind==='elevenlabs'&&(job.studioPath===studioPath||songIds.has(job.musicId??job.result?.musicId??'')));
       const configured=(await aiSettingsBridge().load()).elevenLabsConfigured;

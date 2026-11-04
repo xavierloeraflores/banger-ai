@@ -87,7 +87,7 @@ async function exercise(window, desktop) {
   await waitFor("!document.querySelector('.ai-chat-launcher').disabled");
   await openChat();
   await waitFor("document.activeElement.id === 'ai-chat-prompt'");
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => [input.parentElement.textContent, input.checked])"), [["Edit beat", true], ["Edit lyrics", false]]);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => [input.parentElement.textContent, input.checked])"), [["Edit beat", true], ["Edit lyrics", false], ["Full Send", false]]);
   assert.equal(await evaluate("!!document.querySelector('[aria-label=\"AI editing target\"]')"), false);
   await input("ai-chat-prompt", "Keep this draft");
   window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
@@ -230,7 +230,7 @@ async function exercise(window, desktop) {
   assert.equal((readOnlyCalls.at(-1).tools ?? []).length, 0);
   await closeChat();
   await openChat();
-  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => input.checked)"), [false, false]);
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('.ai-chat-permissions input')].map(input => input.checked)"), [false, false, false]);
   await evaluate("document.querySelectorAll('.ai-chat-permissions input')[0].click(); document.querySelectorAll('.ai-chat-permissions input')[1].click()");
   await input("ai-chat-prompt", "Create three more loops with both permissions enabled");
   await click("Send");

@@ -38,6 +38,7 @@ import { TrackEditorTabs, type TrackEditorTab } from "./track-editor-tabs";
 import { usePlayer } from "./use-player";
 import { SettingsMenu } from "./settings-menu";
 import { DesktopProjectWorkspace } from "./desktop-project-workspace";
+import type { FullSend } from "@/lib/full-send";
 import { AIChat } from "./ai-chat";
 import { ProjectStart } from "./project-start";
 import { SourceEditor } from "./source-editor";
@@ -106,6 +107,8 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
   function showProjects() { if (!hasProject) { onRequireProject("beat"); return; } projectDialog.current?.showModal(); }
   const lyricAgent=useRef<LyricAgent|null>(null);
   const setLyricAgent=useCallback((agent:LyricAgent|null)=>{lyricAgent.current=agent;},[]);
+  const runFullSend=useCallback<FullSend>((input,signal,progress)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");return lyricAgent.current.fullSend(input,signal,progress);},[]);
+  const checkFullSend=useCallback((vocals:boolean)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");lyricAgent.current.checkFullSend(vocals);},[]);
   const runLyrics=useCallback((prompt:string,signal:AbortSignal)=>{if(!lyricAgent.current)throw new Error("The song is still loading.");return lyricAgent.current.run(prompt,signal);},[]);
   const [vocalEdits,setVocalEdits]=useState({dirty:false,busy:false});
   const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
@@ -359,8 +362,8 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
     }
   }
 
-  function loadGeneratedFile(file: BangerFile, generatedRevision: number) {
-    if (filePending.current || workspaceBusy || !canReplaceSong()) return;
+  function loadGeneratedFile(file: BangerFile, generatedRevision: number, automatic=false) {
+    if (filePending.current || workspaceBusy || (!automatic && !canReplaceSong())) return;
     if (revision.current !== generatedRevision && !window.confirm("Your project changed after this request. Load the generated file and replace the current editor?")) return;
     try {
       const next = compileMusic(file.source);
@@ -692,7 +695,7 @@ function Studio({ initialFile, sample, initiallySaved, initialFolder, initialStu
           {hasProject && <MusicWorkshop hasProject={hasProject} onLyricAgent={setLyricAgent} key={`${projectEpoch}:${cloudBinding?.projectId ?? "local"}:${cloudBinding?.path ?? workspaceFile?.path ?? fileName}`} cloud={cloudMusicContext} studioPath={cloudBinding?.path ?? workspaceFile?.path ?? fileName} studioFile={{ name:fileName,source }} onEditStateChange={setVocalEdits} active={vocalStudio} onRecordingChange={setVocalRecording} onBeatChange={setVocalBeat} onConnect={()=>{showProjects();const panel=document.getElementById('cloud-projects') as HTMLDetailsElement|null;if(panel)panel.open=true;}}/>}
         </div>
         {studio === "library" && <SongLibrary onRecordingChange={setLibraryRecording} onBeatChange={setLibraryBeat} singAlong={singAlongOpen} onCloseSingAlong={() => setSingAlongOpen(false)} />}
-        {hasProject && <AIChat onLyrics={runLyrics} vocalStudio={vocalStudio} source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
+        {hasProject && <AIChat onFullSend={runFullSend} onFullSendCheck={checkFullSend} onLyrics={runLyrics} vocalStudio={vocalStudio} source={source} fileName={fileName} revision={sourceRevision} fileBusy={fileBusy || workspaceBusy} onLoad={loadGeneratedFile}
           folderName={folderName} projectEpoch={projectEpoch} activeFile={workspaceFile?.path} projectDirty={dirty}
           onResolveEdits={resolveEditsForAI}
           onProjectBusy={setWorkspaceBusy} onProjectFile={(file, requestRevision) => {

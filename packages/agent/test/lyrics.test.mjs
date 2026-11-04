@@ -27,3 +27,13 @@ test('lyrics can be written before analysis without fabricated chunk timings', a
  assert.match(JSON.stringify(model.doGenerateCalls[0].prompt),/Do not invent chunk timings/);
  await assert.rejects(generateLyrics({prompt:'Draft',chunks:[]},{model:modelFor([{index:1,lyrics:'Wrong index'}])}));
 });
+
+test('a targeted lyric edit retains untouched chunks and sends explicit scope instructions', async () => {
+ const chunks=[{index:0,text:'[Verse]\nKeep this verse exactly',durationMs:8000},{index:1,text:'[Chorus]\nChange this word',durationMs:8000}];
+ const edits=[{index:0,lyrics:'Keep this verse exactly'},{index:1,lyrics:'Change that word'}];
+ const model=modelFor(edits);
+ assert.deepEqual(await generateLyrics({prompt:'Only replace this with that in the chorus. Leave the verse alone.',chunks},{model}),edits);
+ const system=model.doGenerateCalls[0].prompt.find(message=>message.role==='system').content;
+ assert.match(system,/preserve all other lyrics exactly/);
+ assert.match(system,/Return unchanged lyrics for untouched supplied indices/);
+});

@@ -8,11 +8,12 @@ import { sendChat } from "@/lib/ai-chat";
 import { saveProject } from "@/lib/project-files";
 import { AI_PROVIDERS, aiSettingsBridge } from "@/lib/ai-providers";
 
+import type { FullSend } from "@/lib/full-send";
 import type { WorkspaceFile } from "@/lib/project-workspace";
 
 type Turn = { prompt: string; reply: ChatReply; revision: number; project?: string; activity?: string[] };
 type ProjectSnapshot = { source: string; revision: number; activeFile?: string };
-type Props = { onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number): void;
+type Props = { onFullSend:FullSend; onFullSendCheck(vocals:boolean):void; onLyrics(prompt:string,signal:AbortSignal):Promise<string>; vocalStudio:boolean; source: string; fileName: string; revision: number; fileBusy: boolean; onLoad(file: BangerFile, revision: number, automatic?:boolean): void;
   folderName: string; projectEpoch: number; activeFile?: string; projectDirty: boolean;
   onResolveEdits(action: "save" | "discard"): Promise<ProjectSnapshot>;
   onProjectBusy(busy: boolean): void; onProjectFile(file: WorkspaceFile, revision: number): void;
@@ -23,9 +24,11 @@ const suggestions = [
   "Make a rap song with lyrics for the verses and hook",
 ];
 
-export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectBusy, onProjectFile }: Props) {
+export function AIChat({ onFullSend, onFullSendCheck, onLyrics, vocalStudio, source, fileName, revision, fileBusy, onLoad, folderName, projectEpoch, activeFile, projectDirty, onResolveEdits, onProjectBusy, onProjectFile }: Props) {
   const [permissions, setPermissions] = useState({ beat: !vocalStudio, lyrics: vocalStudio });
-  const { languageModel } = useGenerationAccess();
+  const [fullSend, setFullSend] = useState(false);
+  const [progress, setProgress] = useState("");
+  const { languageModel, vocals } = useGenerationAccess();
   const [desktop, setDesktop] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
   const activityRef = useRef<string[]>([]);
@@ -107,6 +110,10 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
   async function send(action?: "save" | "discard") {
     const text = prompt.trim();
     if (!languageModel || !text || request.current || fileBusy) return;
+    if(fullSend && (permissions.beat || permissions.lyrics)) {
+      try { onFullSendCheck(permissions.lyrics); }
+      catch(cause){setError(cause instanceof Error?cause.message:"Full Send is unavailable.");return;}
+    }
     if (permissions.beat && projectMode && projectDirty && !action) {
       setError(null);
       editsDialog.current?.showModal();
@@ -117,12 +124,14 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
     setPendingPrompt(text);
     setError(null);
     setNotice("");
+    setProgress("");
     const snapshotRevision = revision;
     if(permissions.lyrics && !permissions.beat) {
       try {
-        const answer=await onLyrics(text,controller.signal);
+        let answer=await onLyrics(text,controller.signal);
+        if(fullSend)answer += `\n\n${await onFullSend({file:{name:fileName,source},vocals:true},controller.signal,setProgress)}`;
         setTurns(previous=>[...previous,{prompt:text,revision:snapshotRevision,reply:{text:answer,files:[],model:connection}}]);setPrompt("");
-      }catch(cause){setError(cause instanceof Error?cause.message:"Could not save lyrics.");}
+      }catch(cause){if(controller.signal.aborted)setNotice("Generation stopped. Completed saves are kept. Submitted music requests may finish in Vocal Studio.");else setError(cause instanceof Error?cause.message:"Could not save lyrics.");}
       finally{request.current=null;setPendingPrompt(null);}
       return;
     }
@@ -140,13 +149,24 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
         setTurns(previous => [...previous, { prompt: text, revision: snapshotRevision, project: folderName,
           reply: { text: result.ok ? result.reply.text : result.error, files: [], model: connection }, activity: activityRef.current }]);
         setPrompt("");
+        let completedFile:BangerFile={name:fileName,source:snapshot.source};
         // Cancelled tasks can still have saved files. Refresh only an unchanged studio.
         if (permissions.beat && snapshot.activeFile) {
           const saved = await bridge.read(snapshot.activeFile);
+          completedFile={name:fileName,source:saved.source};
           if (saved.source !== snapshot.source) onProjectFile(saved, snapshot.revision);
         }
+        projectRequest.current = false;
+        if(fullSend && (permissions.beat || permissions.lyrics)) {
+          controller.signal.throwIfAborted();
+          if(!result.ok || result.reply.status !== "completed")throw new Error("Full Send stopped because the project task did not complete. Review its saved changes before retrying.");
+          if(result.reply.changedPaths?.some(path=>path.endsWith(".banger")&&path!==snapshot.activeFile))throw new Error("The agent edited another song. Open that song before running Full Send so its beat and lyrics stay together.");
+          if(!snapshot.activeFile)throw new Error("Open the song you want to send, then run Full Send.");
+          setNotice(await onFullSend({file:completedFile,vocals:permissions.lyrics},controller.signal,setProgress));
+        }
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Could not run the project task.");
+        if(controller.signal.aborted)setNotice("Generation stopped. Completed saves are kept. Submitted music requests may finish in Vocal Studio.");
+        else setError(cause instanceof Error ? cause.message : "Could not run the project task.");
       } finally {
         projectRequest.current = false;
         request.current = null;
@@ -164,13 +184,22 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
     const previousFiles = availableFiles;
     try {
       const reply = await sendChat({ permissions, messages: [...messages, { role: "user", content: text }], currentFile: { name: fileName, source }, previousFiles, targetFile: selectedTarget ?? fileName, targetVersion: selectedTarget ? "generated" : "editor" }, controller.signal);
-      if(permissions.lyrics && reply.lyricPrompt)reply.text += `\n\n${await onLyrics(reply.lyricPrompt,controller.signal)}`;
+      if(fullSend && reply.files.length>1){
+        setTurns(previous=>[...previous,{prompt:text,reply,revision:snapshotRevision}]);
+        throw new Error("Full Send needs one song. Your proposals are kept; ask the agent to edit a single song.");
+      }
+      if(permissions.lyrics && reply.lyricPrompt)reply.text += `\n\n${await onLyrics(`${reply.lyricPrompt}\nOriginal user request; preserve these edit restrictions:\n${text}`,controller.signal)}`;
       if (request.current !== controller) return;
       setTurns(previous => [...previous, { prompt: text, reply, revision: snapshotRevision }]);
       setPrompt("");
       if (reply.files.length) setTargetFile(reply.files[0]!.name);
+      if(fullSend && (permissions.beat || permissions.lyrics)) {
+        const file=reply.files[0] ?? (selectedTarget ? latestFiles.get(selectedTarget)! : {name:fileName,source});
+        setNotice(await onFullSend({file,vocals:permissions.lyrics},controller.signal,setProgress));
+        if(permissions.beat && reply.files.length)onLoad(file,snapshotRevision,true);
+      }
     } catch (cause) {
-      if (controller.signal.aborted) setNotice("Generation stopped. Completed saves are kept.");
+      if (controller.signal.aborted) setNotice("Generation stopped. Completed saves are kept. Submitted music requests may finish in Vocal Studio.");
       else setError(cause instanceof Error ? cause.message : "Could not generate a reply. Try again.");
     } finally {
       if (request.current === controller) {
@@ -182,9 +211,10 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
   }
 
   function stop() {
+    request.current?.abort();
     if (projectRequest.current) {
       void window.bangerWorkspace?.cancel().catch(cause => setError(cause instanceof Error ? cause.message : "Could not stop the project task."));
-    } else request.current?.abort();
+    }
   }
 
   async function save(file: BangerFile) {
@@ -236,7 +266,7 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
           <div className="ai-chat-file-heading"><strong>{file.name}</strong><span>{file.operation === "edit" ? "Revision compiled" : "Compiled"}</span></div>
           <details><summary>Preview source</summary><pre>{file.source}</pre></details>
           <div className="ai-chat-file-actions">
-            <Button variant="primary" disabled={fileBusy || saving} onClick={() => onLoad(file, turn.revision)}>Load in studio</Button>
+            <Button variant="primary" disabled={busy || fileBusy || saving} onClick={() => onLoad(file, turn.revision)}>Load in studio</Button>
             <Button disabled={busy} onClick={() => { setTargetFile(file.name); input.current?.focus(); }}>Edit this file</Button>
             <Button disabled={fileBusy || saving} onClick={() => void save(file)}>Save file</Button>
           </div>
@@ -244,7 +274,7 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
         {!!turn.activity?.length && <details className="ai-chat-activity"><summary>Project activity</summary><ol>{turn.activity.map((item, index) => <li key={index}>{item}</li>)}</ol></details>}
         <p className="ai-chat-model">{turn.reply.model}</p>
       </div>)}
-      {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{!permissions.beat && !permissions.lyrics ? "Thinking…" : projectMode ? "Working on your project…" : "Composing and checking your files…"}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
+      {busy && <div className="ai-chat-turn"><p className="ai-chat-user">{pendingPrompt}</p><p className="ai-chat-working" role="status">{progress || (!permissions.beat && !permissions.lyrics ? "Thinking…" : projectMode ? "Working on your project…" : "Composing and checking your files…")}</p>{projectMode && <ol className="ai-chat-activity" aria-label="Project agent activity">{activity.map((item, index) => <li key={index}>{item}</li>)}</ol>}</div>}
     </div>
     {permissions.beat && (projectMode ? <p className="ai-chat-scope-note">Changes save directly to {folderName}. {activeFile ? `Current song: ${activeFile}.` : "You can work on any song in this folder."}</p> : <label className="ai-chat-target">Editing
       <select aria-label="File to edit" value={selectedTarget ?? ""} disabled={busy} onChange={event => setTargetFile(event.target.value || null)}>
@@ -256,6 +286,8 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
       <legend className="producer-sr-only">Allow AI edits</legend>
       <label><input type="checkbox" checked={permissions.beat} onChange={event => setPermissions(previous => ({ ...previous, beat: event.target.checked }))} />Edit beat</label>
       <label><input type="checkbox" checked={permissions.lyrics} onChange={event => setPermissions(previous => ({ ...previous, lyrics: event.target.checked }))} />Edit lyrics</label>
+      <label><input type="checkbox" checked={fullSend} onChange={event=>setFullSend(event.target.checked)} />Full Send</label>
+      {fullSend && (permissions.beat || permissions.lyrics) && <span>{permissions.lyrics?"Generate vocals with ElevenLabs and add the song to your library.":"Render a WAV and add it to your library."}</span>}
       {!permissions.beat && !permissions.lyrics && <span>Reply only. No files will be edited.</span>}
     </fieldset>
     <form className="ai-chat-compose" onSubmit={event => { event.preventDefault(); void send(); }}>
@@ -264,9 +296,10 @@ export function AIChat({ onLyrics, vocalStudio, source, fileName, revision, file
         placeholder={!permissions.beat && !permissions.lyrics ? "Ask about your song or project…" : permissions.lyrics && !permissions.beat?"Write lyrics, or describe changes to this song’s lyrics…":projectMode ? "Add a bass part to verse.banger, then soften the drums in chorus.banger…" : "Describe a song, a loop, or a change to this project…"} onChange={event => setPrompt(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       {busy ? <Button variant="secondary" onClick={stop}>{projectMode ? "Stop task" : "Stop generating"}</Button>
-        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy}>Send</Button></KeyHint>}
+        : <KeyHint reason={!languageModel ? LLM_KEY_HINT : undefined}><Button variant="primary" type="submit" disabled={!languageModel || !prompt.trim() || fileBusy || (fullSend && permissions.lyrics && !vocals)}>Send</Button></KeyHint>}
     </form>
     <div className="ai-chat-footer">
+      {fullSend && permissions.lyrics && !vocals && <p>Add an ElevenLabs API key in Settings to use Full Send with lyrics.</p>}
       {error && <p className="has-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </div>

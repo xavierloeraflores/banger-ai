@@ -7,7 +7,7 @@ export type WorkspaceBridge = {
   list(): Promise<string[]>;
   read(path: string): Promise<WorkspaceFile>;
   save(path: string, source: string, expected: string | null): Promise<WorkspaceFile>;
-  run(prompt: string, activeFile?: string, resetHistory?: boolean, permissions?: import("@banger/agent/protocol").EditPermissions): Promise<{ ok: true; reply: { text: string; status: string } } | { ok: false; error: string }>;
+  run(prompt: string, activeFile?: string, resetHistory?: boolean, permissions?: import("@banger/agent/protocol").EditPermissions): Promise<{ ok: true; reply: { text: string; status: string; changedPaths?: string[] } } | { ok: false; error: string }>;
   cancel(): Promise<void>;
   onEvent(callback: (event: Event) => void): () => void;
 };

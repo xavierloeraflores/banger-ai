@@ -49,3 +49,14 @@ test('cloud vocals filter songs and jobs by the active file and retain upload ow
   assert.equal((await empty.list()).length, 0);
   assert.equal((await empty.operations()).length, 0);
 });
+
+test('cloud polling includes actions on a newly uploaded song before the next library refresh', async () => {
+  const api = backend({}, async (_connection, path, method) => {
+    if (path.endsWith('/music')) return { music: [] };
+    if (method === 'POST') return { id: 'edit', musicId: 'new-song', status: 'running' };
+    return { jobs: [{ id: 'edit', kind: 'elevenlabs', musicId: 'new-song', status: 'completed', result: { version: 2 } }] };
+  }).cloudMusic({ url: 'https://example.test', projectId: 'p', revision: 1 }, 'song.banger');
+  await api.list();
+  await api.act('new-song', { operation: 'edit', baseVersion: 1, edits: [{ index: 0, lyrics: 'New words' }] }, 'key');
+  assert.deepEqual(Array.from(await api.operations(), job => job.id), ['edit']);
+});
