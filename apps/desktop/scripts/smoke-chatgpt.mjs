@@ -90,7 +90,7 @@ async function run(window) {
     await mkdir(projectDir);
     await writeFile(join(projectDir, 'song.banger'), source);
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [projectDir] });
-    await click('Project');
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await click('Open Project');
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await evaluate("document.querySelector('[aria-label=\"Open AI chat\"]').click()");

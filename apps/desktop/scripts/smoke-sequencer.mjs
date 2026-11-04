@@ -154,19 +154,17 @@ async function run(window) {
     await set('kick saved patch', 'Native bell', 'HTMLSelectElement');
     assert.equal((await program()).tracks[0].modular.name, 'Native bell');
     const saved = await source(), projectPath = join(projectFolder, 'night-drive.banger');
-    dialog.showSaveDialog = async () => ({ canceled:false, filePath:projectPath }); await text('Project'); await text('Save .banger');
+    dialog.showSaveDialog = async () => ({ canceled:false, filePath:projectPath }); await text('Save');
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')", 'native save');
     assert.equal(await readFile(projectPath, 'utf8'), saved);
-    await text('Close', "document.querySelector('#project-controls')");
-    dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[projectFolder] }); await text('Project'); await text('Open Project', "document.querySelector('#project-controls')");
+    dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[projectFolder] }); await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()"); await text('Open Project', "document.querySelector('#project-controls')");
     await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Opened ')", 'native reopen');
     assert.equal(await source(), saved);
     assert.deepEqual(compileMusic(saved), await program());
-    await text('Project');
-    await evaluate("document.querySelector('.studio-export [aria-haspopup=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
-    await waitFor("Boolean(document.querySelector('.studio-export-options [role=menuitem]'))", 'export menu');
+    await text('Export');
+    await waitFor("document.querySelector('.studio-export-dialog')?.getAttribute('data-state') === 'open'", 'export modal');
     const mix = await download('Export and download'), stem = await download('Export stem');
-    await click('Close project controls');
+    await click('Close export options');
     for (const output of [mix, stem]) {
       assert.equal(output.bytes.toString('ascii',0,4), 'RIFF');
       let peak = 0; for (let i=44; i<output.bytes.length; i+=2) peak = Math.max(peak, Math.abs(output.bytes.readInt16LE(i)));

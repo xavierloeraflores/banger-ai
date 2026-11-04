@@ -55,7 +55,7 @@ try {
   await window.loadURL(`http://127.0.0.1:${web.address().port}`);await enterStudio(window);
   console.log('Loaded cloud fixture');
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
-  await click('Project');
+  await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
   await wait("(document.querySelector('#project-controls')?.getAttribute('data-state') === 'open')");
   await wait("document.querySelector('details.project-workspace')");
   await evaluate("window.confirm=()=>true;document.querySelector('details.project-workspace').open=true");
@@ -67,7 +67,7 @@ try {
   await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
   await wait("document.querySelector('#project-controls').getAttribute('data-state') === 'closed'");
   revision=2;saved=source.replace('120','90');
-  await click('Project');
+  await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
   await wait("document.querySelector('details.project-workspace').textContent.includes('Saved revision 2')");
   await wait("document.querySelector('#project-controls').getAttribute('data-state') === 'open'");
   assert.match(await evaluate("document.querySelector('#cloud-source').value"),/tempo 100/,'Remote changes preserve the draft across closing and reopening');
@@ -89,10 +89,8 @@ try {
   await wait("document.querySelector('#producer-source').value.includes('tempo 90')");
   assert.ok(await evaluate("[...document.querySelectorAll('button')].some(button=>button.textContent==='Upload WAV to cloud')"));
   const download=new Promise((resolve,reject)=>window.webContents.session.once('will-download',(_event,item)=>{const path=join(directory,item.getFilename());item.setSavePath(path);item.once('done',(_event,state)=>state==='completed'?resolve(path):reject(new Error(state)));}));
-  await click('Project');
-  await wait("document.querySelector('.studio-export button[aria-haspopup=menu]')");
-  await evaluate("document.querySelector('.studio-export button[aria-haspopup=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
-  await wait("document.querySelector('.studio-export-options [role=menuitem]')");
+  await click('Export');
+  await wait("document.querySelector('.studio-export-dialog')?.getAttribute('data-state') === 'open'");
   await click('Export and download');console.log('Rendering WAV');
   const bytes=await readFile(await download);
   assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WAVE');assert.ok(bytes.length>44);assert.ok(bytes.subarray(44).some(value=>value!==0));

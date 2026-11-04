@@ -47,13 +47,13 @@ export async function smokeProducer(window) {
     })()`);
   }
   async function clickText(text) {
-    if (text === "Open Project" || text === "Save .banger") await clickText("Project");
+    if (text === "Open Project") await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === ${JSON.stringify(text)});
       if (!button || button.matches(':disabled')) throw new Error('Button is unavailable: ' + ${JSON.stringify(text)});
       button.click();
     })()`);
-    if (text === "Open Project" || text === "Save .banger") {
+    if (text === "Open Project") {
       await waitFor("![...document.querySelectorAll('#project-controls button')].find(b => b.textContent === 'Open Project').disabled", "file operation");
       await clickText("Close");
     }
@@ -79,7 +79,7 @@ export async function smokeProducer(window) {
   }
   async function saveAs(path, filename) {
     const snapshot = await evaluate("document.querySelector('#producer-source').value");
-    await clickText("Project");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate("void (window.confirm = () => true)");
     await clickText("Create Song");
     await waitFor("document.querySelector('.create-song-dialog')?.getAttribute('data-state') === 'open' && !!document.querySelector('[aria-label=\"New song name\"]')", "new song dialog");
@@ -89,12 +89,12 @@ export async function smokeProducer(window) {
     await clickText("Close");
     await editSource(snapshot);
     await clickText("Apply source");
-    await clickText("Save .banger");
+    await clickText("Save");
     await waitFor(`document.querySelector('.producer-footer [role="status"]')?.textContent === ${JSON.stringify(`Saved ${filename}.`)}`, "workspace save");
     assert.equal(await readFile(path, "utf8"), snapshot);
   }
   async function switchSong(filename) {
-    await clickText("Project");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate(`(() => { const field = document.querySelector('#workspace-file'); field.value = ${JSON.stringify(filename)}; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await waitFor(`document.querySelector('#source-title').textContent === ${JSON.stringify(filename)}`, "song switch");
     await clickText("Close");

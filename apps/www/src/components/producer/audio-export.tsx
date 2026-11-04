@@ -14,7 +14,7 @@ function download(wav: ArrayBuffer, name: string) {
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-export function AudioExport({ program, fileName, source, disabled, cloud, compact = false }: { program: MusicProgram; fileName: string; source: string; disabled: boolean; cloud?: CloudBinding | null; compact?: boolean }) {
+export function AudioExport({ program, fileName, source, disabled, cloud }: { program: MusicProgram; fileName: string; source: string; disabled: boolean; cloud?: CloudBinding | null }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [sampleRate, setSampleRate] = useState(44100);
@@ -49,15 +49,10 @@ export function AudioExport({ program, fileName, source, disabled, cloud, compac
     } catch (cause) { setStatus(cause instanceof Error ? cause.message : "Audio export failed."); }
     finally { setBusy(false); }
   }
-  const menu = <ExportMenu disabled={disabled || busy} onExport={library => { void render(false, false, library); }} />;
-  if (compact) return <div className="studio-header-export">{menu}<span className="studio-header-export-status" role="status">{status}</span></div>;
-  return <section className="studio-export" aria-labelledby="project-export-title">
-    <h2 id="project-export-title"><ProjectIcon name="audio" />Export Controls</h2>
-    <fieldset disabled={disabled || busy}>
+  return <ExportMenu disabled={disabled || busy} status={status} onExport={library => { void render(false, false, library); }}>
       <div className="project-export-controls">
         <div className="project-export-group project-export-song">
           <label>Sample rate<Select aria-label="Export sample rate" value={sampleRate} onChange={e => setSampleRate(Number(e.target.value))}><option value={44100}>44.1 kHz</option><option value={48000}>48 kHz</option></Select></label>
-          {menu}
         </div>
         <div className="project-export-group">
           <label>Stem<Select aria-label="Stem track" value={program.tracks.some(track => track.name === stem) ? stem : program.tracks[0]?.name ?? ""} onChange={e => setStem(e.target.value)}>{program.tracks.map(track => <option key={track.name}>{track.name}</option>)}</Select></label>
@@ -65,8 +60,6 @@ export function AudioExport({ program, fileName, source, disabled, cloud, compac
         </div>
       </div>
       {cloud && <Button className="project-cloud-export" variant="secondary" onClick={() => void render(false, true)}>Upload WAV to cloud</Button>}
-      <p className="project-export-help"><ProjectIcon name="info" />Exports the active song chain or selected pattern with saved mixer and sound settings. The metronome is excluded.</p>
-    </fieldset>
-    <p role="status" className="studio-export-status">{status}</p>
-  </section>;
+      <p className="project-export-help"><ProjectIcon name="info" />Exports the active song chain or selected pattern with current mixer and sound settings. The metronome is excluded.</p>
+  </ExportMenu>;
 }

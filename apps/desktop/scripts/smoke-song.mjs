@@ -155,8 +155,8 @@ async function run(window) {
     await click('Stop playback');
     // Save and reopen the complete arrangement through each application's real file flow.
     let projectPath;
-    if (web) projectPath = (await download('Save .banger')).path;
-    else { projectPath = join(directory, 'song.banger'); dialog.showSaveDialog = async () => ({ canceled: false, filePath: projectPath }); await text('Save .banger'); await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')", 'native save'); }
+    if (web) projectPath = (await download('Save')).path;
+    else { projectPath = join(directory, 'song.banger'); dialog.showSaveDialog = async () => ({ canceled: false, filePath: projectPath }); await text('Save'); await waitFor("document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')", 'native save'); }
     assert.equal(await readFile(projectPath, 'utf8'), preserved);
     if (web) {
       window.webContents.debugger.attach('1.3'); await window.webContents.debugger.sendCommand('Page.enable'); await window.webContents.debugger.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true });

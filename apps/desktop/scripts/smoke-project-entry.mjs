@@ -36,7 +36,7 @@ async function run(window) {
     throw new Error(`Project entry timed out: ${expression}`);
   };
   const click = (label, scope = 'body') => evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' button')})].find(button => button.textContent.trim() === ${JSON.stringify(label)}).click()`);
-  const chooseView = value => evaluate(`(() => { const field = document.querySelector('[aria-label="View"]'); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const chooseView = value => evaluate(`document.querySelector('.app-sidebar [aria-label="${({ beat: 'Beat Studio', vocal: 'Vocal Studio', library: 'Library' })[value]}"]').click()`);
   const idle = () => wait("document.querySelector('.producer-start-card')?.getAttribute('aria-busy') === 'false'");
   const mode = async value => { pickerMode = value; if (web) await evaluate(`window.entryPickerMode = ${JSON.stringify(value)}`); };
   const setupBrowser = async () => {
@@ -67,6 +67,12 @@ async function run(window) {
     await setupBrowser();
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Open Library']);
     await writeFile(`/tmp/banger-project-entry-${web ? 'web' : 'desktop'}-start.png`, (await window.webContents.capturePage()).toPNG());
+    assert.ok(await evaluate("Boolean(document.querySelector('[aria-label=\"Projects\"] [aria-label=\"Add project\"]'))"));
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
+    await wait("document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open'");
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.producer-project-required .producer-start-actions button')].map(b => b.textContent)"), ['Open Project', 'Create New Project', 'Load Sample Project', 'Cancel']);
+    await click('Cancel', '.producer-project-required');
+    await wait("!document.querySelector('.producer-project-required')");
     await click('Open Library');
     await wait("document.querySelector('.song-library')");
     assert.equal(web ? await evaluate('window.entryPickerCalls') : pickerCalls, 0, 'Library opens without requesting a project folder');
@@ -75,12 +81,12 @@ async function run(window) {
     for (const destination of ['vocal', 'beat']) {
       await chooseView(destination);
       await wait("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')");
-      assert.equal(await evaluate("document.querySelector('[aria-label=View]').value"), 'library');
-      assert.match(await evaluate("document.querySelector('#project-start-description').textContent"), destination === 'vocal' ? /Vocal Studio/ : /Beat Studio/);
+      assert.equal(await evaluate("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')]"), 'library');
+      assert.match(await evaluate("document.querySelector('.producer-project-required .producer-start-card > p').textContent"), destination === 'vocal' ? /Vocal Studio/ : /Beat Studio/);
       await click('Open Project', '.producer-project-required'); await idle();
       assert.equal(await evaluate("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')"), true, 'Canceled picker keeps the prompt');
       await click('Create New Project', '.producer-project-required'); await idle();
-      assert.equal(await evaluate("document.querySelector('[aria-label=View]').value"), 'library');
+      assert.equal(await evaluate("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')]"), 'library');
       await click('Cancel', '.producer-project-required');
       await wait("!document.querySelector('.producer-project-required')");
     }
@@ -99,24 +105,44 @@ async function run(window) {
     assert.match(await evaluate("document.querySelector('.producer-project-required [role=alert]').textContent"), /Folder access failed/);
     await writeFile(`/tmp/banger-project-entry-${web ? 'web' : 'desktop'}-prompt.png`, (await window.webContents.capturePage()).toPNG());
     await mode('open'); await click('Open Project', '.producer-project-required');
-    await wait("document.querySelector('[aria-label=View]')?.value === 'vocal' && !document.querySelector('.producer-project-required')");
+    await wait("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === 'vocal' && !document.querySelector('.producer-project-required')");
     assert.equal(await evaluate("document.querySelector('#producer-source').value"), source);
-    await click('Project');
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await wait("document.querySelector('#workspace-file')?.value === 'entry.banger'");
+    assert.ok(await evaluate("[...document.querySelectorAll('#project-controls button')].some(b => b.textContent === 'Load Sample Project')"));
     await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
-    for (const destination of ['library', 'beat', 'vocal']) { await chooseView(destination); await wait(`document.querySelector('[aria-label=View]').value === '${destination}'`); }
+    for (const destination of ['library', 'beat', 'vocal']) { await chooseView(destination); await wait(`({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === '${destination}'`); }
     assert.equal(await evaluate("document.querySelector('.producer-project-required')"), null, 'An open project allows switching studios');
     await window.loadURL(window.webContents.getURL()); await wait("document.querySelector('.producer-start')"); await setupBrowser();
     await click('Open Library'); await chooseView('beat'); await wait("(document.querySelector('.producer-project-required')?.getAttribute('data-state') === 'open')");
     await mode('create'); await click('Create New Project', '.producer-project-required');
     await wait("(document.querySelector('.first-song-dialog')?.getAttribute('data-state') === 'open')");
-    assert.equal(await evaluate("document.querySelector('[aria-label=View]').value"), 'library', 'Wait for the first song before entering the studio');
+    assert.equal(await evaluate("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')]"), 'library', 'Wait for the first song before entering the studio');
     await evaluate(`(() => { const field = document.querySelector('#first-song-name'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, 'First song'); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await click('Create Song', '.first-song-dialog');
-    await wait("document.querySelector('[aria-label=View]')?.value === 'beat' && !document.querySelector('.producer-project-required')");
-    await click('Project');
+    await wait("({ 'Library': 'library', 'Beat Studio': 'beat', 'Vocal Studio': 'vocal' })[document.querySelector('.app-sidebar-link[aria-current=page]')?.getAttribute('aria-label')] === 'beat' && !document.querySelector('.producer-project-required')");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await wait("document.querySelector('#workspace-file')?.value === 'First song.banger'");
     await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");
+    assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save').disabled"), true);
+    await click('Raw .banger');
+    await evaluate(`(() => { const field = document.querySelector('#producer-source'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, field.value + '\\n// saved from header'); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await wait("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save')?.disabled === false");
+    await click('Save', '.producer-file-actions');
+    await wait("document.querySelector('.producer-footer [role=status]')?.textContent.startsWith('Saved ')");
+    assert.equal(await evaluate("[...document.querySelectorAll('.producer-file-actions button')].find(b => b.textContent === 'Save').disabled"), true);
+    await click('Apply source');
+    await evaluate("document.querySelector('.producer-header .studio-export-menu > button').focus()");
+    await click('Export', '.producer-file-actions');
+    await wait("document.querySelector('.studio-export-dialog')?.getAttribute('data-state') === 'open'");
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.studio-export-actions button')].map(b => b.textContent)"), ['Export and download', 'Export and save to library']);
+    assert.ok(await evaluate("Boolean(document.querySelector('[aria-label=\"Export sample rate\"]') && document.querySelector('[aria-label=\"Stem track\"]'))"));
+    window.setMinimumSize(0, 0); window.setContentSize(390, 844); await delay(100);
+    assert.equal(await evaluate("document.querySelector('.studio-export-dialog').scrollWidth <= document.querySelector('.studio-export-dialog').clientWidth"), true);
+    await writeFile(`/tmp/banger-export-${web ? 'web' : 'desktop'}.png`, (await window.webContents.capturePage()).toPNG());
+    await evaluate("document.querySelector('[aria-label=\"Close export options\"]').click()");
+    await wait("document.activeElement?.textContent === 'Export'");
+    window.setContentSize(1380, 980);
     const saved = web ? await evaluate("(async () => (await (await (await window.entryParent.getDirectoryHandle('New project')).getFileHandle('First song.banger')).getFile()).text())()") : await readFile(join(created, 'First song.banger'), 'utf8');
     assert.equal(await evaluate("document.querySelector('#producer-source').value"), saved);
     console.log(`Project entry smoke passed (${web ? 'web' : 'desktop'}): startup Library, both studio gates, canceled pickers, cancel/Escape, errors, open/create continuation, saved first song, and switching with a project.`);

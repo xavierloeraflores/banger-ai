@@ -7,11 +7,12 @@ import { createDefaultProgram, serializeMusic } from "@banger/compiler";
 import { getProjectWorkspace } from "@/lib/browser-workspace";
 import { Button, Select, Modal, Input, type ModalHandle } from "@banger/shadcn";
 
+import type { BangerFile } from "@banger/agent/protocol";
 import type { ProjectFolder, WorkspaceFile as File } from "@/lib/project-workspace";
 type Bridge = NonNullable<Window["bangerWorkspace"]>;
 const message = (error: unknown) => error instanceof Error ? error.message : "The project operation failed.";
 
-export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onProjectOpened, canReplace, canChangeProject, songCard, cloudControls }: { initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; canChangeProject?(): boolean; onProjectOpened(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
+export function DesktopProjectWorkspace({ sample, initialFolder, savedFile, studioBusy, onBusyChange, onFolderChange, onLoad, onProjectOpened, canReplace, canChangeProject, songCard, cloudControls }: { sample: BangerFile; initialFolder?: ProjectFolder; savedFile: File | null; studioBusy: boolean; onBusyChange(busy: boolean): void; onFolderChange(folder: ProjectFolder): void; canReplace(): boolean; canChangeProject?(): boolean; onProjectOpened(): void; songCard: ReactNode; cloudControls: ReactNode; onLoad(file: File, savedSource: string, projectName: string): Promise<void> }) {
   const [emptyFolder, setEmptyFolder] = useState<ProjectFolder | null>(null);
   const [available, setAvailable] = useState(false);
   const [name, setName] = useState(initialFolder?.name ?? "");
@@ -58,12 +59,10 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     }
     setEmptyFolder(null);
   }
-  function changeProject(create: boolean) {
+  function changeProject(kind: "create" | "open" | "sample") {
     if (!(canChangeProject ?? canReplace)()) return;
     void action(async bridge => {
-      const next = create
-        ? await bridge.create()
-        : await bridge.open();
+      const next = kind === "open" ? await bridge.open() : kind === "sample" ? await bridge.create(sample.name, sample.source) : await bridge.create();
       if (!next) return;
       if (!next.paths.length) setEmptyFolder(next);
       else await openFolder(next);
@@ -74,8 +73,9 @@ export function DesktopProjectWorkspace({ initialFolder, savedFile, studioBusy, 
     <section className="project-workspace project-folder-workspace" aria-label="Project workspace">
       <div className="project-workspace-heading"><div className="project-folder-identity"><ProjectIcon name="folder" /><div><h2>Project Workspace</h2><p>{name || "No project folder selected"}</p></div></div>
         <div className="project-workspace-actions">
-          <Button variant="secondary" disabled={busy} onClick={() => changeProject(false)}><ProjectIcon name="external" />Open Project</Button>
-          <Button variant="secondary" disabled={busy} onClick={() => changeProject(true)}>Create New Project</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => changeProject("open")}><ProjectIcon name="external" />Open Project</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => changeProject("create")}>Create New Project</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => changeProject("sample")}>Load Sample Project</Button>
         </div>
       </div>
       {cloudControls}

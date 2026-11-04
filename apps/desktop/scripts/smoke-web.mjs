@@ -34,8 +34,7 @@ try {
   console.log("Web piano passed");
   const source = await smokeFocusedEditor(window);
   console.log("Web focused editor passed");
-  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Project').click()");
-  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Save .banger').click()");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Save').click()");
   await evaluate(`new Promise((resolve, reject) => { const end = Date.now() + 5000; const poll = () => {
     if (document.querySelector('.producer-footer [role=status]').textContent.startsWith('Saved ')) resolve();
     else if (Date.now() > end) reject(new Error('Browser save timed out')); else setTimeout(poll, 25);
@@ -43,6 +42,7 @@ try {
   const stored = await evaluate("(async () => { const folder = await window.smokeProjectParent.getDirectoryHandle('Sample Project'); return (await (await folder.getFileHandle('night-drive.banger')).getFile()).text(); })()");
   assert.equal(stored, source, 'Browser folder contains the edited piano source.');
   await evaluate("void (window.showDirectoryPicker = () => window.smokeProjectParent.getDirectoryHandle('Sample Project'))");
+  await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Open Project').click()");
   await evaluate(`new Promise((resolve, reject) => { const end = Date.now() + 5000; const poll = () => {
     if (document.querySelector('.producer-footer [role=status]').textContent.startsWith('Opened ')) resolve();

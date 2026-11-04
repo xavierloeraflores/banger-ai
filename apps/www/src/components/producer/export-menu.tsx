@@ -1,17 +1,26 @@
-import { useState } from "react";
-import { Button } from "@banger/shadcn";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@banger/shadcn/components/dropdown-menu";
+import { useId, useRef, type ReactNode } from "react";
+import { Button, Modal, type ModalHandle } from "@banger/shadcn";
+import { ProjectIcon } from "./project-icon";
 import "./export-menu.css";
 
-export function ExportMenu({ disabled, onExport }: { disabled: boolean; onExport(library: boolean): void }) {
-  const [open, setOpen] = useState(false);
+export function ExportMenu({ disabled, onExport, children, status }: { disabled: boolean; onExport(library: boolean): void; children?: ReactNode; status?: string }) {
+  const dialog = useRef<ModalHandle>(null);
+  const id = useId();
   return <div className="studio-export-menu">
-    <DropdownMenu open={open && !disabled} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild><Button variant="secondary" disabled={disabled}>Export</Button></DropdownMenuTrigger>
-      <DropdownMenuContent className="studio-export-options" align="end" sideOffset={8} collisionPadding={16} aria-label="Export song">
-        <DropdownMenuItem asChild onSelect={() => onExport(false)}><button type="button">Export and download</button></DropdownMenuItem>
-        <DropdownMenuItem asChild onSelect={() => onExport(true)}><button type="button">Export and save to library</button></DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button variant="secondary" disabled={disabled} aria-haspopup="dialog" aria-controls={id} onClick={() => dialog.current?.showModal()}>Export</Button>
+    <Modal ref={dialog} id={id} className="producer-project-dialog studio-export-dialog" aria-labelledby={`${id}-title`}>
+      <div className="producer-project-dialog-heading">
+        <div><h2 id={`${id}-title`}>Export</h2><p>Download your song or save it to your library.</p></div>
+        <Button variant="secondary" aria-label="Close export options" onClick={() => dialog.current?.close()}><ProjectIcon name="close" />Close</Button>
+      </div>
+      <fieldset className="studio-export-options" disabled={disabled}>
+        <div className="studio-export-actions">
+          <Button data-autofocus variant="primary" onClick={() => onExport(false)}>Export and download</Button>
+          <Button variant="secondary" onClick={() => onExport(true)}>Export and save to library</Button>
+        </div>
+        {children}
+      </fieldset>
+      {status && <p role="status" className="studio-export-status">{status}</p>}
+    </Modal>
   </div>;
 }

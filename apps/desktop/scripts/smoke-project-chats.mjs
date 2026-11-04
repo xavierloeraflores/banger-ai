@@ -48,7 +48,7 @@ async function run(window) {
     await chooseChat(0); await input('ai-chat-prompt', 'background A'); await click('Send');
     await wait("document.querySelector('.app-chat-indicator[data-status=running]')");
     await close();
-    selected = 'Project B'; await click('Project'); await click('Open Project');
+    selected = 'Project B'; await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()"); await click('Open Project');
     await wait("document.querySelectorAll('.app-sidebar-chat').length === 2 && document.querySelector('.producer-project').textContent.includes('Project B')");
     await click('Raw .banger'); await input('producer-source', source + '\n// B draft');
     for (let i = 0; i < 100 && !release; i++) await delay(20);
@@ -79,8 +79,8 @@ async function run(window) {
     // Reload after clearing dirty prompts; pagehide must persist the B draft.
     window.webContents.on('will-prevent-unload', event => event.preventDefault());
     window.webContents.reload();
-    await wait("document.querySelector('.producer-start') && document.querySelector('[aria-label=\"Open recent project Project B\"]')");
-    await evaluate("document.querySelector('[aria-label=\"Open recent project Project B\"]').click()");
+    await wait("document.querySelector('.producer-start') && document.querySelector('[aria-label=\"Open project Project B\"]')");
+    await evaluate("document.querySelector('[aria-label=\"Open project Project B\"]').click()");
     await wait("document.querySelector('#producer-source')?.value.includes('B draft')");
     assert.equal(await evaluate("document.querySelectorAll('.app-sidebar-chat').length"), 3);
     await chooseChat(0); await wait("document.querySelector('.ai-chat-answer')?.textContent.includes('Saved Project A')");

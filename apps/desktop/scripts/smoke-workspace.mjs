@@ -69,7 +69,7 @@ async function run(window) {
   };
   const input = (id, text) => evaluate(`(() => { const field = document.getElementById(${JSON.stringify(id)}); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(text)}); field.dispatchEvent(new Event('input', { bubbles:true })); })()`);
   try {
-    await click("Project");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await wait("window.bangerWorkspace && document.querySelector('.project-workspace')");
     await evaluate("window.bangerAI.save('vercel', 'anthropic/claude-opus-5-5', 'fake-project-key')");
     await evaluate("window.dispatchEvent(new Event('banger:ai-settings-changed'))");
@@ -166,7 +166,7 @@ async function run(window) {
     assert.match(await evaluate("document.querySelector('#producer-source').value"), /newer studio draft/);
     assert.match(await readFile(join(directory, "chorus.banger"), "utf8"), /gain 0.1/);
     await closeChat();
-    await click("Project");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate("void (window.confirm = () => true)");
     await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'chorus.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
     await wait("!document.querySelector('#producer-source').value.includes('newer studio draft')");
@@ -179,7 +179,7 @@ async function run(window) {
     await wait("!document.querySelector('.ai-chat-working')");
     assert.equal(calls.at(-1).prompt.filter(message => message.role === "user").length, 1);
     await closeChat();
-    await click("Project");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     await evaluate(`(() => { document.querySelector('[aria-label="Vocal Studio"]').click(); })()`);
     assert.equal(await evaluate("document.querySelector('.ai-chat-launcher').checkVisibility()"), true);
@@ -187,7 +187,7 @@ async function run(window) {
     assert.ok(await evaluate("document.querySelector('.ai-chat-transcript').textContent.includes('Fresh conversation')"));
     await closeChat();
     await evaluate(`(() => { document.querySelector('[aria-label="Beat Studio"]').click(); })()`);
-    await click("Project");
+    await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
     if (chatOnly) {
       console.log("AI chat smoke passed: automatic harness, save/discard/cancel, duplicate-send guard, save conflict, editor refresh, clean send, mobile bounds, conversation history, and cancellation. Real harness and IPC; mocked model responses.");
       return;
@@ -198,18 +198,18 @@ async function run(window) {
     await evaluate("(() => { const select = document.querySelector('#workspace-file'); select.value = 'verse.banger'; select.dispatchEvent(new Event('change', { bubbles:true })); })()");
     await wait("document.querySelector('#producer-source').value.includes('tempo 110')");
     await wait("document.querySelector('#workspace-file').value === 'verse.banger' && !document.querySelector('#producer-source').disabled");
-    // Exercise the real export menu after loading the workspace song.
+    // Export twice through the header modal and verify both archived WAVs.
     await evaluate("document.querySelector('#project-controls [aria-label=\"Close project controls\"]')?.click()");
     window.webContents.session.on('will-download', event => event.preventDefault());
-    await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Project').click()");
+    await click("Export");
+    await wait("document.querySelector('.studio-export-dialog')?.getAttribute('data-state') === 'open'");
     for (let version = 1; version <= 2; version++) {
-      await evaluate("document.querySelector('.studio-export button[aria-haspopup=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
-      await wait("document.querySelector('.studio-export-options [role=menuitem]')");
-      await evaluate("document.querySelectorAll('.studio-export-options [role=menuitem]')[0].click()");
+      await click("Export and download");
       await wait("document.querySelector('.studio-export-status')?.textContent.includes('Exported stereo WAV')");
       const saved = await readFile(join(directory, `.banger/history/verse/instrumentals/verse.instrumental-v00${version}.wav`));
       assert.equal(saved.toString('ascii', 0, 4), 'RIFF');
     }
+    await evaluate("document.querySelector('[aria-label=\"Close export options\"]').click()");
     assert.equal((await readdir(join(directory, '.banger/history/verse/instrumentals'))).length, 2);
     const readOnlyResult = await evaluate('window.bangerWorkspace.run("revise saved lyrics", "verse.banger", true, { beat: false, lyrics: false })');
     assert.equal(readOnlyResult.ok, true);

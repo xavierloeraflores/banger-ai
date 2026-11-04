@@ -167,7 +167,7 @@ async function exercise(window, desktop) {
   await waitFor("document.querySelector('#producer-tempo').value === '105'");
   assert.ok((await evaluate("document.querySelector('.producer-project').textContent")).includes("warm-loop.banger"));
   await closeChat();
-  await click("Project");
+  await evaluate("document.querySelector('[aria-label=\"Add project\"]').click()");
   await waitFor("document.querySelector('.project-file-identity p')");
   assert.equal(await evaluate("document.querySelector('.project-file-identity p').textContent"), "Unsaved changes");
   await evaluate("document.querySelector('[aria-label=\"Close project controls\"]').click()");

@@ -14,7 +14,7 @@ const destinations = [
   { id: "vocal", label: "Vocal Studio", icon: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> },
 ] as const;
 
-export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, children }: {
+export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], activeChat, onChat, onNewChat, onOpenRecent, onAddProject, children }: {
   active: AppDestination | "chat";
   expanded: boolean;
   onToggle(): void;
@@ -24,6 +24,7 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
   onChat?(id: string): void;
   onNewChat?(): void;
   onOpenRecent?(id: string): void;
+  onAddProject?(trigger: HTMLButtonElement): void;
   children: ReactNode;
 }) {
   const [settingsTarget, setSettingsTarget] = useState<HTMLDivElement | null>(null);
@@ -55,12 +56,12 @@ export function AppShell({ active, expanded, onToggle, onNavigate, chats = [], a
         </button>)}
         {!chats.length && expanded && <p>Chats appear when you open a project.</p>}
       </section>
-      {!!recent.length && <section className="app-sidebar-recents" aria-label="Recent projects">
-        <div className="app-sidebar-section-heading" hidden={!expanded}>Recent projects</div>
-        {recent.map(project => <button key={project.id} type="button" aria-label={`Open recent project ${project.name}`} title={project.name} onClick={() => onOpenRecent?.(project.id)} disabled={!onOpenRecent}>
+      <section className="app-sidebar-recents" aria-label="Projects">
+        <div className="app-sidebar-section-heading"><span hidden={!expanded}>Projects</span><button type="button" aria-label="Add project" title="Add project" aria-haspopup="dialog" disabled={!onAddProject} onClick={event => onAddProject?.(event.currentTarget)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button></div>
+        {recent.map(project => <button key={project.id} type="button" aria-label={`Open project ${project.name}`} title={project.name} onClick={() => onOpenRecent?.(project.id)} disabled={!onOpenRecent}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3z" /></svg><span hidden={!expanded} className="app-chat-label">{project.name}</span>
         </button>)}
-      </section>}
+      </section>
       <div className="app-sidebar-footer" ref={setSettingsTarget} />
     </aside>
     <div className="app-shell-content">{children}<div className="producer app-settings-host"><SettingsMenu triggerContainer={settingsTarget} expanded={expanded} /></div></div>
