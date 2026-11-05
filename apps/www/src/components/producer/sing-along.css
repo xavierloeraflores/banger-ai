@@ -20,7 +20,7 @@
 .sing-along-transcript h3 { margin: 0 12px 20px 0; display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 500; }
 .sing-along-transcript h3 span { font-size: 10px; color: var(--sing-muted); font-weight: 400; }
 .sing-along-lines { position: relative; max-height: 398px; overflow: auto; scrollbar-width: thin; scrollbar-color: #455467 transparent; }
-.producer .sing-along-lines button { justify-content: flex-start; display: flex; width: 100%; height: auto; align-items: baseline; gap: 14px; border: 1px solid transparent; border-radius: 10px; text-align: left; padding: 18px 10px; background: transparent; color: #a2b0c2; font-size: clamp(28px, 3.5vw, 42px); font-weight: 650; line-height: 1.2; letter-spacing: -1px; white-space: normal; }
+.producer .sing-along-lines button { justify-content: flex-start; display: flex; width: 100%; height: auto; align-items: baseline; gap: 14px; border: 1px solid transparent; border-radius: 10px; text-align: left; padding: 15px 10px; background: transparent; color: #a2b0c2; font-size: 17px; line-height: 1.5; white-space: normal; }
 .sing-along-lines button > span { min-width: 0; overflow-wrap: anywhere; }
 .sing-along-lines time { color: #8495aa; flex-shrink: 0; letter-spacing: normal; }
 .sing-along-lines button:hover { background: #ffffff08; color: #fff; }

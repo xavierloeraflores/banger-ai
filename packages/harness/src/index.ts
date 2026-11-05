@@ -43,7 +43,7 @@ export class ProjectSession {
     this.selected = options.selected;
     this.onEvent = options.onEvent;
     this.claimFile = options.claimFile;
-    this.maxSteps = options.maxSteps ?? 24;
+    this.maxSteps = options.maxSteps ?? 100;
     if (!Number.isInteger(this.maxSteps) || this.maxSteps < 2 || this.maxSteps > 100) throw new Error("Use between 2 and 100 agent steps.");
   }
   get messages(): ModelMessage[] { return structuredClone(this.turns.flat()); }

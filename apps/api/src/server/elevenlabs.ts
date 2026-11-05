@@ -70,7 +70,7 @@ export async function runElevenStep(job: Job, injected?: MusicProvider, objects:
     } catch(error) {
       if(error instanceof ApiError)throw error;
       const uncertain=error instanceof MusicProviderError&&error.uncertain;
-      const rejected=keySource==='server'&&!uncertain;
+      const rejected=keySource==='server'&&error instanceof MusicProviderError&&(error.statusCode===401||error.statusCode===403);
       const status=uncertain?paid?'needs_review':'failed':'failed';
       const message=rejected?'The hosted ElevenLabs key was rejected. A personal key was not used.':publicMusicError(error);
       await checkpoint(job,status,job.progress,{keySource,...(rejected?{serverKeyRejected:true}:{})},status,null,message);return;

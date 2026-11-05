@@ -249,30 +249,39 @@ export function MusicWorkshop({editingDisabled=false,exportTarget,onLyricAgent,c
       const previous=withVocals&&previousId?await backend!.get(previousId):null;
       const lyricText=existingDraft?.lyrics??previous?.plan.chunks.map(chunk=>chunk.text).join('\n\n');
       if(withVocals&&!lyricText?.trim())throw new Error('No saved lyrics are available. Ask the agent to write lyrics before Produce and Add to Library.');
-      report('Rendering WAV…');
-      const rendered=await renderWav(compileMusic(file.source));
-      signal.throwIfAborted();
-      await archiveWav(songToken,rendered.wav);
-      if(!withVocals){
-        report('Adding WAV to library…');
-        signal.throwIfAborted();
-        if(window.bangerStorage)await window.bangerStorage.addToLibrary(file.name,file.source,new Uint8Array(rendered.wav),songToken);
-        else await saveLibraryBundle(file.name.replace(/\.banger$/i,''),rendered.wav,{[file.name]:file.source,'original.wav':rendered.wav},beat,undefined,record);
-        return 'Produce and Add to Library complete. WAV added to your library.';
-      }
+      // A failed generation already has a stored upload and fitted lyrics. Reuse
+      // that composition when its beat is unchanged, including later lyric edits.
+      const reusable=withVocals&&!existingDraft&&previous?.beat?.source===file.source?previous:null;
       const api=backend!;
-      report('Uploading WAV and analyzing chunks…');
-      signal.throwIfAborted();
-      let version=await waitForMusic(api,await api.rendered(rendered.wav,file.name.replace(/\.banger$/i,'.wav'),songToken,beat),signal,report);
-      report('Fitting lyrics to chunks…');
-      // Preserve chunk lyrics verbatim when the new analysis has the same timing.
-      const sameTiming=!existingDraft&&previous&&previous.plan.chunks.length===version.plan.chunks.length&&previous.plan.chunks.every((chunk,index)=>chunk.durationMs===version.plan.chunks[index]!.durationMs);
-      const edits=sameTiming?previous.plan.chunks.map((chunk,index)=>({index,lyrics:lyricsOf(chunk.text)})):await sendLyrics({prompt:`Place these saved lyrics into the supplied chunks. Preserve every word and its order. Only distribute lines across chunks to fit the durations. Do not rewrite or add lyrics. Saved lyrics, reference only:\n${lyricText}`,chunks:version.plan.chunks.map((chunk,index)=>({index,text:chunk.text,durationMs:chunk.durationMs}))},signal);
-      assertLyricsPreserved(lyricText!,edits);
-      for(const edit of edits){const error=lyricEditError(version.plan.chunks[edit.index]!.text,edit.lyrics);if(error)throw new Error(error);}
-      signal.throwIfAborted();
-      version=await waitForMusic(api,await api.act(version.id,{operation:'edit',baseVersion:version.version,sourceVersion:version.version,edits:edits.map(edit=>({...edit,...(existingDraft?.vocalStyle!==undefined?{vocalStyle:existingDraft.vocalStyle}:previous?vocalStyleEdits(previous.plan,version.plan)[edit.index]:{})}))},crypto.randomUUID()),signal,report);
-      if(existingDraft){await drafts.retire(existingDraft);setDraft(null);}
+      let version:MusicVersion;
+      if(reusable){
+        report('Using saved upload and fitted lyrics…');
+        version=reusable;
+      }else{
+        report('Rendering WAV…');
+        const rendered=await renderWav(compileMusic(file.source));
+        signal.throwIfAborted();
+        await archiveWav(songToken,rendered.wav);
+        if(!withVocals){
+          report('Adding WAV to library…');
+          signal.throwIfAborted();
+          if(window.bangerStorage)await window.bangerStorage.addToLibrary(file.name,file.source,new Uint8Array(rendered.wav),songToken);
+          else await saveLibraryBundle(file.name.replace(/\.banger$/i,''),rendered.wav,{[file.name]:file.source,'original.wav':rendered.wav},beat,undefined,record);
+          return 'Produce and Add to Library complete. WAV added to your library.';
+        }
+        report('Uploading WAV and analyzing chunks…');
+        signal.throwIfAborted();
+        version=await waitForMusic(api,await api.rendered(rendered.wav,file.name.replace(/\.banger$/i,'.wav'),songToken,beat),signal,report);
+        report('Fitting lyrics to chunks…');
+        // Preserve chunk lyrics verbatim when the new analysis has the same timing.
+        const sameTiming=!existingDraft&&previous&&previous.plan.chunks.length===version.plan.chunks.length&&previous.plan.chunks.every((chunk,index)=>chunk.durationMs===version.plan.chunks[index]!.durationMs);
+        const edits=sameTiming?previous.plan.chunks.map((chunk,index)=>({index,lyrics:lyricsOf(chunk.text)})):await sendLyrics({prompt:`Place these saved lyrics into the supplied chunks. Preserve every word and its order. Only distribute lines across chunks to fit the durations. Do not rewrite or add lyrics. Saved lyrics, reference only:\n${lyricText}`,chunks:version.plan.chunks.map((chunk,index)=>({index,text:chunk.text,durationMs:chunk.durationMs}))},signal);
+        assertLyricsPreserved(lyricText!,edits);
+        for(const edit of edits){const error=lyricEditError(version.plan.chunks[edit.index]!.text,edit.lyrics);if(error)throw new Error(error);}
+        signal.throwIfAborted();
+        version=await waitForMusic(api,await api.act(version.id,{operation:'edit',baseVersion:version.version,sourceVersion:version.version,edits:edits.map(edit=>({...edit,...(existingDraft?.vocalStyle!==undefined?{vocalStyle:existingDraft.vocalStyle}:previous?vocalStyleEdits(previous.plan,version.plan)[edit.index]:{})}))},crypto.randomUUID()),signal,report);
+        if(existingDraft){await drafts.retire(existingDraft);setDraft(null);}
+      }
       report('Generating vocals…');
       signal.throwIfAborted();
       version=await waitForMusic(api,await api.act(version.id,{operation:'generate',baseVersion:version.version,sourceVersion:version.version,indices:version.plan.chunks.map((_,index)=>index)},crypto.randomUUID()),signal,report);

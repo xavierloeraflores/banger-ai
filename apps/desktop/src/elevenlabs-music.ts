@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ElevenMusic, associatedBeatSchema, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, lyricsOf, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
+import { ElevenMusic, associatedBeatSchema, MusicProviderError, musicActionSchema, performMusicAction, publicMusicError, validateWav, musicActionBase, planSchema, type MusicProvider, type MusicVersion, type MusicOperation } from '@banger/elevenlabs';
 import type { SongLocation } from './song-storage.js';
 type StorageHooks = { current?(song: SongLocation): Promise<MusicVersion | null>; imported(song: SongLocation, bytes: Uint8Array): Promise<unknown>; saved(song: SongLocation, version: MusicVersion, audio?: Uint8Array): Promise<unknown> };
 const uuid=(value:unknown)=>{if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new Error('Invalid music identifier.');return value;};
@@ -97,9 +97,14 @@ export function createMusicStore(root:string, provider:()=>MusicProvider|Promise
       const edited=await storage.current(location);
       if(!edited||edited.id!==current.id||edited.version!==current.version)return current;
       if(edited.plan.chunks.length!==current.plan.chunks.length)throw new Error('Lyric edits must preserve the composition chunks.');
-      const edits=edited.plan.chunks.flatMap((chunk,index)=>chunk.text===current.plan.chunks[index]!.text && (chunk.vocalStyle??current.plan.chunks[index]!.vocalStyle??'')===(current.plan.chunks[index]!.vocalStyle??'')?[]:[{index,lyrics:lyricsOf(chunk.text),...(chunk.vocalStyle!==undefined?{vocalStyle:chunk.vocalStyle}:{})}]);
+      // Sidecars contain complete composition text, including section labels and
+      // directions. Only plain lyric-input fields should use lyricEditSchema.
+      const editedPlan=planSchema.parse(edited.plan);
+      const edits=editedPlan.chunks.flatMap((chunk,index)=>chunk.text===current.plan.chunks[index]!.text && (chunk.vocalStyle??current.plan.chunks[index]!.vocalStyle??'')===(current.plan.chunks[index]!.vocalStyle??'')?[]:[{index,vocalStyle:chunk.vocalStyle??current.plan.chunks[index]!.vocalStyle??''}]);
       if(!edits.length)return current;
       const result=await performMusicAction(provider,current,musicActionSchema.parse({operation:'edit',baseVersion:current.version,edits}),randomUUID());
+      // Copy only the validated text; preserve timing, styles and audio references.
+      result.version.plan=planSchema.parse({...result.version.plan,chunks:result.version.plan.chunks.map((chunk,index)=>({...chunk,text:editedPlan.chunks[index]!.text}))});
       await publish(result.version,current.version);
       return result.version;
     },

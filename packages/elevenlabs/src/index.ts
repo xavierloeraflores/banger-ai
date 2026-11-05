@@ -1,9 +1,12 @@
-import { ElevenLabsClient, type ElevenLabs } from '@elevenlabs/elevenlabs-js';
-import { Music } from '@elevenlabs/elevenlabs-js/wrapper/music.js';
+import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
+// The package-root client overrides music with a multipart-parsing wrapper,
+// even though its types advertise the raw stream. Use the generated client.
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js/Client.js';
+import { readMusicResponse } from './music-response.js';
 import { MUSIC_MODEL, MAX_WAV_BYTES, audioMetadataSchema, type AudioMetadata, planSchema, providerPlanSchema, providerChunk, applyLyrics, lyricsOf, validateIndices, inpaintingPlan, type CompositionPlan, type MusicVersion, type ProviderPlan } from './protocol.js';
 export * from './protocol.js';
 export class MusicProviderError extends Error {
-  constructor(message: string, public uncertain = false) { super(message); }
+  constructor(message: string, public uncertain = false, public statusCode?: number) { super(message); }
 }
 export function publicMusicError(error: unknown): string {
   if (error instanceof MusicProviderError) return error.message;
@@ -48,20 +51,26 @@ export function validateWav(bytes: Uint8Array, forMusic = true) {
 }
 export class ElevenMusic implements MusicProvider {
   private client: ElevenLabsClient;
-  private music: Music;
   constructor(key: string, options: Omit<ConstructorParameters<typeof ElevenLabsClient>[0], 'apiKey'> = {}) {
     if (!key) throw new MusicProviderError('Set ELEVENLABS_API_KEY in the backend environment.');
     this.client = new ElevenLabsClient({ ...options, apiKey: key });
-    this.music = new Music({ ...options, apiKey: key });
   }
   private async call<T>(work: () => Promise<T>): Promise<T> {
     try { return await work(); }
     catch (error) {
+      if (error instanceof MusicProviderError) throw error;
       const status = error && typeof error === 'object' && 'statusCode' in error ? Number(error.statusCode) : undefined;
-      if (status === 401 || status === 403) throw new MusicProviderError('ElevenLabs denied access. Check the API key and Music permissions.');
+      const body = error && typeof error === 'object' && 'body' in error ? error.body : undefined;
+      const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : undefined;
+      const data = detail && typeof detail === 'object' && 'data' in detail ? detail.data : undefined;
+      if (status === 400 && data && typeof data === 'object' && 'reason' in data && data.reason === 'copyrighted_material_detected') {
+        throw new MusicProviderError('ElevenLabs rejected this composition as copyrighted material. Revise the lyrics or musical styles, then generate again. Your uploaded beat and fitted lyrics are saved.', false, status);
+      }
+      if (status === 401 || status === 403) throw new MusicProviderError('ElevenLabs denied access. Check the API key and Music permissions.', false, status);
       if (status === 402) throw new MusicProviderError('ElevenLabs needs more credits for this operation.');
       if (status === 422) throw new MusicProviderError('ElevenLabs rejected the audio or composition plan. Check its length and chunk settings.');
       if (status === 429) throw new MusicProviderError('ElevenLabs is rate limiting this account. Try again later.');
+      if (status && status >= 400 && status < 500 && status !== 408) throw new MusicProviderError(`ElevenLabs rejected the request (HTTP ${status}). Check the audio, composition settings, and Music access for this account.`);
       throw new MusicProviderError('The ElevenLabs response was interrupted. Check provider history before starting another paid request.', true);
     }
   }
@@ -85,7 +94,16 @@ export class ElevenMusic implements MusicProvider {
   }
   async generate(version: MusicVersion, indices: number[]) {
     const requestPlan=providerPlanSchema.parse(inpaintingPlan(version,indices));
-    const result=await this.call(() => this.music.composeDetailed({ modelId:MUSIC_MODEL,compositionPlan:requestPlan as ElevenLabs.CompositionPlan,storeForInpainting:true,withTimestamps:true,withWaveformVisual:true,outputFormat:'mp3_44100_128' }, {maxRetries:0,timeoutInSeconds:230}));
+    const result=await this.call(async () => {
+      // The convenience wrapper erases HTTP status codes, incorrectly turning
+      // rejected requests into uncertain paid operations. Use the raw client.
+      const {data,rawResponse}=await this.client.music.composeDetailed({ modelId:MUSIC_MODEL,compositionPlan:requestPlan as ElevenLabs.CompositionPlan,storeForInpainting:true,withTimestamps:true,withWaveformVisual:true,outputFormat:'mp3_44100_128' }, {maxRetries:0,timeoutInSeconds:230}).withRawResponse();
+      try {
+        return {...await readMusicResponse(data,rawResponse.headers.get('content-type')),songId:rawResponse.headers.get('song-id')};
+      } catch {
+        throw new MusicProviderError('ElevenLabs accepted the generation, but its audio response could not be read completely. Check provider history before starting another paid request.',true);
+      }
+    });
     if (!result.songId || !result.audio.length || result.audio.length>MAX_WAV_BYTES) throw new MusicProviderError('ElevenLabs did not return a complete stored song.', true);
     const providerPlan=providerPlanSchema.parse(result.json.compositionPlan);
     if (providerPlan.chunks.length !== version.plan.chunks.length) throw new MusicProviderError('ElevenLabs returned a different chunk structure. The original song is preserved.', true);
